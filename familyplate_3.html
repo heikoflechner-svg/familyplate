@@ -1,0 +1,989 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:system-ui,sans-serif;background:#f0f0f0;display:flex;justify-content:center;padding:20px;min-height:100vh;}
+.phone{width:340px;background:#fff;border-radius:36px;border:2px solid #ddd;overflow:hidden;display:flex;flex-direction:column;min-height:680px;position:relative;}
+.statusbar{padding:10px 20px 4px;display:flex;justify-content:space-between;font-size:11px;color:#888;}
+.screen{display:none;flex-direction:column;flex:1;}
+.screen.active{display:flex;}
+.topbar{padding:8px 20px 12px;display:flex;align-items:center;gap:10px;border-bottom:1px solid #f0f0f0;}
+.topbar h1{font-size:17px;font-weight:600;color:#111;}
+.back{background:none;border:none;cursor:pointer;color:#888;font-size:22px;line-height:1;padding:0;}
+.content{flex:1;padding:16px 20px;overflow-y:auto;}
+.btn{width:100%;padding:13px;border-radius:14px;border:1px solid #ddd;background:#fff;font-size:15px;font-weight:500;cursor:pointer;color:#111;display:flex;align-items:center;justify-content:center;gap:8px;}
+.btn.primary{background:#1D9E75;color:#fff;border-color:#1D9E75;}
+.btn.soft{background:#f5f5f5;border-color:#eee;font-size:14px;font-weight:400;}
+.nav{display:flex;border-top:1px solid #f0f0f0;padding:8px 0 4px;}
+.nav-tab{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;font-size:10px;color:#aaa;cursor:pointer;background:none;border:none;}
+.nav-tab.active{color:#1D9E75;}
+.nav-tab svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.6;}
+.lbl{font-size:11px;font-weight:600;color:#aaa;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;}
+.card{background:#f8f8f8;border-radius:12px;border:1px solid #eee;padding:12px 14px;margin-bottom:10px;}
+.meal-row{display:flex;align-items:center;gap:8px;padding:10px 12px;border-radius:12px;border:1px solid #eee;margin-bottom:6px;background:#fff;cursor:pointer;}
+.meal-row:hover{background:#f8fff9;}
+.badge{font-size:10px;background:#f0f0f0;color:#777;padding:2px 7px;border-radius:8px;flex-shrink:0;min-width:52px;text-align:center;}
+.badge.mid{background:#E1F5EE;color:#085041;}
+.badge.rest{background:#f0f0f0;color:#999;border:1px dashed #ccc;}
+.slot-empty{border:1px dashed #ddd;border-radius:12px;padding:10px 12px;margin-bottom:6px;display:flex;align-items:center;gap:8px;cursor:pointer;color:#ccc;}
+.slot-empty:hover{border-color:#1D9E75;color:#1D9E75;}
+.day-lbl{font-size:11px;font-weight:700;color:#aaa;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;display:flex;align-items:center;gap:5px;flex-wrap:wrap;}
+.pill{font-size:10px;padding:2px 7px;border-radius:10px;font-weight:600;text-transform:none;letter-spacing:0;}
+.pill.today{background:#E1F5EE;color:#085041;}
+.pill.absent{background:#FCEBEB;color:#A32D2D;}
+.chef-b{width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:8px;font-weight:700;flex-shrink:0;}
+.week-strip{display:flex;gap:6px;margin-bottom:14px;overflow-x:auto;padding-bottom:4px;}
+.wdc{flex-shrink:0;width:88px;border:1px solid #eee;border-radius:12px;overflow:hidden;}
+.wdc.today .wdc-head{background:#E1F5EE;}
+.wdc.today .wdc-dayname{color:#085041;}
+.wdc-head{padding:5px 7px 4px;background:#f8f8f8;border-bottom:1px solid #eee;cursor:pointer;}
+.wdc-dayname{font-size:10px;font-weight:700;color:#aaa;text-transform:uppercase;}
+.wdc-date{font-size:9px;color:#bbb;}
+.wdc-slot{padding:5px 7px;border-top:1px solid #f0f0f0;}
+.wdc-slot-lbl{font-size:9px;color:#bbb;font-weight:600;text-transform:uppercase;letter-spacing:.3px;}
+.wdc-meal{font-size:10px;font-weight:500;color:#111;line-height:1.2;margin-top:1px;}
+.wdc-add-btn{font-size:11px;color:#1D9E75;padding:2px 0;cursor:pointer;}
+.av-row{display:flex;gap:2px;margin-top:3px;flex-wrap:wrap;}
+.av{border-radius:50%;font-weight:700;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;user-select:none;position:relative;flex-shrink:0;transition:opacity .15s;}
+.av.sm{width:15px;height:15px;font-size:7px;}
+.av.md{width:22px;height:22px;font-size:9px;}
+.av.absent{opacity:.18;}
+.av.absent::after{content:'✕';position:absolute;font-size:8px;color:#E24B4A;font-weight:900;}
+.av.guest{border:1px dashed #bbb;}
+.popup{position:absolute;background:#fff;border:1px solid #ddd;border-radius:10px;padding:4px;z-index:999;box-shadow:0 4px 14px rgba(0,0,0,.15);min-width:126px;display:none;}
+.popup button{display:block;width:100%;background:none;border:none;padding:7px 12px;font-size:13px;cursor:pointer;border-radius:7px;text-align:left;color:#111;}
+.popup button:hover{background:#f5f5f5;}
+.day-card{border:1px solid #ddd;border-radius:12px;margin-bottom:10px;overflow:hidden;}
+.day-card-head{padding:10px 12px;background:#f8f8f8;border-bottom:1px solid #eee;display:flex;justify-content:space-between;align-items:center;}
+.slot-row{padding:9px 12px;display:flex;align-items:center;gap:8px;cursor:pointer;}
+.slot-row:hover{background:#f8fff9;}
+.slot-row+.slot-row{border-top:1px solid #f5f5f5;}
+.slot-row.sel{background:#E1F5EE;}
+.slot-row.filled{opacity:.45;cursor:default;pointer-events:none;}
+.bubble{border-radius:16px;padding:10px 14px;font-size:14px;line-height:1.5;margin-bottom:10px;max-width:85%;}
+.bki{background:#f5f5f5;border:1px solid #eee;color:#111;}
+.bme{background:#1D9E75;color:#fff;margin-left:auto;}
+.bpa{background:#185FA5;color:#fff;margin-left:auto;}
+.bli{background:#E8A020;color:#fff;margin-left:auto;}
+.bti{background:#C0436A;color:#fff;margin-left:auto;}
+.chat{display:flex;flex-direction:column;}
+.step-dots{display:flex;gap:6px;justify-content:center;padding:10px 0 4px;}
+.dot{width:6px;height:6px;border-radius:50%;background:#ddd;}
+.dot.on{background:#1D9E75;width:18px;border-radius:3px;}
+.mic-btn{width:64px;height:64px;border-radius:50%;background:#1D9E75;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;margin:0 auto;color:#fff;font-size:28px;}
+.chef-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px;}
+.chef-btn{border:1px solid #ddd;border-radius:12px;padding:12px 10px;cursor:pointer;background:#fff;text-align:center;}
+.chef-btn.sel{border:2px solid #1D9E75;background:#E1F5EE;}
+.chef-btn .ck{display:none;font-size:12px;color:#1D9E75;margin-top:4px;}
+.chef-btn.sel .ck{display:block;}
+.fb-bg{background:#f0f0f0;border-radius:4px;height:8px;margin-bottom:12px;}
+.fb-fill{height:8px;border-radius:4px;}
+.menu-tab{background:none;border:1px solid #ddd;border-radius:20px;padding:5px 14px;font-size:12px;cursor:pointer;color:#777;white-space:nowrap;flex-shrink:0;}
+.menu-tab.on{background:#1D9E75;border-color:#1D9E75;color:#fff;font-weight:500;}
+.ms{background:none;border:1px solid #ddd;border-radius:20px;padding:5px 12px;font-size:12px;cursor:pointer;color:#555;}
+/* Profil-Wechsler S3 */
+.who-bar{display:flex;gap:6px;padding:8px 16px;border-bottom:1px solid #f0f0f0;overflow-x:auto;}
+.who-btn{flex-shrink:0;border:1px solid #ddd;border-radius:20px;padding:4px 10px;font-size:12px;cursor:pointer;background:#fff;color:#555;display:flex;align-items:center;gap:4px;}
+.who-btn.on{border-color:#1D9E75;background:#E1F5EE;color:#085041;font-weight:600;}
+/* Chat-Eingabe */
+.chat-input-row{display:flex;gap:8px;padding:10px 16px;border-top:1px solid #f0f0f0;align-items:center;}
+.chat-input{flex:1;border:1px solid #ddd;border-radius:20px;padding:8px 14px;font-size:14px;outline:none;}
+.chat-send{width:36px;height:36px;border-radius:50%;background:#1D9E75;border:none;cursor:pointer;color:#fff;font-size:18px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+/* Portionen Block S4b */
+.port-row{display:flex;align-items:center;justify-content:space-between;padding:8px 0;}
+.port-ctrl{display:flex;align-items:center;gap:10px;}
+.port-btn{width:28px;height:28px;border-radius:50%;border:1px solid #ddd;background:#fff;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#333;}
+.port-num{font-size:16px;font-weight:700;color:#111;min-width:20px;text-align:center;}
+/* Reste Checkboxen */
+.reste-person{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #f5f5f5;}
+.reste-person:last-child{border-bottom:none;}
+.reste-check{width:18px;height:18px;border-radius:5px;border:1.5px solid #ccc;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0;}
+.reste-check.on{background:#1D9E75;border-color:#1D9E75;color:#fff;}
+.slot-pick{display:flex;gap:6px;margin-top:4px;}
+.slot-pick button{border:1px solid #ddd;border-radius:12px;padding:3px 10px;font-size:11px;cursor:pointer;background:#fff;color:#555;}
+.slot-pick button.on{background:#E1F5EE;border-color:#1D9E75;color:#085041;font-weight:600;}
+/* Profil Screen */
+.profile-person{border:1px solid #eee;border-radius:14px;padding:14px;margin-bottom:10px;}
+.profile-person-head{display:flex;align-items:center;gap:10px;margin-bottom:10px;}
+.tag-row{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px;}
+.tag{font-size:11px;padding:3px 9px;border-radius:10px;background:#f0f0f0;color:#555;cursor:pointer;}
+.tag.allergy{background:#FCEBEB;color:#A32D2D;}
+.tag.dislike{background:#FFF3E0;color:#7A4500;}
+.tag.like{background:#E1F5EE;color:#085041;}
+/* Rezept Screen S8 */
+.recipe-step{display:flex;gap:10px;margin-bottom:12px;}
+.recipe-step-num{width:22px;height:22px;border-radius:50%;background:#1D9E75;color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px;}
+/* Rezepte Tab */
+.recipe-card{border:1px solid #eee;border-radius:12px;padding:12px 14px;margin-bottom:8px;cursor:pointer;display:flex;align-items:center;gap:10px;}
+.recipe-card:hover{background:#f8fff9;}
+/* Hinweis-Karte S1 */
+.hint-card{background:#FFF8E1;border:1px solid #FFE082;border-radius:12px;padding:12px 14px;margin-bottom:10px;display:flex;align-items:center;gap:10px;cursor:pointer;}
+</style>
+</head>
+<body>
+<div class="phone" id="app">
+<div class="statusbar"><span>9:41</span><span>⚡ WiFi</span></div>
+
+<!-- S1 HOME -->
+<div class="screen active" id="s1">
+  <div class="topbar"><div style="flex:1"><h1>FamilyPlate</h1><div style="font-size:12px;color:#aaa;">Montag, 16. Juni</div></div><div style="width:34px;height:34px;border-radius:50%;background:#E1F5EE;color:#0F6E56;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;">KM</div></div>
+  <div class="content">
+    <!-- Hinweis-Karte Küchenchef -->
+    <div class="hint-card" onclick="go('s2')">
+      <div style="font-size:22px;">👨‍🍳</div>
+      <div><div style="font-size:13px;font-weight:600;color:#7A4500;">Papa, du bist heute Küchenchef!</div><div style="font-size:11px;color:#aaa;margin-top:2px;">Wünsche für Abend noch offen → jetzt planen</div></div>
+    </div>
+    <div class="lbl">Diese Woche <span style="font-size:10px;color:#1D9E75;font-weight:400;text-transform:none;letter-spacing:0;">· Avatar tippen = da/nicht da</span></div>
+    <div class="week-strip" id="wstrip"></div>
+    <div class="lbl">Heute</div>
+    <div class="card" style="border-left:3px solid #1D9E75;border-radius:0 12px 12px 0;cursor:pointer;" onclick="go('s8')">
+      <div style="font-size:11px;color:#999;margin-bottom:6px;">Mittag</div>
+      <div style="font-size:14px;font-weight:500;color:#111;margin-bottom:8px;">🐟 Lachs-Pasta mit Zitrone</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;">
+        <div style="font-size:12px;color:#aaa;">⏱ 25 min · regional</div>
+        <div style="display:flex;align-items:center;gap:5px;background:#E1F5EE;border-radius:20px;padding:3px 9px;">
+          <div style="width:18px;height:18px;border-radius:50%;background:#1D9E75;color:#fff;font-size:7px;font-weight:700;display:flex;align-items:center;justify-content:center;">MA</div>
+          <span style="font-size:12px;font-weight:500;color:#085041;">Küchenchefin: Mama</span>
+        </div>
+      </div>
+    </div>
+    <div class="card" style="border:1px dashed #ddd;cursor:pointer;" onclick="go('s2')"><div style="font-size:11px;color:#bbb;margin-bottom:2px;">Abend</div><div style="font-size:14px;color:#ccc;">+ Abendessen planen</div></div>
+    <button class="btn primary" onclick="go('s2')">👨‍👩‍👧‍👦 Familientisch starten</button>
+    <div style="height:8px;"></div>
+    <button class="btn soft" onclick="go('s6')">📋 Wochenspeisekarte</button>
+    <div style="height:8px;"></div>
+    <button class="btn soft" onclick="go('s5')">📊 Fairness ansehen</button>
+  </div>
+  <nav class="nav">
+    <button class="nav-tab active" onclick="go('s1')"><svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>Plan</button>
+    <button class="nav-tab" onclick="go('sRezepte')"><svg viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>Rezepte</button>
+    <button class="nav-tab" onclick="go('s7')"><svg viewBox="0 0 24 24"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>Einkauf</button>
+    <button class="nav-tab" onclick="go('sProfil')"><svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>Profil</button>
+  </nav>
+</div>
+
+<!-- S2 TAG AUSWAHL -->
+<div class="screen" id="s2">
+  <div class="topbar"><button class="back" onclick="go('s1')">‹</button><h1>Wann soll geplant werden?</h1></div>
+  <div class="content"><div style="font-size:13px;color:#aaa;margin-bottom:14px;">Wähle Tag und Mahlzeit.</div><div id="s2body"></div><div style="height:14px;"></div><button class="btn primary" id="btnNext" onclick="go('s2b')" style="opacity:.4;pointer-events:none;">→ Küchenchef festlegen</button></div>
+</div>
+
+<!-- S2b KÜCHENCHEF + GÄSTE -->
+<div class="screen" id="s2b">
+  <div class="topbar"><button class="back" onclick="go('s2')">‹</button><h1>Küchenchef</h1></div>
+  <div class="content">
+    <div style="font-size:13px;color:#aaa;margin-bottom:16px;">Wer kocht am <strong id="chefDayLbl">?</strong>?</div>
+    <div class="chef-grid">
+      <div class="chef-btn" onclick="pickChef(this,'Mama','MA')"><div style="width:40px;height:40px;border-radius:50%;background:#E1F5EE;color:#0F6E56;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;margin:0 auto 6px;">MA</div><div style="font-size:13px;font-weight:500;color:#111;">Mama</div><div style="font-size:11px;color:#aaa;">zuletzt Mo</div><div class="ck">✓ ausgewählt</div></div>
+      <div class="chef-btn" onclick="pickChef(this,'Papa','PA')"><div style="width:40px;height:40px;border-radius:50%;background:#E6F1FB;color:#0C447C;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;margin:0 auto 6px;">PA</div><div style="font-size:13px;font-weight:500;color:#111;">Papa</div><div style="font-size:11px;color:#aaa;">zuletzt Di</div><div class="ck">✓ ausgewählt</div></div>
+      <div class="chef-btn" onclick="pickChef(this,'Lina','LI')"><div style="width:40px;height:40px;border-radius:50%;background:#FAEEDA;color:#633806;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;margin:0 auto 6px;">LI</div><div style="font-size:13px;font-weight:500;color:#111;">Lina</div><div style="font-size:11px;color:#aaa;">8 Jahre</div><div class="ck">✓ ausgewählt</div></div>
+      <div class="chef-btn" onclick="pickChef(this,'Tim','TI')"><div style="width:40px;height:40px;border-radius:50%;background:#FBEAF0;color:#72243E;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;margin:0 auto 6px;">TI</div><div style="font-size:13px;font-weight:500;color:#111;">Tim</div><div style="font-size:11px;color:#aaa;">6 Jahre</div><div class="ck">✓ ausgewählt</div></div>
+    </div>
+    <div style="background:#f8f8f8;border-radius:12px;padding:12px;margin-bottom:16px;font-size:12px;color:#888;">💡 Laut Fairness-Tracking ist <strong style="color:#1D9E75;">Papa</strong> diese Woche noch am wenigsten dran.</div>
+    <!-- GÄSTE -->
+    <div style="border-top:1px solid #f0f0f0;padding-top:14px;margin-bottom:16px;">
+      <div class="lbl">Gäste einladen</div>
+      <div style="display:flex;align-items:center;gap:10px;">
+        <select id="guestSelect" onchange="updateGuests()" style="flex:1;border:1px solid #ddd;border-radius:10px;padding:8px 12px;font-size:13px;color:#333;background:#fff;">
+          <option value="0">Keine Gäste</option>
+          <option value="1">+1 Gast (G1)</option>
+          <option value="2">+2 Gäste (G1, G2)</option>
+          <option value="3">+3 Gäste (G1, G2, G3)</option>
+          <option value="4">+4 Gäste (G1–G4)</option>
+        </select>
+      </div>
+      <div id="guestAvRow" style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap;"></div>
+    </div>
+    <button class="btn primary" id="btnChef" onclick="go('s3')" style="opacity:.4;pointer-events:none;">→ Wünsche sammeln</button>
+  </div>
+</div>
+
+<!-- S3 WÜNSCHE (Chat, KI fragt reihum) -->
+<div class="screen" id="s3">
+  <div class="topbar"><button class="back" onclick="go('s2b')">‹</button><h1>Wünsche sammeln</h1></div>
+  <div style="padding:6px 20px;background:#f0fff8;border-bottom:1px solid #d0f0e0;font-size:12px;color:#0F6E56;" id="pFor">📅 –</div>
+  <div class="step-dots"><div class="dot on"></div><div class="dot"></div><div class="dot"></div></div>
+  <div class="content" style="padding:12px 16px;"><div class="chat" id="chatLog"></div></div>
+  <div class="chat-input-row">
+    <input class="chat-input" id="chatInput" placeholder="Wunsch eingeben..." onkeydown="if(event.key==='Enter')sendWish()">
+    <button class="chat-send" onclick="sendWish()">↑</button>
+  </div>
+  <div style="padding:6px 16px 10px;display:flex;gap:8px;align-items:center;">
+    <button class="mic-btn" style="width:44px;height:44px;font-size:18px;" onclick="loadS4()">✨</button>
+    <span style="font-size:11px;color:#aaa;">KI abgleichen → Vorschläge</span>
+    <button class="btn primary" style="flex:1;padding:10px;" onclick="loadS4()">→ Vorschläge</button>
+  </div>
+</div>
+
+<!-- S4 VORSCHLÄGE (KI-generiert) -->
+<div class="screen" id="s4">
+  <div class="topbar"><button class="back" onclick="go('s3')">‹</button><h1>KI-Vorschläge</h1></div>
+  <div style="padding:6px 20px;background:#f0fff8;border-bottom:1px solid #d0f0e0;font-size:12px;color:#0F6E56;" id="pFor2">📅 –</div>
+  <div class="step-dots"><div class="dot"></div><div class="dot on"></div><div class="dot"></div></div>
+  <div class="content">
+    <div id="s4loading" style="text-align:center;padding:30px 0;color:#aaa;font-size:13px;">
+      <div style="font-size:32px;margin-bottom:10px;">🤖</div>KI gleicht Wünsche ab...
+    </div>
+    <div id="s4results" style="display:none;">
+      <div class="bubble bki" id="s4msg" style="margin-bottom:14px;">3 Kompromisse gefunden! 🎉</div>
+      <div id="s4list"></div>
+      <button class="btn soft" onclick="pickMeal({emoji:'🤖',name:'Küchenchef entscheidet',info:'Küchenchef wählt spontan'})">🤖 Küchenchef entscheidet</button>
+    </div>
+  </div>
+</div>
+
+<!-- S4b BESTÄTIGUNG + PORTIONEN + RESTE -->
+<div class="screen" id="s4b">
+  <div class="topbar"><button class="back" onclick="go('s4')">‹</button><h1>Entscheidung</h1></div>
+  <div class="step-dots"><div class="dot"></div><div class="dot"></div><div class="dot on"></div></div>
+  <div class="content">
+    <div style="display:flex;flex-direction:column;align-items:center;text-align:center;padding-top:10px;margin-bottom:16px;">
+      <div style="font-size:40px;margin-bottom:8px;" id="confEmoji">🥗</div>
+      <div style="font-size:18px;font-weight:700;color:#111;margin-bottom:4px;" id="confMeal">–</div>
+      <div style="font-size:13px;color:#aaa;" id="confSlot">– · –</div>
+    </div>
+    <div style="background:#f8f8f8;border-radius:14px;padding:14px;margin-bottom:14px;">
+      <div style="font-size:12px;color:#aaa;margin-bottom:6px;">Küchenchef-Entscheidung</div>
+      <div style="display:flex;align-items:center;gap:10px;"><div style="width:34px;height:34px;border-radius:50%;background:#E6F1FB;color:#0C447C;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;" id="confAv">PA</div><div><div style="font-size:14px;font-weight:500;color:#111;" id="confName">Papa hat entschieden</div><div style="font-size:12px;color:#aaa;" id="confSub">–</div></div></div>
+    </div>
+
+    <!-- PORTIONEN -->
+    <div style="border:1px solid #eee;border-radius:14px;padding:14px;margin-bottom:14px;">
+      <div style="font-size:12px;font-weight:600;color:#555;margin-bottom:8px;">🍽 Portionen</div>
+      <div class="port-row">
+        <span style="font-size:13px;color:#888;">Heute essen</span>
+        <div class="port-ctrl">
+          <button class="port-btn" onclick="changePort('heute',-1)">−</button>
+          <span class="port-num" id="portHeute">4</span>
+          <button class="port-btn" onclick="changePort('heute',1)">+</button>
+        </div>
+      </div>
+      <div class="port-row" style="border-top:1px solid #f5f5f5;">
+        <span style="font-size:13px;color:#888;">Vorkochen für morgen</span>
+        <div class="port-ctrl">
+          <button class="port-btn" onclick="changePort('vor',-1)">−</button>
+          <span class="port-num" id="portVor">0</span>
+          <button class="port-btn" onclick="changePort('vor',1)">+</button>
+        </div>
+      </div>
+      <div style="border-top:1px solid #f5f5f5;padding-top:8px;margin-top:4px;display:flex;justify-content:space-between;font-size:13px;">
+        <span style="color:#aaa;">Gesamt</span><span style="font-weight:700;color:#111;" id="portGesamt">4 Portionen</span>
+      </div>
+    </div>
+
+    <!-- RESTE ZUORDNUNG -->
+    <div id="resteBlock" style="display:none;border:1px solid #FFE082;border-radius:14px;padding:14px;margin-bottom:14px;background:#FFFDE7;">
+      <div style="font-size:12px;font-weight:600;color:#7A4500;margin-bottom:10px;">🍱 Reste einplanen – wer bekommt was?</div>
+      <div id="restePersonen"></div>
+    </div>
+
+    <div style="background:#E1F5EE;border-radius:14px;padding:14px;margin-bottom:16px;"><div style="font-size:12px;font-weight:600;color:#085041;margin-bottom:4px;">✓ Fairness aktualisiert</div><div style="font-size:12px;color:#0F6E56;">Küchenchef +1 Punkt · Lina bekommt nächste Runde mehr Gewicht</div></div>
+    <button class="btn primary" onclick="commitMeal();go('s6')">📋 Zur Wochenspeisekarte</button>
+    <div style="height:8px;"></div>
+    <button class="btn soft" onclick="go('s1')">↩ Startseite</button>
+  </div>
+</div>
+
+<!-- S5 FAIRNESS -->
+<div class="screen" id="s5">
+  <div class="topbar"><button class="back" onclick="go('s1')">‹</button><h1>Fairness</h1></div>
+  <div class="content">
+    <div style="font-size:13px;color:#aaa;margin-bottom:16px;">Je voller der Balken, desto länger wartet jemand.</div>
+    <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px;color:#888;"><span>👩 Mama</span><span>vor 1 Woche</span></div><div class="fb-bg"><div class="fb-fill" style="width:30%;background:#1D9E75;"></div></div>
+    <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px;color:#888;"><span>👨 Papa</span><span>vor 2 Wochen</span></div><div class="fb-bg"><div class="fb-fill" style="width:55%;background:#378ADD;"></div></div>
+    <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px;color:#888;"><span>👧 Lina</span><span>vor 2 Wochen</span></div><div class="fb-bg"><div class="fb-fill" style="width:70%;background:#EF9F27;"></div></div>
+    <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px;color:#888;"><span>👦 Tim</span><span>diese Woche</span></div><div class="fb-bg"><div class="fb-fill" style="width:10%;background:#D4537E;"></div></div>
+    <div style="height:16px;"></div>
+    <div class="card"><div style="font-size:13px;font-weight:500;margin-bottom:4px;">💡 Empfehlung</div><div style="font-size:13px;color:#888;">Lina wartet 2 Wochen – bekommt nächste Runde mehr Gewicht.</div></div>
+    <div style="height:12px;"></div>
+    <button class="btn primary" onclick="go('s2')">👨‍👩‍👧‍👦 Familientisch starten</button>
+  </div>
+</div>
+
+<!-- S6 WOCHENSPEISEKARTE -->
+<div class="screen" id="s6">
+  <div style="padding:14px 20px 10px;border-bottom:1px solid #f0f0f0;">
+    <div style="display:flex;align-items:flex-start;"><div style="flex:1;"><div style="font-size:12px;color:#aaa;margin-bottom:2px;">Woche 25 · 16.–22. Juni 2025</div><div style="font-size:20px;font-weight:700;color:#111;">Speisekarte</div><div style="font-size:12px;color:#888;margin-top:2px;">Familie Maier</div></div><button class="back" onclick="go('s1')" style="font-size:22px;margin-top:2px;">‹</button></div>
+    <div style="display:flex;gap:8px;margin-top:10px;"><button class="ms">⬆ Teilen</button><button class="ms" onclick="go('s7')">🛒 Einkaufsliste</button><button class="ms" onclick="go('s2')" style="background:#E1F5EE;border-color:#9FE1CB;color:#085041;">+ planen</button></div>
+  </div>
+  <div style="display:flex;gap:6px;padding:10px 20px 0;overflow-x:auto;"><button class="menu-tab on" onclick="fDay('all',this)">Alle</button><button class="menu-tab" onclick="fDay('mo',this)">Mo</button><button class="menu-tab" onclick="fDay('di',this)">Di</button><button class="menu-tab" onclick="fDay('mi',this)">Mi</button><button class="menu-tab" onclick="fDay('do',this)">Do</button><button class="menu-tab" onclick="fDay('fr',this)">Fr</button></div>
+  <div style="flex:1;overflow-y:auto;padding:14px 20px;" id="sk"></div>
+  <div style="padding:12px 20px;border-top:1px solid #f0f0f0;"><button class="btn primary" onclick="go('s7')">🛒 Einkaufsliste erstellen</button></div>
+</div>
+
+<!-- S7 EINKAUFSLISTE -->
+<div class="screen" id="s7">
+  <div class="topbar"><button class="back" onclick="go('s6')">‹</button><h1>Einkaufsliste</h1></div>
+  <div class="content">
+    <div style="background:#E1F5EE;border-radius:14px;padding:14px;margin-bottom:14px;display:flex;align-items:center;gap:10px;"><div style="width:36px;height:36px;border-radius:50%;background:#1D9E75;display:flex;align-items:center;justify-content:center;color:#fff;font-size:18px;">✓</div><div style="font-size:13px;color:#085041;line-height:1.4;"><strong>18 Zutaten zusammengestellt</strong><br>Für 5 Mahlzeiten · Familie Maier</div></div>
+    <div class="lbl">Gemüse & Obst</div>
+    <div class="card" style="margin-bottom:6px;padding:10px 12px;"><div style="display:flex;justify-content:space-between;"><span>🍋 Zitrone</span><span style="font-size:12px;color:#aaa;">2 Stück</span></div></div>
+    <div class="card" style="margin-bottom:6px;padding:10px 12px;"><div style="display:flex;justify-content:space-between;"><span>🧅 Zwiebeln</span><span style="font-size:12px;color:#aaa;">4 Stück</span></div></div>
+    <div style="height:10px;"></div>
+    <div class="lbl">Fisch</div>
+    <div class="card" style="margin-bottom:6px;padding:10px 12px;background:#E1F5EE;"><div style="display:flex;justify-content:space-between;"><span>🐟 Lachs (regional)</span><span style="font-size:12px;color:#0F6E56;">600 g</span></div></div>
+    <div style="font-size:12px;color:#aaa;text-align:center;margin:10px 0;">+ 15 weitere Zutaten</div>
+    <button class="btn primary">📤 An Bring! senden</button>
+    <div style="height:8px;"></div>
+    <button class="btn soft">📧 Click & Collect anfragen</button>
+  </div>
+</div>
+
+<!-- S8 REZEPT DETAIL (KI-generiert) -->
+<div class="screen" id="s8">
+  <div class="topbar"><button class="back" onclick="go('s1')">‹</button><h1 id="s8title">Rezept</h1></div>
+  <div class="content" id="s8content">
+    <div style="text-align:center;padding:30px 0;color:#aaa;font-size:13px;" id="s8loading">
+      <div style="font-size:32px;margin-bottom:10px;">🤖</div>
+      KI erstellt Rezept...<br>
+      <div style="margin-top:12px;"><button class="btn primary" style="width:auto;padding:10px 20px;" onclick="loadRecipe()">Rezept laden</button></div>
+    </div>
+    <div id="s8body" style="display:none;"></div>
+  </div>
+</div>
+
+<!-- REZEPTE TAB -->
+<div class="screen" id="sRezepte">
+  <div class="topbar"><h1>Meine Rezepte</h1></div>
+  <div class="content" id="rezepteContent">
+    <div style="font-size:13px;color:#aaa;margin-bottom:14px;">Gespeicherte Lieblingsrezepte</div>
+    <div id="savedRecipesList"></div>
+    <div style="text-align:center;padding:20px;color:#ccc;font-size:13px;" id="noRecipes">Noch keine Rezepte gespeichert.<br>Tippe auf ein Gericht → ⭐ speichern.</div>
+  </div>
+  <nav class="nav">
+    <button class="nav-tab" onclick="go('s1')"><svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>Plan</button>
+    <button class="nav-tab active"><svg viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>Rezepte</button>
+    <button class="nav-tab" onclick="go('s7')"><svg viewBox="0 0 24 24"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>Einkauf</button>
+    <button class="nav-tab" onclick="go('sProfil')"><svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>Profil</button>
+  </nav>
+</div>
+
+<!-- PROFIL TAB -->
+<div class="screen" id="sProfil">
+  <div class="topbar"><h1>Profile</h1></div>
+  <div class="content">
+    <div style="font-size:13px;color:#aaa;margin-bottom:14px;">Vorlieben & Unverträglichkeiten</div>
+    <!-- Mama -->
+    <div class="profile-person">
+      <div class="profile-person-head">
+        <div style="width:38px;height:38px;border-radius:50%;background:#E1F5EE;color:#0F6E56;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;">MA</div>
+        <div><div style="font-size:14px;font-weight:600;">Mama</div><div style="font-size:11px;color:#aaa;">Küchenchefin</div></div>
+      </div>
+      <div style="font-size:11px;color:#aaa;margin-bottom:4px;">Allergien</div>
+      <div class="tag-row"><span class="tag allergy">Nüsse</span><span class="tag" style="border:1px dashed #ddd;color:#bbb;">+ hinzufügen</span></div>
+      <div style="font-size:11px;color:#aaa;margin-bottom:4px;">Mag nicht</div>
+      <div class="tag-row"><span class="tag dislike">Rosenkohl</span><span class="tag dislike">Leber</span></div>
+      <div style="font-size:11px;color:#aaa;margin-bottom:4px;">Mag besonders</div>
+      <div class="tag-row"><span class="tag like">🐟 Fisch</span><span class="tag like">🥗 Salat</span></div>
+    </div>
+    <!-- Papa -->
+    <div class="profile-person">
+      <div class="profile-person-head">
+        <div style="width:38px;height:38px;border-radius:50%;background:#E6F1FB;color:#0C447C;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;">PA</div>
+        <div><div style="font-size:14px;font-weight:600;">Papa</div><div style="font-size:11px;color:#aaa;">Küchenchef</div></div>
+      </div>
+      <div style="font-size:11px;color:#aaa;margin-bottom:4px;">Unverträglichkeiten</div>
+      <div class="tag-row"><span class="tag allergy">Laktose</span></div>
+      <div style="font-size:11px;color:#aaa;margin-bottom:4px;">Mag besonders</div>
+      <div class="tag-row"><span class="tag like">🍝 Pasta</span><span class="tag like">🥩 Fleisch</span></div>
+    </div>
+    <!-- Lina -->
+    <div class="profile-person">
+      <div class="profile-person-head">
+        <div style="width:38px;height:38px;border-radius:50%;background:#FAEEDA;color:#633806;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;">LI</div>
+        <div><div style="font-size:14px;font-weight:600;">Lina</div><div style="font-size:11px;color:#aaa;">8 Jahre</div></div>
+      </div>
+      <div style="font-size:11px;color:#aaa;margin-bottom:4px;">Mag nicht</div>
+      <div class="tag-row"><span class="tag dislike">Pilze</span><span class="tag dislike">Zwiebeln</span></div>
+      <div style="font-size:11px;color:#aaa;margin-bottom:4px;">Mag besonders</div>
+      <div class="tag-row"><span class="tag like">🍕 Pizza</span><span class="tag like">🍓 Erdbeeren</span></div>
+    </div>
+    <!-- Tim -->
+    <div class="profile-person">
+      <div class="profile-person-head">
+        <div style="width:38px;height:38px;border-radius:50%;background:#FBEAF0;color:#72243E;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;">TI</div>
+        <div><div style="font-size:14px;font-weight:600;">Tim</div><div style="font-size:11px;color:#aaa;">6 Jahre</div></div>
+      </div>
+      <div style="font-size:11px;color:#aaa;margin-bottom:4px;">Mag nicht</div>
+      <div class="tag-row"><span class="tag dislike">Fisch</span><span class="tag dislike">Spinat</span></div>
+      <div style="font-size:11px;color:#aaa;margin-bottom:4px;">Mag besonders</div>
+      <div class="tag-row"><span class="tag like">🍝 Nudeln</span><span class="tag like">🍗 Hähnchen</span></div>
+    </div>
+  </div>
+  <nav class="nav">
+    <button class="nav-tab" onclick="go('s1')"><svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>Plan</button>
+    <button class="nav-tab" onclick="go('sRezepte')"><svg viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>Rezepte</button>
+    <button class="nav-tab" onclick="go('s7')"><svg viewBox="0 0 24 24"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>Einkauf</button>
+    <button class="nav-tab active"><svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>Profil</button>
+  </nav>
+</div>
+
+<div class="popup" id="pop"></div>
+</div>
+
+<script>
+// ─── Stammdaten ────────────────────────────────────────────
+const CFG={
+  MA:{bg:'#E1F5EE',c:'#0F6E56'},
+  PA:{bg:'#E6F1FB',c:'#0C447C'},
+  LI:{bg:'#FAEEDA',c:'#633806'},
+  TI:{bg:'#FBEAF0',c:'#72243E'},
+  G1:{bg:'#f0f0f0',c:'#888'},
+  G2:{bg:'#f0f0f0',c:'#888'},
+  G3:{bg:'#f0f0f0',c:'#888'},
+  G4:{bg:'#f0f0f0',c:'#888'}
+};
+const P=['MA','PA','LI','TI'];
+const NAME={MA:'Mama',PA:'Papa',LI:'Lina',TI:'Tim',G1:'G1',G2:'G2',G3:'G3',G4:'G4'};
+const BUBBLE={MA:'bme',PA:'bpa',LI:'bli',TI:'bti'};
+const mk=()=>Object.fromEntries(P.map(p=>[p,true]));
+
+const pres={
+  'mo-mi':mk(),'mo-ab':mk(),
+  'di-mi':mk(),'di-ab':mk(),
+  'mi-mi':mk(),'mi-ab':mk(),
+  'do-mi':{...mk(),PA:false},'do-ab':{...mk(),PA:false},
+  'fr-mi':mk(),'fr-ab':mk()
+};
+
+const meals={
+  'mo-mi':{e:'🐟',n:'Lachs-Pasta',m:'25 min · regional',chef:'MA'},
+  'di-ab':{e:'🥗',n:'Lasagne',m:'50 min · laktosefrei',chef:'PA'},
+  'mi-mi':{e:'🥗',n:'Gemüsecurry',m:'25 min · vegan',chef:'MA'},
+  'mi-ab':{e:'🍕',n:'Pizza',m:'40 min · alle machen mit',chef:'LI'}
+};
+
+// Reste: {sk, persons:[init,...], slot:'Mittag'|'Abend', mealName}
+const restes=[];
+
+const DAYS=[
+  {key:'mo',lbl:'Mo · heute',date:'16. Jun',today:true,dlbl:'Montag, 16. Juni',slots:[{sk:'mo-mi',t:'Mittag'},{sk:'mo-ab',t:'Abend'}]},
+  {key:'di',lbl:'Di',date:'17. Jun',today:false,dlbl:'Dienstag, 17. Juni',slots:[{sk:'di-mi',t:'Mittag'},{sk:'di-ab',t:'Abend'}]},
+  {key:'mi',lbl:'Mi',date:'18. Jun',today:false,dlbl:'Mittwoch, 18. Juni',slots:[{sk:'mi-mi',t:'Mittag'},{sk:'mi-ab',t:'Abend'}]},
+  {key:'do',lbl:'Do',date:'19. Jun',today:false,dlbl:'Donnerstag, 19. Juni',slots:[{sk:'do-mi',t:'Mittag'},{sk:'do-ab',t:'Abend'}]},
+  {key:'fr',lbl:'Fr',date:'20. Jun',today:false,dlbl:'Freitag, 20. Juni',slots:[{sk:'fr-mi',t:'Mittag'},{sk:'fr-ab',t:'Abend'}]}
+];
+
+let choDay='',choSlot='',choChef='',choInit='';
+let guestCount=0;
+let portHeute=4, portVor=0;
+let resteState={};
+let chatMessages=[];
+let chatQueue=[...P];
+let activeWho='MA';
+// Saved recipes
+let savedRecipes=[];
+let currentMealName='Lachs-Pasta mit Zitrone';
+
+// ─── Avatar ────────────────────────────────────────────────
+function mkAv(person,sk,size){
+  const d=document.createElement('div');
+  const isGuest=person.startsWith('G');
+  d.className='av '+(size||'sm')+(pres[sk]&&!pres[sk][person]?' absent':'')+(isGuest?' guest':'');
+  d.dataset.sk=sk; d.dataset.p=person;
+  d.style.background=CFG[person]?CFG[person].bg:'#f0f0f0';
+  d.style.color=CFG[person]?CFG[person].c:'#888';
+  d.textContent=person;
+  return d;
+}
+function mkAvRow(sk,size){
+  const r=document.createElement('div');
+  r.className='av-row'; r.dataset.row=sk;
+  P.forEach(p=>r.appendChild(mkAv(p,sk,size)));
+  // Gäste
+  for(let i=1;i<=guestCount;i++){
+    const g='G'+i;
+    const d=document.createElement('div');
+    d.className='av '+(size||'sm')+' guest';
+    d.style.background='#f0f0f0'; d.style.color='#888';
+    d.textContent=g;
+    r.appendChild(d);
+  }
+  return r;
+}
+
+// ─── Popup ─────────────────────────────────────────────────
+const pop=document.getElementById('pop');
+let popTarget=null;
+document.getElementById('app').addEventListener('click',e=>{
+  const av=e.target.closest('.av');
+  if(!av){if(popTarget){pop.style.display='none';popTarget=null;}return;}
+  if(av.classList.contains('guest'))return;
+  e.stopPropagation();
+  const sk=av.dataset.sk,person=av.dataset.p;
+  if(popTarget===av){pop.style.display='none';popTarget=null;return;}
+  popTarget=av;
+  const base=sk.replace(/-mi|-ab$/,'');
+  const miK=base+'-mi',abK=base+'-ab';
+  pop.innerHTML='';
+  [{lbl:'☀️ Mittag',k:miK},{lbl:'🌙 Abend',k:abK},{lbl:'📅 Ganzer Tag',k:'both'}].forEach(o=>{
+    const absent=o.k==='both'?(!pres[miK][person]&&!pres[abK][person]):!pres[o.k][person];
+    const btn=document.createElement('button');
+    btn.textContent=(absent?'✓ da ':'✗ nicht da ')+o.lbl;
+    btn.onclick=ev=>{
+      ev.stopPropagation();
+      if(o.k==='both'){const v=!pres[miK][person]&&!pres[abK][person];pres[miK][person]=v;pres[abK][person]=v;}
+      else pres[o.k][person]=!pres[o.k][person];
+      pop.style.display='none';popTarget=null;
+      render();
+    };
+    pop.appendChild(btn);
+  });
+  const appR=document.getElementById('app').getBoundingClientRect();
+  const avR=av.getBoundingClientRect();
+  let top=avR.bottom-appR.top+4,left=avR.left-appR.left;
+  if(left+130>320)left=320-130;if(left<4)left=4;
+  pop.style.top=top+'px';pop.style.left=left+'px';pop.style.display='block';
+},true);
+
+// ─── Gäste ─────────────────────────────────────────────────
+function updateGuests(){
+  guestCount=parseInt(document.getElementById('guestSelect').value);
+  const row=document.getElementById('guestAvRow');
+  row.innerHTML='';
+  for(let i=1;i<=guestCount;i++){
+    const d=document.createElement('div');
+    d.style.cssText='display:flex;flex-direction:column;align-items:center;gap:3px;';
+    d.innerHTML=`<div style="width:34px;height:34px;border-radius:50%;background:#f0f0f0;border:1px dashed #bbb;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;color:#888;">G${i}</div><div style="font-size:10px;color:#aaa;">Gast ${i}</div>`;
+    row.appendChild(d);
+  }
+  // Portionen aktualisieren
+  const anwesend=P.filter(p=>choSlot&&pres[getSlotKey()]&&pres[getSlotKey()][p]!==false).length;
+  portHeute=anwesend+guestCount||4;
+  document.getElementById('portHeute').textContent=portHeute;
+  updatePortGesamt();
+}
+function getSlotKey(){
+  const dayMap={'Montag':'mo','Dienstag':'di','Mittwoch':'mi','Donnerstag':'do','Freitag':'fr'};
+  return dayMap[choDay]+(choSlot==='Mittag'?'-mi':'-ab');
+}
+
+// ─── Portionen ─────────────────────────────────────────────
+function changePort(which,delta){
+  if(which==='heute'){portHeute=Math.max(1,portHeute+delta);document.getElementById('portHeute').textContent=portHeute;}
+  else{portVor=Math.max(0,portVor+delta);document.getElementById('portVor').textContent=portVor;}
+  updatePortGesamt();
+  updateResteBlock();
+}
+function updatePortGesamt(){
+  document.getElementById('portGesamt').textContent=(portHeute+portVor)+' Portionen';
+}
+
+// ─── Reste Block ───────────────────────────────────────────
+function updateResteBlock(){
+  const block=document.getElementById('resteBlock');
+  if(portVor===0){block.style.display='none';return;}
+  block.style.display='block';
+  const el=document.getElementById('restePersonen');
+  el.innerHTML='';
+  // Nächsten Tag bestimmen
+  const dayMap={'Montag':'mo','Dienstag':'di','Mittwoch':'mi','Donnerstag':'do','Freitag':'fr'};
+  const keys=Object.keys(dayMap);
+  const todayIdx=keys.indexOf(choDay);
+  const nextDay=todayIdx>=0&&todayIdx<keys.length-1?keys[todayIdx+1]:null;
+  const nextSk=nextDay?dayMap[nextDay]:null;
+
+  P.forEach(p=>{
+    const isThere=!nextSk||pres[nextSk+'-mi']?.[p]!==false||pres[nextSk+'-ab']?.[p]!==false;
+    if(!resteState[p])resteState[p]={on:isThere,slot:'Mittag'};
+    const row=document.createElement('div');
+    row.className='reste-person';
+    const chk=document.createElement('div');
+    chk.className='reste-check'+(resteState[p].on?' on':'');
+    chk.textContent=resteState[p].on?'✓':'';
+    chk.onclick=()=>{resteState[p].on=!resteState[p].on;updateResteBlock();};
+    const av=document.createElement('div');
+    av.style.cssText=`width:24px;height:24px;border-radius:50%;background:${CFG[p].bg};color:${CFG[p].c};display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;flex-shrink:0;`;
+    av.textContent=p;
+    const info=document.createElement('div');
+    info.style.flex='1';
+    info.innerHTML=`<div style="font-size:13px;font-weight:500;">${NAME[p]}</div>`;
+    if(!isThere)info.innerHTML+=`<div style="font-size:10px;color:#E24B4A;">morgen nicht da</div>`;
+    // Slot-Wahl
+    const sp=document.createElement('div');
+    sp.className='slot-pick';
+    ['Mittag','Abend'].forEach(s=>{
+      const b=document.createElement('button');
+      b.textContent=s;
+      b.className=(resteState[p].slot===s?'on':'');
+      b.onclick=()=>{resteState[p].slot=s;updateResteBlock();};
+      sp.appendChild(b);
+    });
+    info.appendChild(sp);
+    row.appendChild(chk);row.appendChild(av);row.appendChild(info);
+    el.appendChild(row);
+  });
+}
+
+// ─── Chat S3 – KI fragt reihum ────────────────────────────
+let chatQueue=[...P]; // wer noch nicht gefragt wurde
+function renderChat(){
+  const log=document.getElementById('chatLog');
+  if(!log)return;
+  log.innerHTML='';
+  const intro=document.createElement('div');
+  intro.className='bubble bki';
+  const day=choDay||'heute';
+  const slot=choSlot||'Mittag';
+  intro.textContent=`Hallo! Was wollt ihr am ${day} ${slot} essen?`;
+  log.appendChild(intro);
+  chatMessages.forEach(msg=>{
+    if(msg.who!=='KI'){
+      const who=document.createElement('div');
+      who.style.cssText='font-size:11px;color:#aaa;margin-bottom:2px;text-align:right;';
+      who.textContent=NAME[msg.who];
+      log.appendChild(who);
+    }
+    const b=document.createElement('div');
+    b.className='bubble '+(msg.who==='KI'?'bki':BUBBLE[msg.who]||'bme');
+    b.textContent=msg.text;
+    log.appendChild(b);
+  });
+  // Zeige wer dran ist
+  const next=chatQueue[0];
+  if(next){
+    const hint=document.createElement('div');
+    hint.style.cssText='font-size:11px;color:#1D9E75;font-weight:600;margin-top:4px;';
+    hint.textContent=`${NAME[next]} ist dran...`;
+    log.appendChild(hint);
+    document.getElementById('chatInput').placeholder=`${NAME[next]}, dein Wunsch...`;
+  } else {
+    document.getElementById('chatInput').placeholder='Alle Wünsche gesammelt!';
+    document.getElementById('chatInput').disabled=true;
+  }
+  log.scrollTop=log.scrollHeight;
+}
+function sendWish(){
+  const inp=document.getElementById('chatInput');
+  const txt=inp.value.trim();
+  if(!txt||chatQueue.length===0)return;
+  const who=chatQueue.shift();
+  chatMessages.push({who,text:txt});
+  inp.value='';
+  if(chatQueue.length>0){
+    const next=chatQueue[0];
+    setTimeout(()=>{
+      chatMessages.push({who:'KI',text:`Notiert! ${NAME[next]} – was möchtest du?`});
+      renderChat();
+    },400);
+  } else {
+    setTimeout(()=>{
+      chatMessages.push({who:'KI',text:'Alle Wünsche gesammelt! KI gleicht jetzt ab... ✨'});
+      renderChat();
+    },400);
+  }
+  renderChat();
+}
+
+// ─── S4 KI-Vorschläge laden ───────────────────────────────
+let chosenMeal={emoji:'🥗',name:'–',info:'–'};
+async function loadS4(){
+  go('s4');
+  document.getElementById('s4loading').style.display='block';
+  document.getElementById('s4results').style.display='none';
+  const wishes=chatMessages.filter(m=>m.who!=='KI').map(m=>`${NAME[m.who]}: ${m.text}`).join(', ');
+  const prompt=`Familie plant ${choSlot||'Mittag'} am ${choDay||'heute'}. Wünsche: ${wishes||'keine Wünsche angegeben'}. Allergien: Mama keine Nüsse, Papa laktosefrei, Lina keine Pilze. Schlage 3 Kompromiss-Gerichte vor. Antworte NUR als JSON ohne Markdown: {"vorschlaege":[{"emoji":"...","name":"...","info":"...","minuten":25},{"emoji":"...","name":"...","info":"...","minuten":30},{"emoji":"...","name":"...","info":"...","minuten":40}]}`;
+  try{
+    const resp=await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:1000,messages:[{role:'user',content:prompt}]})
+    });
+    const data=await resp.json();
+    const parsed=JSON.parse(data.content[0].text);
+    renderS4(parsed.vorschlaege);
+  }catch(e){
+    // Fallback
+    renderS4([
+      {emoji:'🐟',name:'Lachs-Pasta',info:'Mama + Tim · Regional · 25 min',minuten:25},
+      {emoji:'🥗',name:'Lasagne mit Gemüse',info:'Papas Wunsch · laktosefrei · 50 min',minuten:50},
+      {emoji:'🍕',name:'Selbstgemachte Pizza',info:'Linas Wunsch · alle machen mit · 40 min',minuten:40}
+    ]);
+  }
+}
+function renderS4(list){
+  document.getElementById('s4loading').style.display='none';
+  document.getElementById('s4results').style.display='block';
+  document.getElementById('s4msg').textContent=`${list.length} Kompromisse gefunden! 🎉`;
+  const el=document.getElementById('s4list');
+  el.innerHTML='';
+  list.forEach((v,i)=>{
+    const d=document.createElement('div');
+    d.style.cssText=`border:1px solid ${i===0?'#1D9E75':'#ddd'};border-radius:12px;padding:12px 14px;margin-bottom:10px;cursor:pointer;background:#fff;`;
+    d.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;"><b style="font-size:14px;">${v.emoji} ${v.name}</b>${i===0?'<span style="font-size:11px;background:#E1F5EE;color:#085041;padding:2px 8px;border-radius:20px;">Top</span>':''}</div><div style="font-size:12px;color:#888;margin-top:3px;">${v.info||v.minuten+' min'}</div>`;
+    d.onclick=()=>pickMeal(v);
+    el.appendChild(d);
+  });
+}
+function pickMeal(v){
+  chosenMeal=v;
+  currentMealName=v.name;
+  document.getElementById('confEmoji').textContent=v.emoji||'🍽';
+  document.getElementById('confMeal').textContent=v.name;
+  document.getElementById('confSlot').textContent=`${choDay} · ${choSlot} · ${v.minuten||'–'} min`;
+  go('s4b');
+}
+
+// ─── Rezept S8 ─────────────────────────────────────────────
+async function loadRecipe(){
+  document.getElementById('s8loading').innerHTML='<div style="font-size:32px;margin-bottom:10px;">⏳</div><div style="color:#aaa;font-size:13px;">KI erstellt Rezept für '+currentMealName+'...</div>';
+  document.getElementById('s8body').style.display='none';
+  const portionen=portHeute+portVor||4;
+  try{
+    const resp=await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        model:'claude-sonnet-4-6',
+        max_tokens:1000,
+        messages:[{role:'user',content:`Erstelle ein einfaches Rezept für "${currentMealName}" für ${portionen} Personen. Antworte NUR als JSON ohne Markdown, in diesem Format: {"zutaten":[{"menge":"...","name":"..."}],"schritte":["...","..."],"zeit":"... min","schwierigkeit":"einfach|mittel|schwer"}`}]
+      })
+    });
+    const data=await resp.json();
+    const text=data.content[0].text;
+    const recipe=JSON.parse(text);
+    renderRecipe(recipe,portionen);
+  }catch(e){
+    document.getElementById('s8loading').innerHTML=`<div style="font-size:32px;">😕</div><div style="color:#aaa;font-size:13px;margin-top:8px;">Fehler beim Laden. Bitte erneut versuchen.</div><div style="margin-top:12px;"><button class="btn soft" style="width:auto;padding:10px 20px;" onclick="loadRecipe()">Erneut versuchen</button></div>`;
+  }
+}
+function renderRecipe(recipe,portionen){
+  document.getElementById('s8loading').style.display='none';
+  const body=document.getElementById('s8body');
+  body.style.display='block';
+  body.innerHTML=`
+    <div style="display:flex;gap:10px;margin-bottom:14px;">
+      <span style="font-size:12px;background:#E1F5EE;color:#085041;padding:3px 10px;border-radius:10px;">⏱ ${recipe.zeit}</span>
+      <span style="font-size:12px;background:#f0f0f0;color:#666;padding:3px 10px;border-radius:10px;">${recipe.schwierigkeit}</span>
+      <span style="font-size:12px;background:#f0f0f0;color:#666;padding:3px 10px;border-radius:10px;">🍽 ${portionen} Portionen</span>
+    </div>
+    <div class="lbl">Zutaten</div>
+    <div style="border:1px solid #eee;border-radius:12px;overflow:hidden;margin-bottom:16px;">
+      ${recipe.zutaten.map((z,i)=>`<div style="display:flex;justify-content:space-between;padding:8px 12px;${i>0?'border-top:1px solid #f5f5f5;':''}"><span style="font-size:13px;">${z.name}</span><span style="font-size:13px;color:#888;font-weight:500;">${z.menge}</span></div>`).join('')}
+    </div>
+    <div class="lbl">Zubereitung</div>
+    ${recipe.schritte.map((s,i)=>`<div class="recipe-step"><div class="recipe-step-num">${i+1}</div><div style="font-size:13px;line-height:1.5;color:#333;">${s}</div></div>`).join('')}
+    <div style="height:16px;"></div>
+    <button class="btn primary" onclick="saveRecipe()">⭐ Rezept speichern</button>
+    <div style="height:8px;"></div>
+    <button class="btn soft" onclick="go('s7')">🛒 Zutaten zur Einkaufsliste</button>
+  `;
+}
+function saveRecipe(){
+  if(!savedRecipes.find(r=>r.name===currentMealName)){
+    savedRecipes.push({name:currentMealName,e:'🍽'});
+  }
+  const btn=document.querySelector('#s8body .btn.primary');
+  if(btn){btn.textContent='✓ Gespeichert!';btn.style.background='#085041';}
+  renderSavedRecipes();
+}
+function renderSavedRecipes(){
+  const el=document.getElementById('savedRecipesList');
+  const none=document.getElementById('noRecipes');
+  if(!el)return;
+  el.innerHTML='';
+  if(savedRecipes.length===0){none.style.display='block';return;}
+  none.style.display='none';
+  savedRecipes.forEach(r=>{
+    const card=document.createElement('div');
+    card.className='recipe-card';
+    card.innerHTML=`<div style="font-size:24px;">${r.e}</div><div style="flex:1;font-size:14px;font-weight:500;">${r.name}</div><div style="font-size:12px;color:#1D9E75;">→</div>`;
+    card.onclick=()=>{currentMealName=r.name;go('s8');loadRecipe();};
+    el.appendChild(card);
+  });
+}
+
+// ─── Render Wochenstreifen ─────────────────────────────────
+function renderStrip(){
+  const el=document.getElementById('wstrip');
+  el.innerHTML='';
+  DAYS.forEach(d=>{
+    const card=document.createElement('div');
+    card.className='wdc'+(d.today?' today':'');
+    const head=document.createElement('div');
+    head.className='wdc-head';
+    head.innerHTML=`<div class="wdc-dayname">${d.lbl}</div><div class="wdc-date">${d.date}</div>`;
+    head.onclick=()=>go('s6');
+    card.appendChild(head);
+    d.slots.forEach(sl=>{
+      const s=document.createElement('div');
+      s.className='wdc-slot';
+      const m=meals[sl.sk];
+      s.innerHTML=`<div class="wdc-slot-lbl">${sl.t}</div>`+(m?`<div class="wdc-meal">${m.e} ${m.n.split(' ')[0]}</div>`:`<div class="wdc-add-btn" onclick="event.stopPropagation();go('s2')">+ planen</div>`);
+      s.appendChild(mkAvRow(sl.sk,'sm'));
+      card.appendChild(s);
+    });
+    el.appendChild(card);
+  });
+}
+
+// ─── Render Speisekarte ────────────────────────────────────
+function renderSK(){
+  const el=document.getElementById('sk');
+  if(!el)return;
+  el.innerHTML='';
+  DAYS.forEach(d=>{
+    const block=document.createElement('div');
+    block.dataset.day=d.key;
+    block.style.marginBottom='18px';
+    const absent=P.filter(p=>d.slots.some(sl=>!pres[sl.sk][p]));
+    let lh=`<div class="day-lbl">${d.dlbl}`;
+    if(d.today)lh+=`<span class="pill today">Heute</span>`;
+    if(absent.length)lh+=`<span class="pill absent">${absent.map(p=>NAME[p]).join(', ')} nicht da</span>`;
+    lh+='</div>';
+    block.innerHTML=lh;
+    d.slots.forEach(sl=>{
+      const m=meals[sl.sk];
+      const row=document.createElement('div');
+      if(m){
+        row.className='meal-row';
+        const c=CFG[m.chef];
+        const isMi=sl.t==='Mittag';
+        row.innerHTML=`<div class="badge${isMi?' mid':''}">${sl.t}</div><div style="flex:1;"><div style="font-size:14px;font-weight:500;">${m.e} ${m.n}</div><div style="font-size:11px;color:#bbb;">${m.m}</div></div><div class="chef-b" style="background:${c.bg};color:${c.c};">${m.chef}</div>`;
+        row.onclick=()=>{currentMealName=m.n;go('s8');setTimeout(loadRecipe,100);};
+      } else {
+        row.className='slot-empty';
+        row.onclick=()=>go('s2');
+        row.innerHTML=`<div class="badge">${sl.t}</div><span style="font-size:13px;flex:1;">+ ${sl.t==='Mittag'?'Mittagessen':'Abendessen'} planen</span>`;
+      }
+      row.appendChild(mkAvRow(sl.sk,'sm'));
+      block.appendChild(row);
+    });
+    // Reste für diesen Tag anzeigen
+    restes.filter(r=>r.dayKey===d.key).forEach(r=>{
+      const row=document.createElement('div');
+      row.className='meal-row';
+      row.style.background='#fafafa';
+      row.innerHTML=`<div class="badge rest">${r.slot}</div><div style="flex:1;"><div style="font-size:13px;color:#888;">🍱 Reste: ${r.mealName}</div><div style="font-size:11px;color:#bbb;">${r.persons.map(p=>NAME[p]).join(', ')}</div></div>`;
+      block.appendChild(row);
+    });
+    el.appendChild(block);
+  });
+}
+
+// ─── Render Tagesauswahl ───────────────────────────────────
+function renderS2(){
+  const el=document.getElementById('s2body');
+  if(!el)return;
+  el.innerHTML='';
+  DAYS.forEach(d=>{
+    const absent=P.filter(p=>d.slots.some(sl=>!pres[sl.sk][p]));
+    const card=document.createElement('div');
+    card.className='day-card';
+    const todayBadge=d.today?` <span style="font-size:10px;background:#E1F5EE;color:#085041;padding:2px 6px;border-radius:8px;">heute</span>`:'';
+    card.innerHTML=`<div class="day-card-head"><div><div style="font-size:13px;font-weight:600;color:#111;">${d.dlbl.split(',')[0]}${todayBadge}</div><div style="font-size:11px;color:#aaa;">${d.date}</div></div></div>`;
+    if(absent.length){
+      const w=document.createElement('div');
+      w.style.cssText='padding:5px 12px;font-size:11px;color:#E24B4A;background:#fff8f8;border-bottom:1px solid #fee;';
+      w.textContent='⚠ '+absent.map(p=>NAME[p]).join(', ')+' nicht da';
+      card.appendChild(w);
+    }
+    d.slots.forEach(sl=>{
+      const filled=!!meals[sl.sk];
+      const row=document.createElement('div');
+      row.className='slot-row'+(filled?' filled':'');
+      const mealTxt=meals[sl.sk]?`${meals[sl.sk].e} ${meals[sl.sk].n} – bereits geplant`:'noch nicht geplant';
+      row.innerHTML=`<span style="font-size:11px;font-weight:600;color:#888;min-width:44px;">${sl.t}</span><span style="font-size:12px;color:${filled?'#111':'#bbb'};flex:1;">${mealTxt}</span>`;
+      const ar=mkAvRow(sl.sk,'sm');
+      ar.style.marginLeft='auto';
+      row.appendChild(ar);
+      if(!filled) row.onclick=()=>{
+        document.querySelectorAll('.slot-row').forEach(r=>r.classList.remove('sel'));
+        row.classList.add('sel');
+        choDay=d.dlbl.split(',')[0]; choSlot=sl.t;
+        document.getElementById('btnNext').style.opacity='1';
+        document.getElementById('btnNext').style.pointerEvents='auto';
+        document.getElementById('chefDayLbl').textContent=choDay;
+        const lbl=`📅 ${choDay} · ${choSlot}`;
+        document.getElementById('pFor').textContent=lbl;
+        document.getElementById('pFor2').textContent=lbl;
+        // Portionen basierend auf Anwesenden
+        const anwesend=P.filter(p=>pres[sl.sk][p]!==false).length;
+        portHeute=anwesend; portVor=0;
+        document.getElementById('portHeute').textContent=portHeute;
+        document.getElementById('portVor').textContent=portVor;
+        updatePortGesamt();
+        resteState={};
+      };
+      card.appendChild(row);
+    });
+    el.appendChild(card);
+  });
+}
+
+function render(){
+  renderStrip();
+  renderSK();
+  renderS2();
+  renderChat();
+  renderSavedRecipes();
+}
+
+// ─── Navigation ────────────────────────────────────────────
+function go(id){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  pop.style.display='none'; popTarget=null;
+  // Nav-Tabs aktiv setzen
+  document.querySelectorAll('.nav-tab').forEach(t=>t.classList.remove('active'));
+  if(id==='s1')document.querySelectorAll('.nav-tab')[0]?.classList.add('active');
+  if(id==='sRezepte')document.querySelectorAll('.nav-tab')[1]?.classList.add('active');
+  if(id==='s7')document.querySelectorAll('.nav-tab')[2]?.classList.add('active');
+  if(id==='sProfil')document.querySelectorAll('.nav-tab')[3]?.classList.add('active');
+  // S8 reset wenn neu aufgerufen
+  if(id==='s8'){
+    document.getElementById('s8title').textContent=currentMealName;
+    document.getElementById('s8loading').style.display='block';
+    document.getElementById('s8loading').innerHTML=`<div style="font-size:32px;margin-bottom:10px;">🤖</div><div style="color:#aaa;font-size:13px;">Rezept für "${currentMealName}" laden?</div><div style="margin-top:12px;"><button class="btn primary" style="width:auto;padding:10px 20px;" onclick="loadRecipe()">Rezept laden</button></div>`;
+    document.getElementById('s8body').style.display='none';
+  }
+  render();
+}
+
+function fDay(day,btn){
+  document.querySelectorAll('.menu-tab').forEach(t=>t.classList.remove('on'));
+  btn.classList.add('on');
+  document.querySelectorAll('#sk [data-day]').forEach(b=>{
+    b.style.display=(day==='all'||b.dataset.day===day)?'block':'none';
+  });
+}
+
+function pickChef(el,name,init){
+  document.querySelectorAll('.chef-btn').forEach(b=>b.classList.remove('sel'));
+  el.classList.add('sel');
+  choChef=name; choInit=init;
+  document.getElementById('btnChef').style.opacity='1';
+  document.getElementById('btnChef').style.pointerEvents='auto';
+  document.getElementById('confSlot').textContent=`${choDay} · ${choSlot} · 50 min`;
+  document.getElementById('confName').textContent=`${name} hat entschieden`;
+  document.getElementById('confSub').textContent=`${choDay} · ${choSlot}`;
+  // Chat zurücksetzen für neuen Flow
+  chatMessages=[];chatQueue=[...P];
+  document.getElementById('chatInput').disabled=false;
+}
+
+function commitMeal(){
+  const dayMap={'Montag':'mo','Dienstag':'di','Mittwoch':'mi','Donnerstag':'do','Freitag':'fr'};
+  const k=dayMap[choDay]+(choSlot==='Mittag'?'-mi':'-ab');
+  meals[k]={e:chosenMeal.emoji||'🍽',n:chosenMeal.name,m:`${chosenMeal.minuten||'–'} min · ${choChef}s Entscheidung`,chef:choInit};
+  currentMealName=chosenMeal.name;
+  if(portVor>0){
+    const keys=Object.keys(dayMap);
+    const todayIdx=keys.indexOf(choDay);
+    const nextDay=todayIdx>=0&&todayIdx<keys.length-1?keys[todayIdx+1]:null;
+    if(nextDay){
+      const persons=P.filter(p=>resteState[p]&&resteState[p].on);
+      persons.forEach(p=>{
+        restes.push({dayKey:dayMap[nextDay],persons:[p],slot:resteState[p]?.slot||'Mittag',mealName:chosenMeal.name});
+      });
+    }
+  }
+}
+
+render();
+</script>
+</body>
+</html>
