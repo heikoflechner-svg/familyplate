@@ -2,13 +2,21 @@
 import { useState, useEffect } from 'react'
 import { loadWeekPlan, saveWeekPlan } from '../lib/mealLogic'
 import { loadFreezerItems, loadPantryItems } from '../lib/freezerLogic'
+import { signOut, onAuthChange } from '../lib/auth'
 import type { WeekPlanEntry, Rezept, FreezerItem, PantryItem, ShoppingItem, Tab, Wish, Chef } from '../lib/state'
+import LoginScreen from './LoginScreen'
 import WocheScreen from './WocheScreen'
 import VorraeteScreen from './VorraeteScreen'
 import EinkaufScreen from './EinkaufScreen'
 import ProfilScreen from './ProfilScreen'
 
+const PERSON_NAMES: Record<Chef, string> = { PA: 'Heiko', MA: 'Sabine', TI: 'Tim' }
+
 export default function FamilyPlateApp() {
+  const [currentUser, setCurrentUser] = useState<Chef | null>(null)
+  const [authChecked, setAuthChecked] = useState(false)
+  const [dataLoading, setDataLoading] = useState(false)
+
   const [weekPlan, setWeekPlan] = useState<WeekPlanEntry[]>([])
   const [mealsData, setMealsData] = useState<Record<string, Rezept>>({})
   const [planMittag, setPlanMittag] = useState(true)
@@ -16,12 +24,29 @@ export default function FamilyPlateApp() {
   const [freezerItems, setFreezerItems] = useState<FreezerItem[]>([])
   const [pantryItems, setPantryItems] = useState<PantryItem[]>([])
   const [wishes, setWishes] = useState<Wish[]>([])
-  const [wochenchef, setWochenchef] = useState<Chef>('PA')
   const [shoppingList, setShoppingList] = useState<ShoppingItem[]>([])
   const [activeTab, setActiveTab] = useState<Tab>('woche')
-  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
+    return onAuthChange(chef => {
+      setCurrentUser(chef)
+      setAuthChecked(true)
+      if (chef) {
+        setDataLoading(true)
+      } else {
+        setDataLoading(false)
+        setWeekPlan([])
+        setMealsData({})
+        setWishes([])
+        setFreezerItems([])
+        setPantryItems([])
+        setShoppingList([])
+      }
+    })
+  }, [])
+
+  useEffect(() => {
+    if (!currentUser) return
     Promise.all([loadWeekPlan(), loadFreezerItems(), loadPantryItems()]).then(
       ([{ plan, mealsData: md, wishes: w }, freezer, pantry]) => {
         setWeekPlan(plan)
@@ -29,10 +54,10 @@ export default function FamilyPlateApp() {
         setWishes(w)
         setFreezerItems(freezer)
         setPantryItems(pantry)
-        setLoading(false)
+        setDataLoading(false)
       },
     )
-  }, [])
+  }, [currentUser])
 
   async function handleWeekPlanChange(plan: WeekPlanEntry[], meals: Record<string, Rezept>) {
     setWeekPlan(plan)
@@ -45,7 +70,7 @@ export default function FamilyPlateApp() {
     await saveWeekPlan(weekPlan, mealsData, newWishes)
   }
 
-  if (loading) {
+  if (!authChecked || dataLoading) {
     return (
       <div className="phone" style={{ alignItems: 'center', justifyContent: 'center', gap: 12 }}>
         <div style={{ fontSize: 40 }}>🐀</div>
@@ -54,11 +79,16 @@ export default function FamilyPlateApp() {
     )
   }
 
+  if (!currentUser) {
+    return <LoginScreen />
+  }
+
   return (
     <div className="phone">
       <div className="statusbar">
         <span>9:41</span>
         <span>🍽 FamilyPlate</span>
+        <span style={{ fontSize: 10, color: '#aaa' }}>{PERSON_NAMES[currentUser]}</span>
       </div>
       <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
         {activeTab === 'woche' && (
@@ -70,7 +100,7 @@ export default function FamilyPlateApp() {
             freezerItems={freezerItems}
             pantryItems={pantryItems}
             wishes={wishes}
-            wochenchef={wochenchef}
+            wochenchef={currentUser}
             onWeekPlanChange={handleWeekPlanChange}
             onWishesChange={handleWishesChange}
           />
@@ -95,8 +125,10 @@ export default function FamilyPlateApp() {
           <ProfilScreen
             planMittag={planMittag}
             planWE={planWE}
+            currentUser={currentUser}
             onPlanMittagChange={setPlanMittag}
             onPlanWEChange={setPlanWE}
+            onSignOut={signOut}
           />
         )}
       </div>

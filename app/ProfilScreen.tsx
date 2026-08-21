@@ -3,8 +3,10 @@
 interface Props {
   planMittag: boolean
   planWE: boolean
+  currentUser: 'PA' | 'MA' | 'TI'
   onPlanMittagChange: (val: boolean) => void
   onPlanWEChange: (val: boolean) => void
+  onSignOut: () => Promise<void>
 }
 
 const FAMILIE = [
@@ -13,7 +15,7 @@ const FAMILIE = [
   { kuerzel: 'TI', name: 'Tim', rolle: 'Mitglied', bg: '#FBEAF0', c: '#72243E', info: 'Kein Fisch · mag Nudeln' },
 ]
 
-export default function ProfilScreen({ planMittag, planWE, onPlanMittagChange, onPlanWEChange }: Props) {
+export default function ProfilScreen({ planMittag, planWE, currentUser, onPlanMittagChange, onPlanWEChange, onSignOut }: Props) {
   return (
     <div className="screen active">
       <div className="topbar"><h1>👤 Profil</h1></div>
@@ -26,25 +28,35 @@ export default function ProfilScreen({ planMittag, planWE, onPlanMittagChange, o
         </div>
 
         <div className="lbl">Familie</div>
-        {FAMILIE.map(p => (
-          <div key={p.kuerzel} className="profile-person">
-            <div className="profile-person-head">
-              <div
-                className="chef-b"
-                style={{ background: p.bg, color: p.c, width: 34, height: 34, fontSize: 11, borderRadius: '50%' }}
-              >
-                {p.kuerzel}
+        {FAMILIE.map(p => {
+          const isMe = p.kuerzel === currentUser
+          return (
+            <div key={p.kuerzel} className="profile-person" style={{ opacity: isMe ? 1 : 0.6 }}>
+              <div className="profile-person-head">
+                <div
+                  className="chef-b"
+                  style={{ background: p.bg, color: p.c, width: 34, height: 34, fontSize: 11, borderRadius: '50%', outline: isMe ? `2px solid ${p.c}` : 'none', outlineOffset: 2 }}
+                >
+                  {p.kuerzel}
+                </div>
+                <div>
+                  <div style={{ fontSize: 14, fontWeight: 600 }}>{p.name}{isMe && <span style={{ fontSize: 10, color: p.c, marginLeft: 6, fontWeight: 400 }}>· eingeloggt</span>}</div>
+                  <div style={{ fontSize: 11, color: '#aaa' }}>{p.rolle}</div>
+                </div>
               </div>
-              <div>
-                <div style={{ fontSize: 14, fontWeight: 600 }}>{p.name}</div>
-                <div style={{ fontSize: 11, color: '#aaa' }}>{p.rolle}</div>
-              </div>
+              <div style={{ fontSize: 12, color: '#888' }}>{p.info}</div>
             </div>
-            <div style={{ fontSize: 12, color: '#888' }}>{p.info}</div>
-          </div>
-        ))}
+          )
+        })}
 
-        <div style={{ marginTop: 24, fontSize: 11, color: '#ccc', textAlign: 'center' }}>
+        <button
+          onClick={onSignOut}
+          style={{ marginTop: 20, width: '100%', padding: '11px', background: 'white', border: '1px solid #eee', borderRadius: 10, fontSize: 13, color: '#888', cursor: 'pointer' }}
+        >
+          Abmelden
+        </button>
+
+        <div style={{ marginTop: 16, fontSize: 11, color: '#ccc', textAlign: 'center' }}>
           FamilyPlate · Powered by Rémy 🐀
         </div>
 

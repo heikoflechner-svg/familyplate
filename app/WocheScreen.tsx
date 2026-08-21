@@ -55,7 +55,7 @@ export default function WocheScreen({
 
   function openWishForm(tag: string) {
     setWishFormTag(tag)
-    setWishPerson('PA')
+    setWishPerson(wochenchef)
     setWishKind('text')
     setWishText('')
     setWishDish(null)
