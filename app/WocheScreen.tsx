@@ -2,7 +2,7 @@
 import { useState } from 'react'
 import { generateWeekPlan } from '../lib/mealLogic'
 import { getFreezerListString, getPantryListString } from '../lib/freezerLogic'
-import type { WeekPlanEntry, Rezept, FreezerItem, PantryItem, Wish, Chef } from '../lib/state'
+import type { WeekPlanEntry, Rezept, FreezerItem, PantryItem, Wish, Chef, WochenSlot } from '../lib/state'
 
 const WOCHENTAGE = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag']
 
@@ -28,6 +28,7 @@ interface Props {
   freezerItems: FreezerItem[]
   pantryItems: PantryItem[]
   wishes: Wish[]
+  wochenchef: Chef
   onWeekPlanChange: (plan: WeekPlanEntry[], meals: Record<string, Rezept>) => Promise<void>
   onWishesChange: (wishes: Wish[]) => Promise<void>
 }
@@ -37,7 +38,7 @@ type PlanState = 'options' | 'loading' | 'results'
 
 export default function WocheScreen({
   weekPlan, mealsData, planMittag, planWE, freezerItems, pantryItems,
-  wishes, onWeekPlanChange, onWishesChange,
+  wishes, wochenchef, onWeekPlanChange, onWishesChange,
 }: Props) {
   const [view, setView] = useState<View>('home')
   const [planState, setPlanState] = useState<PlanState>('options')
@@ -77,6 +78,19 @@ export default function WocheScreen({
 
   async function removeWish(id: string) {
     await onWishesChange(wishes.filter(w => w.id !== id))
+  }
+
+  const [chefPickerKey, setChefPickerKey] = useState<string | null>(null)
+
+  function changePendingChef(tag: string, slot: WochenSlot, chef: Chef) {
+    setPendingPlan(prev => prev.map(e => e.tag === tag && e.slot === slot ? { ...e, chef } : e))
+    setChefPickerKey(null)
+  }
+
+  async function changeActiveChef(tag: string, slot: WochenSlot, chef: Chef) {
+    const newPlan = weekPlan.map(e => e.tag === tag && e.slot === slot ? { ...e, chef } : e)
+    setChefPickerKey(null)
+    await onWeekPlanChange(newPlan, mealsData)
   }
 
   const today = todayGerman()
@@ -220,9 +234,10 @@ export default function WocheScreen({
 
           {planState === 'results' && (
             <>
-              <div style={{ fontSize: 13, fontWeight: 600, color: '#085041', marginBottom: 14 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: '#085041', marginBottom: 4 }}>
                 ✅ Rémy hat geplant
               </div>
+              <div style={{ fontSize: 11, color: '#bbb', marginBottom: 14 }}>Koch antippen zum Ändern</div>
               {WOCHENTAGE.filter(t => pendingPlan.some(e => e.tag === t)).map(tag => (
                 <div key={tag} className="week-plan-row">
                   <div className="week-plan-head">
@@ -233,15 +248,27 @@ export default function WocheScreen({
                   {(['Mittag', 'Abend'] as const).map(slot => {
                     const e = getSlot(pendingPlan, tag, slot)
                     if (!e) return null
+                    const key = `${tag}-${slot}`
                     const c = CFG[e.chef] ?? CFG.MA
                     return (
-                      <div key={slot} style={{ padding: '8px 12px', borderTop: '1px solid #f5f5f5', display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <span style={{ fontSize: 18 }}>{e.emoji}</span>
-                        <div style={{ flex: 1 }}>
-                          <div style={{ fontSize: 12, fontWeight: 600 }}>{e.gericht}</div>
-                          <div style={{ fontSize: 10, color: '#aaa' }}>{slot} · {e.minuten} min</div>
+                      <div key={slot}>
+                        <div style={{ padding: '8px 12px', borderTop: '1px solid #f5f5f5', display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <span style={{ fontSize: 18 }}>{e.emoji}</span>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontSize: 12, fontWeight: 600 }}>{e.gericht}</div>
+                            <div style={{ fontSize: 10, color: '#aaa' }}>{slot} · {e.minuten} min</div>
+                          </div>
+                          <button
+                            onClick={() => setChefPickerKey(chefPickerKey === key ? null : key)}
+                            className="chef-b"
+                            style={{ background: c.bg, color: c.c, border: 'none', cursor: 'pointer' }}
+                          >
+                            {e.chef}
+                          </button>
                         </div>
-                        <div className="chef-b" style={{ background: c.bg, color: c.c }}>{e.chef}</div>
+                        {chefPickerKey === key && (
+                          <ChefPicker current={e.chef} onSelect={chef => changePendingChef(tag, slot, chef)} />
+                        )}
                       </div>
                     )
                   })}
@@ -249,7 +276,7 @@ export default function WocheScreen({
               ))}
               <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
                 <button className="btn primary" onClick={acceptPlan} disabled={saving}>
-                  {saving ? '⏳ Speichern…' : '✅ Woche übernehmen'}
+                  {saving ? '⏳ Speichern…' : `✅ Als Wochenchef bestätigen (${PERSON_NAMES[wochenchef]})`}
                 </button>
                 <button
                   className="btn"
@@ -294,14 +321,26 @@ export default function WocheScreen({
                     {tag === today && <span className="pill today" style={{ marginLeft: 8 }}>Heute</span>}
                   </div>
                   {([mittag, abend] as const).map((e, i) => {
-                    const slot = i === 0 ? 'Mittag' : 'Abend'
+                    const slot = (i === 0 ? 'Mittag' : 'Abend') as WochenSlot
                     if (!e) return null
+                    const key = `${tag}-${slot}`
                     const c = CFG[e.chef] ?? CFG.MA
                     return (
-                      <div key={slot} style={{ padding: '7px 12px', borderTop: '1px solid #f5f5f5', display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <span style={{ fontSize: 10, color: '#bbb', minWidth: 34 }}>{slot === 'Mittag' ? '🌞' : '🌙'}</span>
-                        <span style={{ flex: 1, fontSize: 12, fontWeight: 500, color: '#111' }}>{e.gericht}</span>
-                        <div className="chef-b" style={{ background: c.bg, color: c.c }}>{e.chef}</div>
+                      <div key={slot}>
+                        <div style={{ padding: '7px 12px', borderTop: '1px solid #f5f5f5', display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <span style={{ fontSize: 10, color: '#bbb', minWidth: 34 }}>{slot === 'Mittag' ? '🌞' : '🌙'}</span>
+                          <span style={{ flex: 1, fontSize: 12, fontWeight: 500, color: '#111' }}>{e.gericht}</span>
+                          <button
+                            onClick={() => setChefPickerKey(chefPickerKey === key ? null : key)}
+                            className="chef-b"
+                            style={{ background: c.bg, color: c.c, border: 'none', cursor: 'pointer' }}
+                          >
+                            {e.chef}
+                          </button>
+                        </div>
+                        {chefPickerKey === key && (
+                          <ChefPicker current={e.chef} onSelect={chef => changeActiveChef(tag, slot, chef)} />
+                        )}
                       </div>
                     )
                   })}
@@ -429,6 +468,26 @@ export default function WocheScreen({
 }
 
 const PERSON_NAMES: Record<Chef, string> = { PA: 'Heiko', MA: 'Sabine', TI: 'Tim' }
+
+function ChefPicker({ current, onSelect }: { current: Chef; onSelect: (c: Chef) => void }) {
+  return (
+    <div style={{ padding: '4px 12px 8px', display: 'flex', gap: 4 }}>
+      {(['PA', 'MA', 'TI'] as Chef[]).map(p => {
+        const c = CFG[p]
+        const active = current === p
+        return (
+          <button
+            key={p}
+            onClick={() => onSelect(p)}
+            style={{ padding: '3px 10px', borderRadius: 8, border: '1px solid', borderColor: active ? c.c : '#ddd', background: active ? c.bg : 'white', color: active ? c.c : '#aaa', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
+          >
+            {p} · {PERSON_NAMES[p]}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
 
 interface WishesSectionProps {
   tag: string

@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react'
 import { loadWeekPlan, saveWeekPlan } from '../lib/mealLogic'
 import { loadFreezerItems, loadPantryItems } from '../lib/freezerLogic'
-import type { WeekPlanEntry, Rezept, FreezerItem, PantryItem, ShoppingItem, Tab, Wish } from '../lib/state'
+import type { WeekPlanEntry, Rezept, FreezerItem, PantryItem, ShoppingItem, Tab, Wish, Chef } from '../lib/state'
 import WocheScreen from './WocheScreen'
 import VorraeteScreen from './VorraeteScreen'
 import EinkaufScreen from './EinkaufScreen'
@@ -16,6 +16,7 @@ export default function FamilyPlateApp() {
   const [freezerItems, setFreezerItems] = useState<FreezerItem[]>([])
   const [pantryItems, setPantryItems] = useState<PantryItem[]>([])
   const [wishes, setWishes] = useState<Wish[]>([])
+  const [wochenchef, setWochenchef] = useState<Chef>('PA')
   const [shoppingList, setShoppingList] = useState<ShoppingItem[]>([])
   const [activeTab, setActiveTab] = useState<Tab>('woche')
   const [loading, setLoading] = useState(true)
@@ -69,6 +70,7 @@ export default function FamilyPlateApp() {
             freezerItems={freezerItems}
             pantryItems={pantryItems}
             wishes={wishes}
+            wochenchef={wochenchef}
             onWeekPlanChange={handleWeekPlanChange}
             onWishesChange={handleWishesChange}
           />
