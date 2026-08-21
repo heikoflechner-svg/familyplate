@@ -93,6 +93,45 @@ export default function WocheScreen({
     await onWeekPlanChange(newPlan, mealsData)
   }
 
+  const [dayLoading, setDayLoading] = useState<string | null>(null)
+  const [pendingDay, setPendingDay] = useState<{ tag: string; entries: WeekPlanEntry[] } | null>(null)
+
+  function changePendingDayChef(slot: WochenSlot, chef: Chef) {
+    setPendingDay(prev => prev ? { ...prev, entries: prev.entries.map(e => e.slot === slot ? { ...e, chef } : e) } : null)
+    setChefPickerKey(null)
+  }
+
+  async function confirmPendingDay() {
+    if (!pendingDay) return
+    setSaving(true)
+    const newPlan = [...weekPlan.filter(e => e.tag !== pendingDay.tag), ...pendingDay.entries]
+    await onWeekPlanChange(newPlan, mealsData)
+    setPendingDay(null)
+    setSaving(false)
+  }
+
+  async function replanDay(tag: string) {
+    closeWishForm()
+    setChefPickerKey(null)
+    setPendingDay(null)
+    setDayLoading(tag)
+    try {
+      const result = await generateWeekPlan({
+        planMittag,
+        planWE,
+        freezerList: getFreezerListString(freezerItems),
+        pantryList: getPantryListString(pantryItems),
+        behaltene: weekPlan.filter(e => e.tag !== tag),
+        neuTage: [tag],
+        wishes: wishes.filter(w => w.tag === tag),
+      })
+      setPendingDay({ tag, entries: result.filter(e => e.tag === tag) })
+    } catch {
+      // silently fail — Nutzer kann nochmal tippen
+    }
+    setDayLoading(null)
+  }
+
   const today = todayGerman()
   const activeDays = planWE ? WOCHENTAGE : WOCHENTAGE.slice(0, 5)
   const plannedDays = WOCHENTAGE.filter(t => weekPlan.some(e => e.tag === t))
@@ -312,15 +351,74 @@ export default function WocheScreen({
             plannedDays.map(tag => {
               const mittag = getSlot(weekPlan, tag, 'Mittag')
               const abend = getSlot(weekPlan, tag, 'Abend')
+              const isLoading = dayLoading === tag
+              const isPending = pendingDay?.tag === tag
               return (
                 <div key={tag} className="week-plan-row">
-                  <div className="week-plan-head">
-                    <span style={{ fontSize: 11, fontWeight: 700, color: tag === today ? '#085041' : '#aaa', textTransform: 'uppercase', letterSpacing: '.5px' }}>
+                  <div className="week-plan-head" style={{ display: 'flex', alignItems: 'center' }}>
+                    <span style={{ flex: 1, fontSize: 11, fontWeight: 700, color: tag === today ? '#085041' : '#aaa', textTransform: 'uppercase', letterSpacing: '.5px' }}>
                       {tag}
                     </span>
-                    {tag === today && <span className="pill today" style={{ marginLeft: 8 }}>Heute</span>}
+                    {tag === today && <span className="pill today" style={{ marginLeft: 6 }}>Heute</span>}
+                    {!isLoading && !isPending && (
+                      <button
+                        onClick={() => replanDay(tag)}
+                        title="Rémy neu vorschlagen"
+                        style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 14, color: '#ccc', padding: '0 0 0 8px', lineHeight: 1 }}
+                      >
+                        ↺
+                      </button>
+                    )}
                   </div>
-                  {([mittag, abend] as const).map((e, i) => {
+
+                  {isLoading && (
+                    <div style={{ padding: '10px 12px', fontSize: 12, color: '#aaa' }}>🐀 Rémy schlägt vor…</div>
+                  )}
+
+                  {isPending && pendingDay && (
+                    <>
+                      <div style={{ padding: '4px 12px 2px', fontSize: 10, color: '#1D9E75', fontWeight: 600 }}>Neuer Vorschlag · Koch antippen zum Ändern</div>
+                      {pendingDay.entries.map(e => {
+                        const key = `pd-${tag}-${e.slot}`
+                        const c = CFG[e.chef] ?? CFG.MA
+                        return (
+                          <div key={e.slot}>
+                            <div style={{ padding: '7px 12px', borderTop: '1px solid #f5f5f5', display: 'flex', alignItems: 'center', gap: 8 }}>
+                              <span style={{ fontSize: 10, color: '#bbb', minWidth: 34 }}>{e.slot === 'Mittag' ? '🌞' : '🌙'}</span>
+                              <span style={{ flex: 1, fontSize: 12, fontWeight: 500, color: '#111' }}>{e.emoji} {e.gericht}</span>
+                              <button
+                                onClick={() => setChefPickerKey(chefPickerKey === key ? null : key)}
+                                className="chef-b"
+                                style={{ background: c.bg, color: c.c, border: 'none', cursor: 'pointer' }}
+                              >
+                                {e.chef}
+                              </button>
+                            </div>
+                            {chefPickerKey === key && (
+                              <ChefPicker current={e.chef} onSelect={chef => changePendingDayChef(e.slot, chef)} />
+                            )}
+                          </div>
+                        )
+                      })}
+                      <div style={{ display: 'flex', gap: 6, padding: '8px 12px' }}>
+                        <button
+                          onClick={confirmPendingDay}
+                          disabled={saving}
+                          style={{ flex: 1, padding: '7px', background: '#1D9E75', color: 'white', border: 'none', borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer', opacity: saving ? 0.6 : 1 }}
+                        >
+                          {saving ? '⏳…' : `✅ Bestätigen (${PERSON_NAMES[wochenchef]})`}
+                        </button>
+                        <button
+                          onClick={() => setPendingDay(null)}
+                          style={{ padding: '7px 12px', background: 'white', border: '1px solid #ddd', borderRadius: 6, fontSize: 12, cursor: 'pointer', color: '#666' }}
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    </>
+                  )}
+
+                  {!isLoading && !isPending && ([mittag, abend] as const).map((e, i) => {
                     const slot = (i === 0 ? 'Mittag' : 'Abend') as WochenSlot
                     if (!e) return null
                     const key = `${tag}-${slot}`
@@ -344,24 +442,27 @@ export default function WocheScreen({
                       </div>
                     )
                   })}
-                  <WishesSection
-                    tag={tag}
-                    wishes={wishes}
-                    mealsData={mealsData}
-                    wishFormTag={wishFormTag}
-                    wishPerson={wishPerson}
-                    wishKind={wishKind}
-                    wishText={wishText}
-                    wishDish={wishDish}
-                    onOpen={openWishForm}
-                    onClose={closeWishForm}
-                    onPersonChange={setWishPerson}
-                    onKindChange={setWishKind}
-                    onTextChange={setWishText}
-                    onDishChange={setWishDish}
-                    onSubmit={submitWish}
-                    onRemove={removeWish}
-                  />
+
+                  {!isLoading && !isPending && (
+                    <WishesSection
+                      tag={tag}
+                      wishes={wishes}
+                      mealsData={mealsData}
+                      wishFormTag={wishFormTag}
+                      wishPerson={wishPerson}
+                      wishKind={wishKind}
+                      wishText={wishText}
+                      wishDish={wishDish}
+                      onOpen={openWishForm}
+                      onClose={closeWishForm}
+                      onPersonChange={setWishPerson}
+                      onKindChange={setWishKind}
+                      onTextChange={setWishText}
+                      onDishChange={setWishDish}
+                      onSubmit={submitWish}
+                      onRemove={removeWish}
+                    />
+                  )}
                 </div>
               )
             })
