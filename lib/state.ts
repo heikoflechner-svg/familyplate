@@ -32,10 +32,14 @@ export interface WeekPlanEntry {
   chef: Chef
 }
 
-export interface Wish {
-  name: string
-  text: string
-}
+export type Wish = {
+  id: string
+  person: Chef
+  tag: string
+} & (
+  | { kind: 'text'; text: string }
+  | { kind: 'dish'; dishName: string; emoji: string }
+)
 
 export interface RemyVorschlag {
   emoji: string

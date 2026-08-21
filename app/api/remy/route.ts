@@ -14,8 +14,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ vorschlaege: FALLBACK })
   }
 
+  type WishJSON = { person: string; kind: string; text?: string; dishName?: string; emoji?: string }
   const wishText = wishes?.length
-    ? wishes.map((w: { name: string; text: string }) => `${w.name}: ${w.text}`).join(', ')
+    ? wishes.map((w: WishJSON) =>
+        `${w.person}: ${w.kind === 'text' ? w.text : `${w.emoji} ${w.dishName}`}`
+      ).join(', ')
     : 'offen'
   const zustText = zustimmungen?.length
     ? 'Zustimmungen: ' + zustimmungen.join(', ') + '.'

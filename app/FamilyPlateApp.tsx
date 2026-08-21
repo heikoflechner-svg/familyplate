@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react'
 import { loadWeekPlan, saveWeekPlan } from '../lib/mealLogic'
 import { loadFreezerItems, loadPantryItems } from '../lib/freezerLogic'
-import type { WeekPlanEntry, Rezept, FreezerItem, PantryItem, ShoppingItem, Tab } from '../lib/state'
+import type { WeekPlanEntry, Rezept, FreezerItem, PantryItem, ShoppingItem, Tab, Wish } from '../lib/state'
 import WocheScreen from './WocheScreen'
 import VorraeteScreen from './VorraeteScreen'
 import EinkaufScreen from './EinkaufScreen'
@@ -15,15 +15,17 @@ export default function FamilyPlateApp() {
   const [planWE, setPlanWE] = useState(false)
   const [freezerItems, setFreezerItems] = useState<FreezerItem[]>([])
   const [pantryItems, setPantryItems] = useState<PantryItem[]>([])
+  const [wishes, setWishes] = useState<Wish[]>([])
   const [shoppingList, setShoppingList] = useState<ShoppingItem[]>([])
   const [activeTab, setActiveTab] = useState<Tab>('woche')
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     Promise.all([loadWeekPlan(), loadFreezerItems(), loadPantryItems()]).then(
-      ([{ plan, mealsData: md }, freezer, pantry]) => {
+      ([{ plan, mealsData: md, wishes: w }, freezer, pantry]) => {
         setWeekPlan(plan)
         setMealsData(md)
+        setWishes(w)
         setFreezerItems(freezer)
         setPantryItems(pantry)
         setLoading(false)
@@ -34,7 +36,12 @@ export default function FamilyPlateApp() {
   async function handleWeekPlanChange(plan: WeekPlanEntry[], meals: Record<string, Rezept>) {
     setWeekPlan(plan)
     setMealsData(meals)
-    await saveWeekPlan(plan, meals)
+    await saveWeekPlan(plan, meals, wishes)
+  }
+
+  async function handleWishesChange(newWishes: Wish[]) {
+    setWishes(newWishes)
+    await saveWeekPlan(weekPlan, mealsData, newWishes)
   }
 
   if (loading) {
@@ -61,7 +68,9 @@ export default function FamilyPlateApp() {
             planWE={planWE}
             freezerItems={freezerItems}
             pantryItems={pantryItems}
+            wishes={wishes}
             onWeekPlanChange={handleWeekPlanChange}
+            onWishesChange={handleWishesChange}
           />
         )}
         {activeTab === 'gefriertruhe' && (

@@ -59,6 +59,9 @@ insert into pantry_items (family_id, emoji, name, menge, ampel) values
   ('flechner', '🍅', 'Tomatensoße', '2 Gläser', 'green'),
   ('flechner', '🫘', 'Kichererbsen', 'leer', 'red');
 
+-- Migration: Wunsch-System (einmalig ausführen, falls week_plans bereits existiert)
+alter table week_plans add column if not exists wishes jsonb not null default '[]';
+
 -- Row Level Security (für später, wenn Auth eingebaut wird)
 alter table week_plans enable row level security;
 alter table freezer_items enable row level security;

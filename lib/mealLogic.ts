@@ -1,25 +1,27 @@
 import { supabase, FAMILY_ID } from './supabase'
 import type { WeekPlanEntry, Rezept, Wish, RemyVorschlag, WochenSlot } from './state'
 
-export async function loadWeekPlan(): Promise<{ plan: WeekPlanEntry[]; mealsData: Record<string, Rezept> }> {
+export async function loadWeekPlan(): Promise<{ plan: WeekPlanEntry[]; mealsData: Record<string, Rezept>; wishes: Wish[] }> {
   const { data, error } = await supabase
     .from('week_plans')
-    .select('plan_data, meals_data')
+    .select('plan_data, meals_data, wishes')
     .eq('family_id', FAMILY_ID)
     .order('updated_at', { ascending: false })
     .limit(1)
     .single()
 
-  if (error || !data) return { plan: [], mealsData: {} }
+  if (error || !data) return { plan: [], mealsData: {}, wishes: [] }
   return {
     plan: (data.plan_data as WeekPlanEntry[]) ?? [],
     mealsData: (data.meals_data as Record<string, Rezept>) ?? {},
+    wishes: (data.wishes as Wish[]) ?? [],
   }
 }
 
 export async function saveWeekPlan(
   plan: WeekPlanEntry[],
   mealsData: Record<string, Rezept>,
+  wishes: Wish[],
 ): Promise<void> {
   const { data: existing } = await supabase
     .from('week_plans')
@@ -31,12 +33,12 @@ export async function saveWeekPlan(
   if (existing?.id) {
     await supabase
       .from('week_plans')
-      .update({ plan_data: plan, meals_data: mealsData, updated_at: new Date().toISOString() })
+      .update({ plan_data: plan, meals_data: mealsData, wishes, updated_at: new Date().toISOString() })
       .eq('id', existing.id)
   } else {
     await supabase
       .from('week_plans')
-      .insert({ family_id: FAMILY_ID, plan_data: plan, meals_data: mealsData })
+      .insert({ family_id: FAMILY_ID, plan_data: plan, meals_data: mealsData, wishes })
   }
 }
 
@@ -47,6 +49,7 @@ export async function generateWeekPlan(params: {
   pantryList: string
   behaltene?: WeekPlanEntry[]
   neuTage?: string[]
+  wishes?: Wish[]
 }): Promise<WeekPlanEntry[]> {
   const resp = await fetch('/api/week-plan', {
     method: 'POST',
@@ -68,7 +71,14 @@ export async function getRemySuggestions(params: {
   const resp = await fetch('/api/remy', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(params),
+    body: JSON.stringify({
+      ...params,
+      wishes: params.wishes.map(w =>
+        w.kind === 'text'
+          ? { person: w.person, tag: w.tag, kind: 'text', text: w.text }
+          : { person: w.person, tag: w.tag, kind: 'dish', dishName: w.dishName, emoji: w.emoji }
+      ),
+    }),
   })
   const data = await resp.json()
   return (data.vorschlaege as RemyVorschlag[]) ?? []
