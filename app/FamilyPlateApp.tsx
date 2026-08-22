@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
-import { loadWeekPlan, saveWeekPlan, saveAttendance } from '../lib/mealLogic'
+import { loadWeekPlan, saveWeekPlan, saveAttendance, saveShoppingList } from '../lib/mealLogic'
+import { generateShoppingList } from '../lib/shoppingLogic'
 import { loadFreezerItems, loadPantryItems } from '../lib/freezerLogic'
 import { loadFamilyProfile, DEFAULT_MEMBERS } from '../lib/familyLogic'
 import { signOut, onAuthChange } from '../lib/auth'
@@ -52,11 +53,12 @@ export default function FamilyPlateApp() {
   useEffect(() => {
     if (!currentUser) return
     Promise.all([loadWeekPlan(), loadFreezerItems(), loadPantryItems(), loadFamilyProfile()]).then(
-      ([{ plan, mealsData: md, wishes: w, attendance: att }, freezer, pantry, profile]) => {
+      ([{ plan, mealsData: md, wishes: w, attendance: att, shoppingList: sl }, freezer, pantry, profile]) => {
         setWeekPlan(plan)
         setMealsData(md)
         setWishes(w)
         setAttendance(att)
+        setShoppingList(sl)
         setFreezerItems(freezer)
         setPantryItems(pantry)
         setFamilyProfile(profile)
@@ -79,6 +81,21 @@ export default function FamilyPlateApp() {
   async function handleAttendanceChange(newAttendance: DayAttendance[]) {
     setAttendance(newAttendance)
     await saveAttendance(newAttendance)
+  }
+
+  async function handleShoppingListChange(list: ShoppingItem[]) {
+    setShoppingList(list)
+    await saveShoppingList(list)
+  }
+
+  function handleTabChange(tab: Tab) {
+    setActiveTab(tab)
+    if (tab === 'einkauf' && shoppingList.length === 0 && weekPlan.length > 0) {
+      const generated = generateShoppingList(weekPlan, mealsData)
+      if (generated.length > 0) {
+        handleShoppingListChange(generated)
+      }
+    }
   }
 
   if (!authChecked || dataLoading) {
@@ -150,7 +167,7 @@ export default function FamilyPlateApp() {
             weekPlan={weekPlan}
             mealsData={mealsData}
             shoppingList={shoppingList}
-            onShoppingListChange={setShoppingList}
+            onShoppingListChange={handleShoppingListChange}
           />
         )}
         {activeTab === 'rezepte' && (
@@ -167,19 +184,19 @@ export default function FamilyPlateApp() {
         )}
       </div>
       <nav className="nav">
-        <button className={`nav-tab${activeTab === 'woche' ? ' active' : ''}`} onClick={() => setActiveTab('woche')}>
+        <button className={`nav-tab${activeTab === 'woche' ? ' active' : ''}`} onClick={() => handleTabChange('woche')}>
           <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" /></svg>
           <span>Woche</span>
         </button>
-        <button className={`nav-tab${activeTab === 'gefriertruhe' ? ' active' : ''}`} onClick={() => setActiveTab('gefriertruhe')}>
+        <button className={`nav-tab${activeTab === 'gefriertruhe' ? ' active' : ''}`} onClick={() => handleTabChange('gefriertruhe')}>
           <svg viewBox="0 0 24 24"><path d="M20 7H4a1 1 0 0 0-1 1v11a1 1 0 0 0 1 1h16a1 1 0 0 0 1-1V8a1 1 0 0 0-1-1z" /><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2" /><line x1="12" y1="12" x2="12" y2="16" /><line x1="10" y1="14" x2="14" y2="14" /></svg>
           <span>Vorräte</span>
         </button>
-        <button className={`nav-tab${activeTab === 'einkauf' ? ' active' : ''}`} onClick={() => setActiveTab('einkauf')}>
+        <button className={`nav-tab${activeTab === 'einkauf' ? ' active' : ''}`} onClick={() => handleTabChange('einkauf')}>
           <svg viewBox="0 0 24 24"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z" /><line x1="3" y1="6" x2="21" y2="6" /><path d="M16 10a4 4 0 0 1-8 0" /></svg>
           <span>Einkauf</span>
         </button>
-        <button className={`nav-tab${activeTab === 'rezepte' ? ' active' : ''}`} onClick={() => setActiveTab('rezepte')}>
+        <button className={`nav-tab${activeTab === 'rezepte' ? ' active' : ''}`} onClick={() => handleTabChange('rezepte')}>
           <svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
           <span>Profil</span>
         </button>

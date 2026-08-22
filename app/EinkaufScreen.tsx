@@ -42,6 +42,11 @@ export default function EinkaufScreen({ weekPlan, mealsData, shoppingList, onSho
 
   const grouped = groupByKategorie(shoppingList)
   const doneCount = shoppingList.filter(i => i.erledigt).length
+  const plannedMealCount = new Set(weekPlan.map(e => e.gericht)).size
+  const kategorienCount = Object.keys(grouped).length
+  const summaryText = shoppingList.length > 0
+    ? `${plannedMealCount} Gerichte · ${shoppingList.length} Zutaten · ${kategorienCount} ${kategorienCount === 1 ? 'Kategorie' : 'Kategorien'}`
+    : null
 
   return (
     <div className="screen active">
@@ -78,6 +83,9 @@ export default function EinkaufScreen({ weekPlan, mealsData, shoppingList, onSho
           </div>
         ) : (
           <>
+            {summaryText && (
+              <div style={{ fontSize: 11, color: '#aaa', marginBottom: 4 }}>{summaryText}</div>
+            )}
             <div style={{ fontSize: 12, color: '#aaa', marginBottom: 14 }}>
               {doneCount}/{shoppingList.length} erledigt
             </div>
