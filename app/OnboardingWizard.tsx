@@ -15,9 +15,10 @@ const VORLIEBE_OPTIONS = ['Pasta', 'Pizza', 'Reis-Gerichte', 'Suppen', 'Asiatisc
 interface Props {
   onDone: (profile: FamilyProfile) => void
   initialProfile?: FamilyProfile
+  onCancel?: () => void
 }
 
-export default function OnboardingWizard({ onDone, initialProfile }: Props) {
+export default function OnboardingWizard({ onDone, initialProfile, onCancel }: Props) {
   const [step, setStep] = useState(1)
   const [members, setMembers] = useState<FamilyMember[]>(() => {
     if (!initialProfile) return DEFAULT_MEMBERS
@@ -74,6 +75,18 @@ export default function OnboardingWizard({ onDone, initialProfile }: Props) {
 
   return (
     <div className="phone" style={{ display: 'flex', flexDirection: 'column', padding: '28px 24px 20px' }}>
+
+      {/* Header: Abbrechen nur im Edit-Modus */}
+      {onCancel && (
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 4, marginTop: -8 }}>
+          <button
+            onClick={onCancel}
+            style={{ fontSize: 13, color: '#aaa', background: 'none', border: 'none', cursor: 'pointer', padding: '4px 0' }}
+          >
+            Abbrechen
+          </button>
+        </div>
+      )}
 
       {/* Progress bar */}
       <div style={{ display: 'flex', gap: 6, marginBottom: 28 }}>

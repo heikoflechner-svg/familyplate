@@ -88,14 +88,16 @@ export default function FamilyPlateApp() {
   }
 
   if (!familyProfile) {
-    return <OnboardingWizard onDone={profile => setFamilyProfile(profile)} />
+    return <OnboardingWizard key="onboarding" onDone={profile => setFamilyProfile(profile)} />
   }
 
   if (editingProfile) {
     return (
       <OnboardingWizard
+        key="edit"
         initialProfile={familyProfile}
         onDone={profile => { setFamilyProfile(profile); setEditingProfile(false) }}
+        onCancel={() => setEditingProfile(false)}
       />
     )
   }
