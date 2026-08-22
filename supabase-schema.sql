@@ -62,14 +62,31 @@ insert into pantry_items (family_id, emoji, name, menge, ampel) values
 -- Migration: Wunsch-System (einmalig ausführen, falls week_plans bereits existiert)
 alter table week_plans add column if not exists wishes jsonb not null default '[]';
 
--- Row Level Security (für später, wenn Auth eingebaut wird)
+-- Row Level Security
 alter table week_plans enable row level security;
 alter table freezer_items enable row level security;
 alter table pantry_items enable row level security;
 alter table saved_recipes enable row level security;
+alter table family_profiles enable row level security;
 
--- Temporär: alles erlaubt (bis Auth eingebaut ist)
-create policy "public_all" on week_plans for all using (true) with check (true);
-create policy "public_all" on freezer_items for all using (true) with check (true);
-create policy "public_all" on pantry_items for all using (true) with check (true);
-create policy "public_all" on saved_recipes for all using (true) with check (true);
+-- Zugriff nur für die drei bekannten Familienmitglieder (Phase 8)
+-- E-Mail-basiert, kein extra Mapping-Table nötig
+create policy "family_access" on week_plans for all
+  using ((auth.jwt() ->> 'email') in ('heiko@flechner-family.de','sabine@flechner-family.de','tim@flechner-family.de'))
+  with check ((auth.jwt() ->> 'email') in ('heiko@flechner-family.de','sabine@flechner-family.de','tim@flechner-family.de'));
+
+create policy "family_access" on freezer_items for all
+  using ((auth.jwt() ->> 'email') in ('heiko@flechner-family.de','sabine@flechner-family.de','tim@flechner-family.de'))
+  with check ((auth.jwt() ->> 'email') in ('heiko@flechner-family.de','sabine@flechner-family.de','tim@flechner-family.de'));
+
+create policy "family_access" on pantry_items for all
+  using ((auth.jwt() ->> 'email') in ('heiko@flechner-family.de','sabine@flechner-family.de','tim@flechner-family.de'))
+  with check ((auth.jwt() ->> 'email') in ('heiko@flechner-family.de','sabine@flechner-family.de','tim@flechner-family.de'));
+
+create policy "family_access" on saved_recipes for all
+  using ((auth.jwt() ->> 'email') in ('heiko@flechner-family.de','sabine@flechner-family.de','tim@flechner-family.de'))
+  with check ((auth.jwt() ->> 'email') in ('heiko@flechner-family.de','sabine@flechner-family.de','tim@flechner-family.de'));
+
+create policy "family_access" on family_profiles for all
+  using ((auth.jwt() ->> 'email') in ('heiko@flechner-family.de','sabine@flechner-family.de','tim@flechner-family.de'))
+  with check ((auth.jwt() ->> 'email') in ('heiko@flechner-family.de','sabine@flechner-family.de','tim@flechner-family.de'));
