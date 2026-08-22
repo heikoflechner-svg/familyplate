@@ -1,20 +1,40 @@
 import { supabase, FAMILY_ID } from './supabase'
-import type { WeekPlanEntry, Rezept, Wish, RemyVorschlag, WochenSlot } from './state'
+import type { WeekPlanEntry, Rezept, Wish, RemyVorschlag, WochenSlot, DayAttendance, Chef } from './state'
 
-export async function loadWeekPlan(): Promise<{ plan: WeekPlanEntry[]; mealsData: Record<string, Rezept>; wishes: Wish[] }> {
+export async function loadWeekPlan(): Promise<{ plan: WeekPlanEntry[]; mealsData: Record<string, Rezept>; wishes: Wish[]; attendance: DayAttendance[] }> {
   const { data, error } = await supabase
     .from('week_plans')
-    .select('plan_data, meals_data, wishes')
+    .select('plan_data, meals_data, wishes, attendance')
     .eq('family_id', FAMILY_ID)
     .order('updated_at', { ascending: false })
     .limit(1)
     .single()
 
-  if (error || !data) return { plan: [], mealsData: {}, wishes: [] }
+  if (error || !data) return { plan: [], mealsData: {}, wishes: [], attendance: [] }
   return {
     plan: (data.plan_data as WeekPlanEntry[]) ?? [],
     mealsData: (data.meals_data as Record<string, Rezept>) ?? {},
     wishes: (data.wishes as Wish[]) ?? [],
+    attendance: (data.attendance as DayAttendance[]) ?? [],
+  }
+}
+
+export function getAttendanceForDay(attendance: DayAttendance[], tag: string, chefs: Chef[]): DayAttendance {
+  return attendance.find(a => a.tag === tag) ?? { tag, anwesend: chefs, gaeste: 0 }
+}
+
+export async function saveAttendance(attendance: DayAttendance[]): Promise<void> {
+  const { data: existing } = await supabase
+    .from('week_plans')
+    .select('id')
+    .eq('family_id', FAMILY_ID)
+    .limit(1)
+    .single()
+
+  if (existing?.id) {
+    await supabase.from('week_plans').update({ attendance }).eq('id', existing.id)
+  } else {
+    await supabase.from('week_plans').insert({ family_id: FAMILY_ID, plan_data: [], meals_data: {}, wishes: [], attendance })
   }
 }
 

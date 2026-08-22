@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { generateWeekPlan } from '../lib/mealLogic'
 import { getFreezerListString, getPantryListString } from '../lib/freezerLogic'
 import { buildFamilyPrompt, DEFAULT_MEMBERS } from '../lib/familyLogic'
-import type { WeekPlanEntry, Rezept, FreezerItem, PantryItem, Wish, Chef, WochenSlot, FamilyMember } from '../lib/state'
+import type { WeekPlanEntry, Rezept, FreezerItem, PantryItem, Wish, Chef, WochenSlot, FamilyMember, DayAttendance } from '../lib/state'
 
 const WOCHENTAGE = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag']
 
@@ -31,8 +31,10 @@ interface Props {
   wishes: Wish[]
   wochenchef: Chef
   members: FamilyMember[]
+  attendance: DayAttendance[]
   onWeekPlanChange: (plan: WeekPlanEntry[], meals: Record<string, Rezept>) => Promise<void>
   onWishesChange: (wishes: Wish[]) => Promise<void>
+  onAttendanceChange: (a: DayAttendance[]) => Promise<void>
 }
 
 type View = 'home' | 'week' | 'plan'
@@ -40,7 +42,7 @@ type PlanState = 'options' | 'loading' | 'results'
 
 export default function WocheScreen({
   weekPlan, mealsData, planMittag, planWE, freezerItems, pantryItems,
-  wishes, wochenchef, members, onWeekPlanChange, onWishesChange,
+  wishes, wochenchef, members, attendance, onWeekPlanChange, onWishesChange, onAttendanceChange,
 }: Props) {
   const personNames: Record<Chef, string> = Object.fromEntries(
     (members.length ? members : DEFAULT_MEMBERS).map(m => [m.id, m.name])
@@ -137,6 +139,10 @@ export default function WocheScreen({
       // silently fail — Nutzer kann nochmal tippen
     }
     setDayLoading(null)
+  }
+
+  function handleAttendanceSave(updated: DayAttendance) {
+    onAttendanceChange([...attendance.filter(a => a.tag !== updated.tag), updated])
   }
 
   const today = todayGerman()
@@ -379,6 +385,8 @@ export default function WocheScreen({
                     )}
                   </div>
 
+                  <AttendanceRow tag={tag} attendance={attendance} members={members} onSave={handleAttendanceSave} />
+
                   {isLoading && (
                     <div style={{ padding: '10px 12px', fontSize: 12, color: '#aaa' }}>🐀 Rémy schlägt vor…</div>
                   )}
@@ -514,6 +522,7 @@ export default function WocheScreen({
           Heute · <span style={{ color: '#111', fontWeight: 700 }}>{today}</span>
           <span className="pill today" style={{ marginLeft: 6 }}>Heute</span>
         </div>
+        <AttendanceRow tag={today} attendance={attendance} members={members} onSave={handleAttendanceSave} />
         {planMittag && <MealRow entry={todayMittag} slot="Mittag" />}
         <MealRow entry={todayAbend} slot="Abend" />
         <WishesSection
@@ -539,6 +548,7 @@ export default function WocheScreen({
         {nextDays.map(tag => (
           <div key={tag}>
             <div className="day-lbl" style={{ marginTop: 16 }}>{tag}</div>
+            <AttendanceRow tag={tag} attendance={attendance} members={members} onSave={handleAttendanceSave} />
             {planMittag && <MealRow entry={getSlot(weekPlan, tag, 'Mittag')} slot="Mittag" />}
             <MealRow entry={getSlot(weekPlan, tag, 'Abend')} slot="Abend" />
             <WishesSection
@@ -575,6 +585,126 @@ export default function WocheScreen({
       <div style={{ padding: '0 20px 16px' }}>
         <button className="btn soft" onClick={goToPlan}>🔄 Neu planen</button>
       </div>
+    </div>
+  )
+}
+
+function AttendanceRow({
+  tag, attendance, members, onSave,
+}: {
+  tag: string
+  attendance: DayAttendance[]
+  members: FamilyMember[]
+  onSave: (updated: DayAttendance) => void
+}) {
+  const chefs = members.map(m => m.id) as Chef[]
+  const current = attendance.find(a => a.tag === tag) ?? { tag, anwesend: chefs, gaeste: 0 }
+
+  const [open, setOpen] = useState(false)
+  const [localAnwesend, setLocalAnwesend] = useState<Chef[]>(chefs)
+  const [localGaeste, setLocalGaeste] = useState(0)
+
+  function handleOpen() {
+    setLocalAnwesend(current.anwesend)
+    setLocalGaeste(current.gaeste)
+    setOpen(true)
+  }
+
+  function toggleChef(id: Chef) {
+    setLocalAnwesend(prev => prev.includes(id) ? prev.filter(c => c !== id) : [...prev, id])
+  }
+
+  function handleSave() {
+    onSave({ tag, anwesend: localAnwesend, gaeste: localGaeste })
+    setOpen(false)
+  }
+
+  const totalEsser = current.anwesend.length + current.gaeste
+
+  return (
+    <div style={{ padding: '5px 12px 6px', borderTop: '1px solid #f8f8f8' }}>
+      {!open ? (
+        <div
+          onClick={handleOpen}
+          style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', minHeight: 26 }}
+        >
+          <span style={{ fontSize: 11, color: '#ccc' }}>👥</span>
+          {members.map(m => {
+            const present = current.anwesend.includes(m.id)
+            const col = CFG[m.id]
+            return (
+              <span key={m.id} style={{
+                padding: '2px 8px', borderRadius: 8, fontSize: 11, fontWeight: 600,
+                background: present ? col.bg : '#f5f5f5',
+                color: present ? col.c : '#ccc',
+                transition: 'all .15s',
+              }}>
+                {m.name.slice(0, 2)}
+              </span>
+            )
+          })}
+          {current.gaeste > 0 && (
+            <span style={{ fontSize: 11, color: '#888', background: '#f5f5f5', padding: '2px 8px', borderRadius: 8 }}>
+              +{current.gaeste} Gast{current.gaeste > 1 ? 'e' : ''}
+            </span>
+          )}
+          <span style={{ fontSize: 10, color: '#999', marginLeft: 2 }}>
+            {totalEsser} {totalEsser === 1 ? 'Person' : 'Personen'}
+          </span>
+          <span style={{ marginLeft: 'auto', fontSize: 10, color: '#ddd' }}>✏️</span>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, paddingTop: 4 }}>
+          <div style={{ fontSize: 11, fontWeight: 600, color: '#aaa' }}>Wer ist dabei?</div>
+          <div style={{ display: 'flex', gap: 6 }}>
+            {members.map(m => {
+              const active = localAnwesend.includes(m.id)
+              const col = CFG[m.id]
+              return (
+                <button
+                  key={m.id}
+                  onClick={() => toggleChef(m.id)}
+                  style={{
+                    flex: 1, padding: '8px 0', borderRadius: 8, fontSize: 12, fontWeight: 600,
+                    border: `1px solid ${active ? col.c : '#eee'}`,
+                    background: active ? col.bg : 'white',
+                    color: active ? col.c : '#ccc',
+                    cursor: 'pointer',
+                  }}
+                >
+                  {m.name}
+                </button>
+              )
+            })}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ fontSize: 12, color: '#888', flex: 1 }}>Gäste</span>
+            <button
+              onClick={() => setLocalGaeste(g => Math.max(0, g - 1))}
+              style={{ width: 30, height: 30, borderRadius: 8, border: '1px solid #eee', background: 'white', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}
+            >−</button>
+            <span style={{ fontSize: 15, fontWeight: 600, minWidth: 24, textAlign: 'center' }}>{localGaeste}</span>
+            <button
+              onClick={() => setLocalGaeste(g => g + 1)}
+              style={{ width: 30, height: 30, borderRadius: 8, border: '1px solid #eee', background: 'white', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}
+            >+</button>
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button
+              onClick={() => setOpen(false)}
+              style={{ flex: 1, padding: '8px', border: '1px solid #eee', borderRadius: 8, fontSize: 12, background: 'white', cursor: 'pointer', color: '#aaa' }}
+            >
+              Abbrechen
+            </button>
+            <button
+              onClick={handleSave}
+              style={{ flex: 2, padding: '8px', border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 600, background: '#0C447C', color: 'white', cursor: 'pointer' }}
+            >
+              ✓ Übernehmen
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

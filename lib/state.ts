@@ -71,6 +71,12 @@ export interface ShoppingItem {
   erledigt: boolean
 }
 
+export interface DayAttendance {
+  tag: string
+  anwesend: Chef[]
+  gaeste: number
+}
+
 export interface FamilyMember {
   id: Chef
   name: string
