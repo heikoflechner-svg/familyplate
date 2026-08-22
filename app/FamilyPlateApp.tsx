@@ -18,6 +18,7 @@ export default function FamilyPlateApp() {
   const [dataLoading, setDataLoading] = useState(false)
 
   const [familyProfile, setFamilyProfile] = useState<FamilyProfile | null>(null)
+  const [editingProfile, setEditingProfile] = useState(false)
   const [weekPlan, setWeekPlan] = useState<WeekPlanEntry[]>([])
   const [mealsData, setMealsData] = useState<Record<string, Rezept>>({})
   const [planMittag, setPlanMittag] = useState(true)
@@ -90,6 +91,15 @@ export default function FamilyPlateApp() {
     return <OnboardingWizard onDone={profile => setFamilyProfile(profile)} />
   }
 
+  if (editingProfile) {
+    return (
+      <OnboardingWizard
+        initialProfile={familyProfile}
+        onDone={profile => { setFamilyProfile(profile); setEditingProfile(false) }}
+      />
+    )
+  }
+
   const members = familyProfile.members
   const currentName = members.find(m => m.id === currentUser)?.name ?? currentUser
 
@@ -137,9 +147,11 @@ export default function FamilyPlateApp() {
             planMittag={planMittag}
             planWE={planWE}
             currentUser={currentUser}
+            familyProfile={familyProfile}
             onPlanMittagChange={setPlanMittag}
             onPlanWEChange={setPlanWE}
             onSignOut={signOut}
+            onEditProfile={() => setEditingProfile(true)}
           />
         )}
       </div>

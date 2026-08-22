@@ -14,15 +14,27 @@ const VORLIEBE_OPTIONS = ['Pasta', 'Pizza', 'Reis-Gerichte', 'Suppen', 'Asiatisc
 
 interface Props {
   onDone: (profile: FamilyProfile) => void
+  initialProfile?: FamilyProfile
 }
 
-export default function OnboardingWizard({ onDone }: Props) {
+export default function OnboardingWizard({ onDone, initialProfile }: Props) {
   const [step, setStep] = useState(1)
-  const [members, setMembers] = useState<FamilyMember[]>(DEFAULT_MEMBERS)
-  const [freitext, setFreitext] = useState<Record<Chef, { a: string; v: string }>>({
-    PA: { a: '', v: '' },
-    MA: { a: '', v: '' },
-    TI: { a: '', v: '' },
+  const [members, setMembers] = useState<FamilyMember[]>(() => {
+    if (!initialProfile) return DEFAULT_MEMBERS
+    return initialProfile.members.map(m => ({
+      ...m,
+      allergien: m.allergien.filter(a => ALLERGIE_OPTIONS.includes(a)),
+      vorlieben: m.vorlieben.filter(v => VORLIEBE_OPTIONS.includes(v)),
+    }))
+  })
+  const [freitext, setFreitext] = useState<Record<Chef, { a: string; v: string }>>(() => {
+    if (!initialProfile) return { PA: { a: '', v: '' }, MA: { a: '', v: '' }, TI: { a: '', v: '' } }
+    return Object.fromEntries(
+      initialProfile.members.map(m => [m.id, {
+        a: m.allergien.filter(a => !ALLERGIE_OPTIONS.includes(a)).join(', '),
+        v: m.vorlieben.filter(v => !VORLIEBE_OPTIONS.includes(v)).join(', '),
+      }])
+    ) as Record<Chef, { a: string; v: string }>
   })
   const [saving, setSaving] = useState(false)
 
