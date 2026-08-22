@@ -50,6 +50,7 @@ export async function generateWeekPlan(params: {
   behaltene?: WeekPlanEntry[]
   neuTage?: string[]
   wishes?: Wish[]
+  familyPrompt?: string
 }): Promise<WeekPlanEntry[]> {
   const resp = await fetch('/api/week-plan', {
     method: 'POST',
@@ -67,6 +68,7 @@ export async function getRemySuggestions(params: {
   choSlot: WochenSlot | ''
   freezerList: string
   pantryList: string
+  familyPrompt?: string
 }): Promise<RemyVorschlag[]> {
   const resp = await fetch('/api/remy', {
     method: 'POST',
@@ -89,11 +91,12 @@ export async function generateRecipe(
   emoji: string,
   freezerList: string,
   pantryList: string,
+  familyPrompt?: string,
 ): Promise<Rezept | null> {
   const resp = await fetch('/api/recipe', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ gericht, emoji, freezerList, pantryList }),
+    body: JSON.stringify({ gericht, emoji, freezerList, pantryList, familyPrompt }),
   })
   const data = await resp.json()
   return (data.rezept as Rezept) ?? null

@@ -21,14 +21,15 @@ const FALLBACK = {
 }
 
 export async function POST(req: NextRequest) {
-  const { gericht, emoji, freezerList, pantryList } = await req.json()
+  const { gericht, emoji, freezerList, pantryList, familyPrompt } = await req.json()
 
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) {
     return NextResponse.json({ rezept: { ...FALLBACK, name: gericht || FALLBACK.name, emoji: emoji || '🍗' } })
   }
 
-  const prompt = `Du bist Rémy. Erstelle ein einfaches Familienrezept für "${gericht}". Verfügbar: Gefriertruhe: ${freezerList || 'variiert'}. Speisekammer: ${pantryList || 'variiert'}. Familie: Sabine (keine Nüsse), Heiko (laktosefrei), Tim (kein Fisch). Antworte NUR als JSON ohne Markdown: {"name":"${gericht}","emoji":"${emoji || '🍽'}","zutaten":[{"menge":"200g","name":"...","typ":"frisch"}],"schritte":["Schritt 1...","Schritt 2..."],"minuten":30,"schwierigkeit":"Einfach"}`
+  const familienProfil = familyPrompt || 'Sabine (keine Nüsse), Heiko (laktosefrei), Tim (kein Fisch)'
+  const prompt = `Du bist Rémy. Erstelle ein einfaches Familienrezept für "${gericht}". Verfügbar: Gefriertruhe: ${freezerList || 'variiert'}. Speisekammer: ${pantryList || 'variiert'}. Familie: ${familienProfil}. Antworte NUR als JSON ohne Markdown: {"name":"${gericht}","emoji":"${emoji || '🍽'}","zutaten":[{"menge":"200g","name":"...","typ":"frisch"}],"schritte":["Schritt 1...","Schritt 2..."],"minuten":30,"schwierigkeit":"Einfach"}`
 
   try {
     const resp = await fetch('https://api.anthropic.com/v1/messages', {

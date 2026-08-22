@@ -2,7 +2,8 @@
 import { useState } from 'react'
 import { generateWeekPlan } from '../lib/mealLogic'
 import { getFreezerListString, getPantryListString } from '../lib/freezerLogic'
-import type { WeekPlanEntry, Rezept, FreezerItem, PantryItem, Wish, Chef, WochenSlot } from '../lib/state'
+import { buildFamilyPrompt, DEFAULT_MEMBERS } from '../lib/familyLogic'
+import type { WeekPlanEntry, Rezept, FreezerItem, PantryItem, Wish, Chef, WochenSlot, FamilyMember } from '../lib/state'
 
 const WOCHENTAGE = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag']
 
@@ -29,6 +30,7 @@ interface Props {
   pantryItems: PantryItem[]
   wishes: Wish[]
   wochenchef: Chef
+  members: FamilyMember[]
   onWeekPlanChange: (plan: WeekPlanEntry[], meals: Record<string, Rezept>) => Promise<void>
   onWishesChange: (wishes: Wish[]) => Promise<void>
 }
@@ -38,8 +40,12 @@ type PlanState = 'options' | 'loading' | 'results'
 
 export default function WocheScreen({
   weekPlan, mealsData, planMittag, planWE, freezerItems, pantryItems,
-  wishes, wochenchef, onWeekPlanChange, onWishesChange,
+  wishes, wochenchef, members, onWeekPlanChange, onWishesChange,
 }: Props) {
+  const personNames: Record<Chef, string> = Object.fromEntries(
+    (members.length ? members : DEFAULT_MEMBERS).map(m => [m.id, m.name])
+  ) as Record<Chef, string>
+  const familyPrompt = buildFamilyPrompt(members.length ? members : DEFAULT_MEMBERS)
   const [view, setView] = useState<View>('home')
   const [planState, setPlanState] = useState<PlanState>('options')
   const [pendingPlan, setPendingPlan] = useState<WeekPlanEntry[]>([])
@@ -124,6 +130,7 @@ export default function WocheScreen({
         behaltene: weekPlan.filter(e => e.tag !== tag),
         neuTage: [tag],
         wishes: wishes.filter(w => w.tag === tag),
+        familyPrompt,
       })
       setPendingDay({ tag, entries: result.filter(e => e.tag === tag) })
     } catch {
@@ -160,6 +167,7 @@ export default function WocheScreen({
         behaltene,
         neuTage: tage,
         wishes: wishes.filter(w => tage.includes(w.tag)),
+        familyPrompt,
       })
       setPendingPlan(newPlan)
       setPlanState('results')
@@ -306,7 +314,7 @@ export default function WocheScreen({
                           </button>
                         </div>
                         {chefPickerKey === key && (
-                          <ChefPicker current={e.chef} onSelect={chef => changePendingChef(tag, slot, chef)} />
+                          <ChefPicker current={e.chef} onSelect={chef => changePendingChef(tag, slot, chef)} personNames={personNames} />
                         )}
                       </div>
                     )
@@ -315,7 +323,7 @@ export default function WocheScreen({
               ))}
               <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
                 <button className="btn primary" onClick={acceptPlan} disabled={saving}>
-                  {saving ? '⏳ Speichern…' : `✅ Als Wochenchef bestätigen (${PERSON_NAMES[wochenchef]})`}
+                  {saving ? '⏳ Speichern…' : `✅ Als Wochenchef bestätigen (${personNames[wochenchef]})`}
                 </button>
                 <button
                   className="btn"
@@ -395,7 +403,7 @@ export default function WocheScreen({
                               </button>
                             </div>
                             {chefPickerKey === key && (
-                              <ChefPicker current={e.chef} onSelect={chef => changePendingDayChef(e.slot, chef)} />
+                              <ChefPicker current={e.chef} onSelect={chef => changePendingDayChef(e.slot, chef)} personNames={personNames} />
                             )}
                           </div>
                         )
@@ -406,7 +414,7 @@ export default function WocheScreen({
                           disabled={saving}
                           style={{ flex: 1, padding: '7px', background: '#1D9E75', color: 'white', border: 'none', borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer', opacity: saving ? 0.6 : 1 }}
                         >
-                          {saving ? '⏳…' : `✅ Bestätigen (${PERSON_NAMES[wochenchef]})`}
+                          {saving ? '⏳…' : `✅ Bestätigen (${personNames[wochenchef]})`}
                         </button>
                         <button
                           onClick={() => setPendingDay(null)}
@@ -437,7 +445,7 @@ export default function WocheScreen({
                           </button>
                         </div>
                         {chefPickerKey === key && (
-                          <ChefPicker current={e.chef} onSelect={chef => changeActiveChef(tag, slot, chef)} />
+                          <ChefPicker current={e.chef} onSelect={chef => changeActiveChef(tag, slot, chef)} personNames={personNames} />
                         )}
                       </div>
                     )
@@ -453,6 +461,7 @@ export default function WocheScreen({
                       wishKind={wishKind}
                       wishText={wishText}
                       wishDish={wishDish}
+                      personNames={personNames}
                       onOpen={openWishForm}
                       onClose={closeWishForm}
                       onPersonChange={setWishPerson}
@@ -516,6 +525,7 @@ export default function WocheScreen({
           wishKind={wishKind}
           wishText={wishText}
           wishDish={wishDish}
+          personNames={personNames}
           onOpen={openWishForm}
           onClose={closeWishForm}
           onPersonChange={setWishPerson}
@@ -540,6 +550,7 @@ export default function WocheScreen({
               wishKind={wishKind}
               wishText={wishText}
               wishDish={wishDish}
+              personNames={personNames}
               onOpen={openWishForm}
               onClose={closeWishForm}
               onPersonChange={setWishPerson}
@@ -568,9 +579,7 @@ export default function WocheScreen({
   )
 }
 
-const PERSON_NAMES: Record<Chef, string> = { PA: 'Heiko', MA: 'Sabine', TI: 'Tim' }
-
-function ChefPicker({ current, onSelect }: { current: Chef; onSelect: (c: Chef) => void }) {
+function ChefPicker({ current, onSelect, personNames }: { current: Chef; onSelect: (c: Chef) => void; personNames: Record<Chef, string> }) {
   return (
     <div style={{ padding: '4px 12px 8px', display: 'flex', gap: 4 }}>
       {(['PA', 'MA', 'TI'] as Chef[]).map(p => {
@@ -582,7 +591,7 @@ function ChefPicker({ current, onSelect }: { current: Chef; onSelect: (c: Chef) 
             onClick={() => onSelect(p)}
             style={{ padding: '3px 10px', borderRadius: 8, border: '1px solid', borderColor: active ? c.c : '#ddd', background: active ? c.bg : 'white', color: active ? c.c : '#aaa', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
           >
-            {p} · {PERSON_NAMES[p]}
+            {p} · {personNames[p]}
           </button>
         )
       })}
@@ -599,6 +608,7 @@ interface WishesSectionProps {
   wishKind: 'text' | 'dish'
   wishText: string
   wishDish: { name: string; emoji: string } | null
+  personNames: Record<Chef, string>
   onOpen: (tag: string) => void
   onClose: () => void
   onPersonChange: (p: Chef) => void
@@ -610,7 +620,7 @@ interface WishesSectionProps {
 }
 
 function WishesSection({
-  tag, wishes, mealsData, wishFormTag, wishPerson, wishKind, wishText, wishDish,
+  tag, wishes, mealsData, wishFormTag, wishPerson, wishKind, wishText, wishDish, personNames,
   onOpen, onClose, onPersonChange, onKindChange, onTextChange, onDishChange, onSubmit, onRemove,
 }: WishesSectionProps) {
   const dayWishes = wishes.filter(w => w.tag === tag)
@@ -654,7 +664,7 @@ function WishesSection({
                   onClick={() => onPersonChange(p)}
                   style={{ padding: '3px 10px', borderRadius: 8, border: '1px solid', borderColor: active ? c.c : '#ddd', background: active ? c.bg : 'white', color: active ? c.c : '#aaa', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
                 >
-                  {p} · {PERSON_NAMES[p]}
+                  {p} · {personNames[p]}
                 </button>
               )
             })}

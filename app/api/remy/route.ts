@@ -7,7 +7,7 @@ const FALLBACK = [
 ]
 
 export async function POST(req: NextRequest) {
-  const { wishes, zustimmungen, choDay, choSlot, freezerList, pantryList } = await req.json()
+  const { wishes, zustimmungen, choDay, choSlot, freezerList, pantryList, familyPrompt } = await req.json()
 
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) {
@@ -24,7 +24,8 @@ export async function POST(req: NextRequest) {
     ? 'Zustimmungen: ' + zustimmungen.join(', ') + '.'
     : ''
 
-  const prompt = `Du bist Rémy, ein freundlicher KI-Kochassistent für Familien. Familie plant ${choSlot || 'Abend'} am ${choDay || 'heute'}. Wünsche: ${wishText}. ${zustText} Allergien: Sabine keine Nüsse, Heiko laktosefrei, Tim kein Fisch. Speisekammer: ${pantryList || 'Spaghetti, Reis, Tomatensoße'}. Gefriertruhe: ${freezerList || 'Hühnerfilets, Lachs'}. Schlage 3 Kompromiss-Gerichte vor. Antworte NUR als JSON ohne Markdown: {"vorschlaege":[{"emoji":"...","name":"...","info":"...","minuten":25},{"emoji":"...","name":"...","info":"...","minuten":30},{"emoji":"...","name":"...","info":"...","minuten":40}]}`
+  const familienProfil = familyPrompt || 'Sabine (MA): keine Nüsse. Heiko (PA): laktosefrei. Tim (TI): kein Fisch'
+  const prompt = `Du bist Rémy, ein freundlicher KI-Kochassistent für Familien. Familie plant ${choSlot || 'Abend'} am ${choDay || 'heute'}. Wünsche: ${wishText}. ${zustText} Familienprofil: ${familienProfil}. Speisekammer: ${pantryList || 'Spaghetti, Reis, Tomatensoße'}. Gefriertruhe: ${freezerList || 'Hühnerfilets, Lachs'}. Schlage 3 Kompromiss-Gerichte vor. Antworte NUR als JSON ohne Markdown: {"vorschlaege":[{"emoji":"...","name":"...","info":"...","minuten":25},{"emoji":"...","name":"...","info":"...","minuten":30},{"emoji":"...","name":"...","info":"...","minuten":40}]}`
 
   try {
     const resp = await fetch('https://api.anthropic.com/v1/messages', {

@@ -71,6 +71,17 @@ export interface ShoppingItem {
   erledigt: boolean
 }
 
+export interface FamilyMember {
+  id: Chef
+  name: string
+  allergien: string[]
+  vorlieben: string[]
+}
+
+export interface FamilyProfile {
+  members: FamilyMember[]
+}
+
 export interface AppState {
   weekPlan: WeekPlanEntry[]
   mealsData: Record<string, Rezept>

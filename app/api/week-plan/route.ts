@@ -22,7 +22,7 @@ const FB_ABEND = [
 type WishJSON = { person: string; tag: string; kind: string; text?: string; dishName?: string; emoji?: string }
 
 export async function POST(req: NextRequest) {
-  const { planMittag, planWE, freezerList, pantryList, behaltene, neuTage, wishes } = await req.json()
+  const { planMittag, planWE, freezerList, pantryList, behaltene, neuTage, wishes, familyPrompt } = await req.json()
 
   const apiKey = process.env.ANTHROPIC_API_KEY
   const tage = planWE
@@ -57,7 +57,8 @@ export async function POST(req: NextRequest) {
     ? ` Familienwünsche (bitte berücksichtigen): ${wishList.map(w => `${w.person} (${w.tag}): ${w.kind === 'text' ? w.text : `${w.emoji} ${w.dishName}`}`).join(', ')}.`
     : ''
 
-  const prompt = `Du bist Rémy. Plane ${slotHinweis} für ${planTage.join(', ')} für Familie Flechner. Profil: Sabine (MA) keine Nüsse mag Fisch, Heiko (PA) laktosefrei mag Pasta, Tim (TI) kein Fisch mag Nudeln.${wishHinweis} Gefriertruhe: ${freezerList}. Speisekammer: ${pantryList}. Nutze Gefriertruhe/Speisekammer wenn sinnvoll. Weise pro Tag+Slot Küchenchef zu (MA PA TI) nach Fairness. Antworte NUR als JSON: {"woche":[${beispiele.join(',')}]}`
+  const familienProfil = familyPrompt || 'Sabine (MA) keine Nüsse mag Fisch, Heiko (PA) laktosefrei mag Pasta, Tim (TI) kein Fisch mag Nudeln'
+  const prompt = `Du bist Rémy. Plane ${slotHinweis} für ${planTage.join(', ')} für Familie Flechner. Profil: ${familienProfil}.${wishHinweis} Gefriertruhe: ${freezerList}. Speisekammer: ${pantryList}. Nutze Gefriertruhe/Speisekammer wenn sinnvoll. Weise pro Tag+Slot Küchenchef zu (MA PA TI) nach Fairness. Antworte NUR als JSON: {"woche":[${beispiele.join(',')}]}`
 
   try {
     const resp = await fetch('https://api.anthropic.com/v1/messages', {

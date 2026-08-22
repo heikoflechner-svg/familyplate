@@ -2,21 +2,22 @@
 import { useState, useEffect } from 'react'
 import { loadWeekPlan, saveWeekPlan } from '../lib/mealLogic'
 import { loadFreezerItems, loadPantryItems } from '../lib/freezerLogic'
+import { loadFamilyProfile, DEFAULT_MEMBERS } from '../lib/familyLogic'
 import { signOut, onAuthChange } from '../lib/auth'
-import type { WeekPlanEntry, Rezept, FreezerItem, PantryItem, ShoppingItem, Tab, Wish, Chef } from '../lib/state'
+import type { WeekPlanEntry, Rezept, FreezerItem, PantryItem, ShoppingItem, Tab, Wish, Chef, FamilyProfile } from '../lib/state'
 import LoginScreen from './LoginScreen'
 import WocheScreen from './WocheScreen'
 import VorraeteScreen from './VorraeteScreen'
 import EinkaufScreen from './EinkaufScreen'
 import ProfilScreen from './ProfilScreen'
-
-const PERSON_NAMES: Record<Chef, string> = { PA: 'Heiko', MA: 'Sabine', TI: 'Tim' }
+import OnboardingWizard from './OnboardingWizard'
 
 export default function FamilyPlateApp() {
   const [currentUser, setCurrentUser] = useState<Chef | null>(null)
   const [authChecked, setAuthChecked] = useState(false)
   const [dataLoading, setDataLoading] = useState(false)
 
+  const [familyProfile, setFamilyProfile] = useState<FamilyProfile | null>(null)
   const [weekPlan, setWeekPlan] = useState<WeekPlanEntry[]>([])
   const [mealsData, setMealsData] = useState<Record<string, Rezept>>({})
   const [planMittag, setPlanMittag] = useState(true)
@@ -41,19 +42,21 @@ export default function FamilyPlateApp() {
         setFreezerItems([])
         setPantryItems([])
         setShoppingList([])
+        setFamilyProfile(null)
       }
     })
   }, [])
 
   useEffect(() => {
     if (!currentUser) return
-    Promise.all([loadWeekPlan(), loadFreezerItems(), loadPantryItems()]).then(
-      ([{ plan, mealsData: md, wishes: w }, freezer, pantry]) => {
+    Promise.all([loadWeekPlan(), loadFreezerItems(), loadPantryItems(), loadFamilyProfile()]).then(
+      ([{ plan, mealsData: md, wishes: w }, freezer, pantry, profile]) => {
         setWeekPlan(plan)
         setMealsData(md)
         setWishes(w)
         setFreezerItems(freezer)
         setPantryItems(pantry)
+        setFamilyProfile(profile)
         setDataLoading(false)
       },
     )
@@ -83,12 +86,19 @@ export default function FamilyPlateApp() {
     return <LoginScreen />
   }
 
+  if (!familyProfile) {
+    return <OnboardingWizard onDone={profile => setFamilyProfile(profile)} />
+  }
+
+  const members = familyProfile.members
+  const currentName = members.find(m => m.id === currentUser)?.name ?? currentUser
+
   return (
     <div className="phone">
       <div className="statusbar">
         <span>9:41</span>
         <span>🍽 FamilyPlate</span>
-        <span style={{ fontSize: 10, color: '#aaa' }}>{PERSON_NAMES[currentUser]}</span>
+        <span style={{ fontSize: 10, color: '#aaa' }}>{currentName}</span>
       </div>
       <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
         {activeTab === 'woche' && (
@@ -101,6 +111,7 @@ export default function FamilyPlateApp() {
             pantryItems={pantryItems}
             wishes={wishes}
             wochenchef={currentUser}
+            members={members}
             onWeekPlanChange={handleWeekPlanChange}
             onWishesChange={handleWishesChange}
           />
