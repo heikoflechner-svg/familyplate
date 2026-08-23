@@ -21,6 +21,7 @@ export async function loadWeekPlan(): Promise<{ plan: WeekPlanEntry[]; mealsData
 }
 
 export async function saveShoppingList(shoppingList: ShoppingItem[]): Promise<void> {
+  console.trace('[saveShoppingList] aufgerufen')
   const { data: existing } = await supabase
     .from('week_plans')
     .select('id')
@@ -40,6 +41,7 @@ export function getAttendanceForDay(attendance: DayAttendance[], tag: string, ch
 }
 
 export async function saveAttendance(attendance: DayAttendance[]): Promise<void> {
+  console.trace('[saveAttendance] aufgerufen')
   const { data: existing } = await supabase
     .from('week_plans')
     .select('id')
@@ -59,6 +61,7 @@ export async function saveWeekPlan(
   mealsData: Record<string, Rezept>,
   wishes: Wish[],
 ): Promise<void> {
+  console.trace('[saveWeekPlan] aufgerufen')
   const { data: existing } = await supabase
     .from('week_plans')
     .select('id')

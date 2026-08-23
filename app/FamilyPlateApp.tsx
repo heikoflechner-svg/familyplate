@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { loadWeekPlan, saveWeekPlan, saveAttendance, saveShoppingList } from '../lib/mealLogic'
 import { generateShoppingList } from '../lib/shoppingLogic'
 import { loadFreezerItems, loadPantryItems } from '../lib/freezerLogic'
@@ -17,6 +17,7 @@ export default function FamilyPlateApp() {
   const [currentUser, setCurrentUser] = useState<Chef | null>(null)
   const [authChecked, setAuthChecked] = useState(false)
   const [dataLoading, setDataLoading] = useState(false)
+  const lastAuthUser = useRef<Chef | null>(null)
 
   const [familyProfile, setFamilyProfile] = useState<FamilyProfile | null>(null)
   const [editingProfile, setEditingProfile] = useState(false)
@@ -33,10 +34,14 @@ export default function FamilyPlateApp() {
 
   useEffect(() => {
     return onAuthChange(chef => {
+      const prev = lastAuthUser.current
+      lastAuthUser.current = chef
       setCurrentUser(chef)
       setAuthChecked(true)
       if (chef) {
-        setDataLoading(true)
+        // Only start the loading spinner when the user actually changes (avoids
+        // re-firing on TOKEN_REFRESHED / SIGNED_IN after data is already loaded)
+        if (prev !== chef) setDataLoading(true)
       } else {
         setDataLoading(false)
         setWeekPlan([])
@@ -52,8 +57,8 @@ export default function FamilyPlateApp() {
 
   useEffect(() => {
     if (!currentUser) return
-    Promise.all([loadWeekPlan(), loadFreezerItems(), loadPantryItems(), loadFamilyProfile()]).then(
-      ([{ plan, mealsData: md, wishes: w, attendance: att, shoppingList: sl }, freezer, pantry, profile]) => {
+    Promise.all([loadWeekPlan(), loadFreezerItems(), loadPantryItems(), loadFamilyProfile()])
+      .then(([{ plan, mealsData: md, wishes: w, attendance: att, shoppingList: sl }, freezer, pantry, profile]) => {
         setWeekPlan(plan)
         setMealsData(md)
         setWishes(w)
@@ -63,8 +68,11 @@ export default function FamilyPlateApp() {
         setPantryItems(pantry)
         setFamilyProfile(profile)
         setDataLoading(false)
-      },
-    )
+      })
+      .catch(err => {
+        console.error('Ladefehler:', err)
+        setDataLoading(false)
+      })
   }, [currentUser])
 
   async function handleWeekPlanChange(plan: WeekPlanEntry[], meals: Record<string, Rezept>) {
