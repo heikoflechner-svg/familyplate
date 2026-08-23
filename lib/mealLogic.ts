@@ -21,7 +21,6 @@ export async function loadWeekPlan(): Promise<{ plan: WeekPlanEntry[]; mealsData
 }
 
 export async function saveShoppingList(shoppingList: ShoppingItem[]): Promise<void> {
-  console.trace('[saveShoppingList] aufgerufen')
   const { data: existing } = await supabase
     .from('week_plans')
     .select('id')
@@ -41,7 +40,6 @@ export function getAttendanceForDay(attendance: DayAttendance[], tag: string, ch
 }
 
 export async function saveAttendance(attendance: DayAttendance[]): Promise<void> {
-  console.trace('[saveAttendance] aufgerufen')
   const { data: existing } = await supabase
     .from('week_plans')
     .select('id')
@@ -61,7 +59,6 @@ export async function saveWeekPlan(
   mealsData: Record<string, Rezept>,
   wishes: Wish[],
 ): Promise<void> {
-  console.trace('[saveWeekPlan] aufgerufen')
   const { data: existing } = await supabase
     .from('week_plans')
     .select('id')
@@ -90,14 +87,17 @@ export async function generateWeekPlan(params: {
   neuTage?: string[]
   wishes?: Wish[]
   familyPrompt?: string
-}): Promise<WeekPlanEntry[]> {
+}): Promise<{ plan: WeekPlanEntry[]; mealsData: Record<string, Rezept> }> {
   const resp = await fetch('/api/week-plan', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(params),
   })
   const data = await resp.json()
-  return (data.woche as WeekPlanEntry[]) ?? []
+  return {
+    plan: (data.woche as WeekPlanEntry[]) ?? [],
+    mealsData: (data.rezepte as Record<string, Rezept>) ?? {},
+  }
 }
 
 export async function getRemySuggestions(params: {

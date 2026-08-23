@@ -51,6 +51,8 @@ export default function WocheScreen({
   const [view, setView] = useState<View>('home')
   const [planState, setPlanState] = useState<PlanState>('options')
   const [pendingPlan, setPendingPlan] = useState<WeekPlanEntry[]>([])
+  const [pendingPlanMeals, setPendingPlanMeals] = useState<Record<string, Rezept>>({})
+  const [pendingDayMeals, setPendingDayMeals] = useState<Record<string, Rezept>>({})
   const [neuTage, setNeuTage] = useState<Set<string>>(new Set(['alle']))
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -113,8 +115,9 @@ export default function WocheScreen({
     if (!pendingDay) return
     setSaving(true)
     const newPlan = [...weekPlan.filter(e => e.tag !== pendingDay.tag), ...pendingDay.entries]
-    await onWeekPlanChange(newPlan, mealsData)
+    await onWeekPlanChange(newPlan, { ...mealsData, ...pendingDayMeals })
     setPendingDay(null)
+    setPendingDayMeals({})
     setSaving(false)
   }
 
@@ -124,7 +127,7 @@ export default function WocheScreen({
     setPendingDay(null)
     setDayLoading(tag)
     try {
-      const result = await generateWeekPlan({
+      const { plan: result, mealsData: newMeals } = await generateWeekPlan({
         planMittag,
         planWE,
         freezerList: getFreezerListString(freezerItems),
@@ -135,6 +138,7 @@ export default function WocheScreen({
         familyPrompt,
       })
       setPendingDay({ tag, entries: result.filter(e => e.tag === tag) })
+      setPendingDayMeals(newMeals)
     } catch {
       // silently fail — Nutzer kann nochmal tippen
     }
@@ -165,7 +169,7 @@ export default function WocheScreen({
       : activeDays.filter(t => neuTage.has(t))
     const behaltene = weekPlan.filter(e => !tage.includes(e.tag))
     try {
-      const newPlan = await generateWeekPlan({
+      const { plan: newPlan, mealsData: newMeals } = await generateWeekPlan({
         planMittag,
         planWE,
         freezerList: getFreezerListString(freezerItems),
@@ -176,6 +180,7 @@ export default function WocheScreen({
         familyPrompt,
       })
       setPendingPlan(newPlan)
+      setPendingPlanMeals(newMeals)
       setPlanState('results')
     } catch {
       setError('Rémy konnte nicht planen. Bitte erneut versuchen.')
@@ -185,9 +190,10 @@ export default function WocheScreen({
 
   async function acceptPlan() {
     setSaving(true)
-    await onWeekPlanChange(pendingPlan, mealsData)
+    await onWeekPlanChange(pendingPlan, { ...mealsData, ...pendingPlanMeals })
     setSaving(false)
     setPlanState('options')
+    setPendingPlanMeals({})
     setNeuTage(new Set(['alle']))
     setView('home')
   }
