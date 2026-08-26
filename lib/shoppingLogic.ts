@@ -111,3 +111,67 @@ export function groupByKategorie(list: ShoppingItem[]): Record<string, ShoppingI
     return acc
   }, {})
 }
+
+export interface ConsolidatedItem {
+  name: string
+  menge: string
+  kategorie: string
+  erledigt: boolean
+  ids: string[]
+  sources: Array<{ tag: string; slot: WochenSlot; gericht: string }>
+}
+
+function mergeMenge(mengen: string[]): string {
+  if (mengen.length === 0) return ''
+  if (mengen.length === 1) return mengen[0]
+
+  type Parsed = { amount: number; unit: string }
+  const parsed: (Parsed | null)[] = mengen.map(m => {
+    const match = m.trim().match(/^(\d+(?:[.,]\d+)?)\s*(.*)$/)
+    if (!match) return null
+    return { amount: parseFloat(match[1].replace(',', '.')), unit: match[2].trim() }
+  })
+
+  const allParsed = parsed.every(Boolean) as boolean
+  if (allParsed) {
+    const units = new Set((parsed as Parsed[]).map(p => p.unit))
+    if (units.size === 1) {
+      const total = (parsed as Parsed[]).reduce((s, p) => s + p.amount, 0)
+      const unit = [...units][0]
+      const totalStr = Number.isInteger(total) ? String(total) : total.toFixed(1).replace('.', ',')
+      return unit ? `${totalStr} ${unit}` : totalStr
+    }
+  }
+
+  return mengen.join(' + ')
+}
+
+export function consolidateShoppingList(items: ShoppingItem[]): ConsolidatedItem[] {
+  const map = new Map<string, { items: ShoppingItem[] }>()
+
+  for (const item of items) {
+    const key = item.name.toLowerCase()
+    if (!map.has(key)) map.set(key, { items: [] })
+    map.get(key)!.items.push(item)
+  }
+
+  return [...map.values()].map(({ items: group }) => {
+    const first = group[0]
+    return {
+      name: first.name,
+      menge: mergeMenge(group.map(i => i.menge).filter(Boolean)),
+      kategorie: first.kategorie,
+      erledigt: group.every(i => i.erledigt),
+      ids: group.map(i => i.id),
+      sources: group
+        .filter(i => i.tag && i.gericht)
+        .map(i => ({ tag: i.tag!, slot: i.slot!, gericht: i.gericht! })),
+    }
+  }).sort((a, b) => a.name.localeCompare(b.name, 'de'))
+}
+
+export function toggleConsolidatedItem(list: ShoppingItem[], ids: string[]): ShoppingItem[] {
+  const idSet = new Set(ids)
+  const allDone = ids.every(id => list.find(i => i.id === id)?.erledigt)
+  return list.map(item => idSet.has(item.id) ? { ...item, erledigt: !allDone } : item)
+}

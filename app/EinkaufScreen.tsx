@@ -3,11 +3,14 @@ import { useState } from 'react'
 import {
   generateShoppingList,
   groupShoppingByMeal,
+  consolidateShoppingList,
+  toggleConsolidatedItem,
   addShoppingItem,
   toggleShoppingItem,
   removeShoppingItem,
   clearCompleted,
 } from '../lib/shoppingLogic'
+import type { ConsolidatedItem } from '../lib/shoppingLogic'
 import type { WeekPlanEntry, Rezept, ShoppingItem } from '../lib/state'
 
 const WOCHENTAGE = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag']
@@ -19,11 +22,14 @@ interface Props {
   onShoppingListChange: (list: ShoppingItem[]) => void
 }
 
+type ViewMode = 'tag' | 'zusammen'
+
 export default function EinkaufScreen({ weekPlan, mealsData, shoppingList, onShoppingListChange }: Props) {
   const [newName, setNewName] = useState('')
   const [newMenge, setNewMenge] = useState('')
   const [dayPickerOpen, setDayPickerOpen] = useState(false)
   const [selectedDays, setSelectedDays] = useState<Set<string>>(new Set(['alle']))
+  const [viewMode, setViewMode] = useState<ViewMode>('tag')
 
   const plannedDays = WOCHENTAGE.filter(t => weekPlan.some(e => e.tag === t))
 
@@ -52,6 +58,7 @@ export default function EinkaufScreen({ weekPlan, mealsData, shoppingList, onSho
 
   function toggle(id: string) { onShoppingListChange(toggleShoppingItem(shoppingList, id)) }
   function remove(id: string) { onShoppingListChange(removeShoppingItem(shoppingList, id)) }
+  function toggleConsolidated(ids: string[]) { onShoppingListChange(toggleConsolidatedItem(shoppingList, ids)) }
 
   function addManual() {
     if (!newName.trim()) return
@@ -63,6 +70,7 @@ export default function EinkaufScreen({ weekPlan, mealsData, shoppingList, onSho
   const recipeItems = shoppingList.filter(i => i.gericht)
   const manualItems = shoppingList.filter(i => !i.gericht)
   const groups = groupShoppingByMeal(recipeItems, weekPlan)
+  const consolidated = consolidateShoppingList(recipeItems)
   const doneCount = shoppingList.filter(i => i.erledigt).length
   const dayCount = new Set(recipeItems.map(i => i.tag)).size
   const gerichtCount = new Set(recipeItems.map(i => i.gericht)).size
@@ -154,27 +162,59 @@ export default function EinkaufScreen({ weekPlan, mealsData, shoppingList, onSho
 
         {shoppingList.length > 0 && (
           <>
-            {recipeItems.length > 0 && (
-              <div style={{ fontSize: 11, color: '#aaa', marginBottom: 14 }}>
-                {dayCount} {dayCount === 1 ? 'Tag' : 'Tage'} · {gerichtCount} {gerichtCount === 1 ? 'Gericht' : 'Gerichte'} · {shoppingList.length} Artikel · {doneCount}/{shoppingList.length} erledigt
-              </div>
+            <div style={{ display: 'flex', alignItems: 'center', marginBottom: 12, gap: 12 }}>
+              {recipeItems.length > 0 && (
+                <span style={{ fontSize: 11, color: '#aaa', flex: 1 }}>
+                  {dayCount} {dayCount === 1 ? 'Tag' : 'Tage'} · {gerichtCount} {gerichtCount === 1 ? 'Gericht' : 'Gerichte'} · {doneCount}/{shoppingList.length} erledigt
+                </span>
+              )}
+              {recipeItems.length > 0 && (
+                <div style={{ display: 'flex', border: '1px solid #e0e0e0', borderRadius: 8, overflow: 'hidden', flexShrink: 0 }}>
+                  {([['tag', 'Nach Tag'], ['zusammen', 'Zusammengefasst']] as [ViewMode, string][]).map(([mode, label]) => (
+                    <button
+                      key={mode}
+                      onClick={() => setViewMode(mode)}
+                      style={{
+                        fontSize: 11, padding: '4px 10px', border: 'none', cursor: 'pointer',
+                        background: viewMode === mode ? '#1D9E75' : 'white',
+                        color: viewMode === mode ? 'white' : '#888',
+                        fontWeight: viewMode === mode ? 600 : 400,
+                      }}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {viewMode === 'tag' && (
+              <>
+                {groups.map(group => (
+                  <div key={`${group.tag}-${group.slot}-${group.gericht}`} style={{ marginBottom: 18 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4, paddingBottom: 4, borderBottom: '1.5px solid #eee' }}>
+                      <span style={{ fontSize: 11 }}>{group.slot === 'Mittag' ? '🌞' : '🌙'}</span>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: '#888', textTransform: 'uppercase', letterSpacing: '.5px' }}>
+                        {group.tag.slice(0, 2)} · {group.slot}
+                      </span>
+                      <span style={{ fontSize: 13, marginLeft: 4 }}>{group.emoji}</span>
+                      <span style={{ fontSize: 12, fontWeight: 600, color: '#333' }}>{group.gericht}</span>
+                    </div>
+                    {group.items.map(item => (
+                      <ItemRow key={item.id} item={item} onToggle={() => toggle(item.id)} onRemove={() => remove(item.id)} />
+                    ))}
+                  </div>
+                ))}
+              </>
             )}
 
-            {groups.map(group => (
-              <div key={`${group.tag}-${group.slot}-${group.gericht}`} style={{ marginBottom: 18 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4, paddingBottom: 4, borderBottom: '1.5px solid #eee' }}>
-                  <span style={{ fontSize: 11 }}>{group.slot === 'Mittag' ? '🌞' : '🌙'}</span>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: '#888', textTransform: 'uppercase', letterSpacing: '.5px' }}>
-                    {group.tag.slice(0, 2)} · {group.slot}
-                  </span>
-                  <span style={{ fontSize: 13, marginLeft: 4 }}>{group.emoji}</span>
-                  <span style={{ fontSize: 12, fontWeight: 600, color: '#333' }}>{group.gericht}</span>
-                </div>
-                {group.items.map(item => (
-                  <ItemRow key={item.id} item={item} onToggle={() => toggle(item.id)} onRemove={() => remove(item.id)} />
+            {viewMode === 'zusammen' && (
+              <>
+                {consolidated.map(item => (
+                  <ConsolidatedRow key={item.name} item={item} onToggle={() => toggleConsolidated(item.ids)} />
                 ))}
-              </div>
-            ))}
+              </>
+            )}
 
             {manualItems.length > 0 && (
               <div style={{ marginBottom: 16 }}>
@@ -219,18 +259,7 @@ export default function EinkaufScreen({ weekPlan, mealsData, shoppingList, onSho
 function ItemRow({ item, onToggle, onRemove }: { item: ShoppingItem; onToggle: () => void; onRemove: () => void }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0 8px 12px', borderBottom: '1px solid #f5f5f5' }}>
-      <div
-        onClick={onToggle}
-        style={{
-          width: 20, height: 20, borderRadius: 5, flexShrink: 0,
-          border: `1.5px solid ${item.erledigt ? '#1D9E75' : '#ccc'}`,
-          background: item.erledigt ? '#1D9E75' : '#fff',
-          cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-          color: '#fff', fontSize: 12,
-        }}
-      >
-        {item.erledigt ? '✓' : ''}
-      </div>
+      <Checkbox checked={item.erledigt} onToggle={onToggle} />
       <div style={{ flex: 1, textDecoration: item.erledigt ? 'line-through' : 'none', color: item.erledigt ? '#bbb' : '#111', fontSize: 13 }}>
         {item.name}
         {item.menge && <span style={{ fontSize: 11, color: '#aaa', marginLeft: 5 }}>({item.menge})</span>}
@@ -239,6 +268,46 @@ function ItemRow({ item, onToggle, onRemove }: { item: ShoppingItem; onToggle: (
         onClick={onRemove}
         style={{ border: 'none', background: 'none', color: '#ddd', fontSize: 18, cursor: 'pointer', lineHeight: 1 }}
       >×</button>
+    </div>
+  )
+}
+
+function ConsolidatedRow({ item, onToggle }: { item: ConsolidatedItem; onToggle: () => void }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '9px 0 9px 12px', borderBottom: '1px solid #f5f5f5' }}>
+      <Checkbox checked={item.erledigt} onToggle={onToggle} />
+      <div style={{ flex: 1 }}>
+        <div style={{ textDecoration: item.erledigt ? 'line-through' : 'none', color: item.erledigt ? '#bbb' : '#111', fontSize: 13 }}>
+          {item.name}
+          {item.menge && <span style={{ fontSize: 11, color: item.erledigt ? '#ccc' : '#aaa', marginLeft: 5 }}>({item.menge})</span>}
+        </div>
+        {item.sources.length > 0 && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 4 }}>
+            {item.sources.map((s, i) => (
+              <span key={i} style={{ fontSize: 10, background: '#f0f0f0', color: '#888', borderRadius: 5, padding: '1px 6px' }}>
+                {s.tag.slice(0, 2)} {s.slot === 'Mittag' ? '🌞' : '🌙'} {s.gericht}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function Checkbox({ checked, onToggle }: { checked: boolean; onToggle: () => void }) {
+  return (
+    <div
+      onClick={onToggle}
+      style={{
+        width: 20, height: 20, borderRadius: 5, flexShrink: 0, marginTop: 1,
+        border: `1.5px solid ${checked ? '#1D9E75' : '#ccc'}`,
+        background: checked ? '#1D9E75' : '#fff',
+        cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+        color: '#fff', fontSize: 12,
+      }}
+    >
+      {checked ? '✓' : ''}
     </div>
   )
 }
