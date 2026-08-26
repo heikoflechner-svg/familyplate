@@ -56,6 +56,7 @@ export default function WocheScreen({
   const [neuTage, setNeuTage] = useState<Set<string>>(new Set(['alle']))
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [selectedMealName, setSelectedMealName] = useState<string | null>(null)
 
   const [wishFormTag, setWishFormTag] = useState<string | null>(null)
   const [wishPerson, setWishPerson] = useState<Chef>('PA')
@@ -356,7 +357,10 @@ export default function WocheScreen({
   // ── Week view ─────────────────────────────────────────────────────────────
   if (view === 'week') {
     return (
-      <div className="screen active">
+      <div className="screen active" style={{ position: 'relative' }}>
+        {selectedMealName && (
+          <RecipeModal name={selectedMealName} rezept={mealsData[selectedMealName] ?? null} onClose={() => setSelectedMealName(null)} />
+        )}
         <div className="topbar">
           <button className="back" onClick={() => setView('home')}>‹</button>
           <h1>📋 Wochenplan</h1>
@@ -449,7 +453,10 @@ export default function WocheScreen({
                       <div key={slot}>
                         <div style={{ padding: '7px 12px', borderTop: '1px solid #f5f5f5', display: 'flex', alignItems: 'center', gap: 8 }}>
                           <span style={{ fontSize: 10, color: '#bbb', minWidth: 34 }}>{slot === 'Mittag' ? '🌞' : '🌙'}</span>
-                          <span style={{ flex: 1, fontSize: 12, fontWeight: 500, color: '#111' }}>{e.gericht}</span>
+                          <span
+                            onClick={() => mealsData[e.gericht] && setSelectedMealName(e.gericht)}
+                            style={{ flex: 1, fontSize: 12, fontWeight: 500, color: '#111', cursor: mealsData[e.gericht] ? 'pointer' : 'default' }}
+                          >{e.emoji} {e.gericht}{mealsData[e.gericht] ? <span style={{ fontSize: 10, color: '#bbb', marginLeft: 4 }}>›</span> : null}</span>
                           <button
                             onClick={() => setChefPickerKey(chefPickerKey === key ? null : key)}
                             className="chef-b"
@@ -521,7 +528,10 @@ export default function WocheScreen({
   }
 
   return (
-    <div className="screen active">
+    <div className="screen active" style={{ position: 'relative' }}>
+      {selectedMealName && (
+        <RecipeModal name={selectedMealName} rezept={mealsData[selectedMealName] ?? null} onClose={() => setSelectedMealName(null)} />
+      )}
       <div className="topbar"><h1>🍽 FamilyPlate</h1></div>
       <div className="content">
         <div className="day-lbl">
@@ -529,8 +539,8 @@ export default function WocheScreen({
           <span className="pill today" style={{ marginLeft: 6 }}>Heute</span>
         </div>
         <AttendanceRow tag={today} attendance={attendance} members={members} onSave={handleAttendanceSave} />
-        {planMittag && <MealRow entry={todayMittag} slot="Mittag" />}
-        <MealRow entry={todayAbend} slot="Abend" />
+        {planMittag && <MealRow entry={todayMittag} slot="Mittag" onSelect={todayMittag ? () => setSelectedMealName(todayMittag.gericht) : undefined} hasRecipe={!!todayMittag && !!mealsData[todayMittag.gericht]} />}
+        <MealRow entry={todayAbend} slot="Abend" onSelect={todayAbend ? () => setSelectedMealName(todayAbend.gericht) : undefined} hasRecipe={!!todayAbend && !!mealsData[todayAbend.gericht]} />
         <WishesSection
           tag={today}
           wishes={wishes}
@@ -551,12 +561,15 @@ export default function WocheScreen({
           onRemove={removeWish}
         />
 
-        {nextDays.map(tag => (
+        {nextDays.map(tag => {
+          const nextMittag = getSlot(weekPlan, tag, 'Mittag')
+          const nextAbend = getSlot(weekPlan, tag, 'Abend')
+          return (
           <div key={tag}>
             <div className="day-lbl" style={{ marginTop: 16 }}>{tag}</div>
             <AttendanceRow tag={tag} attendance={attendance} members={members} onSave={handleAttendanceSave} />
-            {planMittag && <MealRow entry={getSlot(weekPlan, tag, 'Mittag')} slot="Mittag" />}
-            <MealRow entry={getSlot(weekPlan, tag, 'Abend')} slot="Abend" />
+            {planMittag && <MealRow entry={nextMittag} slot="Mittag" onSelect={nextMittag ? () => setSelectedMealName(nextMittag.gericht) : undefined} hasRecipe={!!nextMittag && !!mealsData[nextMittag.gericht]} />}
+            <MealRow entry={nextAbend} slot="Abend" onSelect={nextAbend ? () => setSelectedMealName(nextAbend.gericht) : undefined} hasRecipe={!!nextAbend && !!mealsData[nextAbend.gericht]} />
             <WishesSection
               tag={tag}
               wishes={wishes}
@@ -577,7 +590,8 @@ export default function WocheScreen({
               onRemove={removeWish}
             />
           </div>
-        ))}
+          )
+        })}
 
         <div style={{ textAlign: 'center', marginTop: 20 }}>
           <button
@@ -866,7 +880,52 @@ function WishesSection({
   )
 }
 
-function MealRow({ entry, slot }: { entry: WeekPlanEntry | null; slot: 'Mittag' | 'Abend' }) {
+function RecipeModal({ name, rezept, onClose }: { name: string; rezept: import('../lib/state').Rezept | null; onClose: () => void }) {
+  return (
+    <div style={{ position: 'absolute', inset: 0, zIndex: 50, background: 'white', overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
+      <div className="topbar">
+        <button className="back" onClick={onClose}>‹</button>
+        <h1 style={{ fontSize: 15 }}>{rezept?.emoji ?? '🍽'} {name}</h1>
+      </div>
+      <div className="content">
+        {!rezept ? (
+          <div style={{ textAlign: 'center', padding: '40px 0', color: '#aaa', fontSize: 13 }}>
+            Kein Rezept verfügbar – beim nächsten Plan von Rémy wird es generiert.
+          </div>
+        ) : (
+          <>
+            <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+              <span style={{ fontSize: 11, background: '#f0f0f0', borderRadius: 6, padding: '3px 8px', color: '#666' }}>{rezept.schwierigkeit}</span>
+              <span style={{ fontSize: 11, background: '#f0f0f0', borderRadius: 6, padding: '3px 8px', color: '#666' }}>⏱ {rezept.minuten} min</span>
+            </div>
+
+            <div className="lbl">Zutaten</div>
+            <div style={{ marginBottom: 20 }}>
+              {rezept.zutaten.map((z, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'baseline', gap: 8, padding: '6px 0', borderBottom: '1px solid #f5f5f5' }}>
+                  <span style={{ fontSize: 12, color: '#aaa', minWidth: 70 }}>{z.menge}</span>
+                  <span style={{ fontSize: 13, color: '#111' }}>{z.name}</span>
+                </div>
+              ))}
+            </div>
+
+            <div className="lbl">Zubereitung</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {rezept.schritte.map((s, i) => (
+                <div key={i} style={{ display: 'flex', gap: 10 }}>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: '#1D9E75', minWidth: 20 }}>{i + 1}.</span>
+                  <span style={{ fontSize: 13, color: '#333', lineHeight: 1.5 }}>{s}</span>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function MealRow({ entry, slot, onSelect, hasRecipe }: { entry: WeekPlanEntry | null; slot: 'Mittag' | 'Abend'; onSelect?: () => void; hasRecipe?: boolean }) {
   const icon = slot === 'Mittag' ? '🌞' : '🌙'
   if (!entry) {
     return (
@@ -878,10 +937,13 @@ function MealRow({ entry, slot }: { entry: WeekPlanEntry | null; slot: 'Mittag' 
   }
   const c = CFG[entry.chef] ?? CFG.MA
   return (
-    <div className="meal-row">
+    <div className="meal-row" onClick={hasRecipe ? onSelect : undefined} style={{ cursor: hasRecipe ? 'pointer' : 'default' }}>
       <span style={{ fontSize: 20 }}>{entry.emoji}</span>
       <div style={{ flex: 1 }}>
-        <div style={{ fontSize: 13, fontWeight: 600, color: '#111' }}>{entry.gericht}</div>
+        <div style={{ fontSize: 13, fontWeight: 600, color: '#111' }}>
+          {entry.gericht}
+          {hasRecipe && <span style={{ fontSize: 11, color: '#bbb', marginLeft: 4 }}>›</span>}
+        </div>
         <div style={{ fontSize: 11, color: '#888' }}>{entry.minuten} min</div>
       </div>
       <div className="chef-b" style={{ background: c.bg, color: c.c }}>{entry.chef}</div>

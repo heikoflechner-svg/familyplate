@@ -1,7 +1,6 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
 import { loadWeekPlan, saveWeekPlan, saveAttendance, saveShoppingList } from '../lib/mealLogic'
-import { generateShoppingList } from '../lib/shoppingLogic'
 import { loadFreezerItems, loadPantryItems } from '../lib/freezerLogic'
 import { loadFamilyProfile, DEFAULT_MEMBERS } from '../lib/familyLogic'
 import { signOut, onAuthChange } from '../lib/auth'
@@ -98,12 +97,6 @@ export default function FamilyPlateApp() {
 
   function handleTabChange(tab: Tab) {
     setActiveTab(tab)
-    if (tab === 'einkauf' && shoppingList.length === 0 && weekPlan.length > 0) {
-      const generated = generateShoppingList(weekPlan, mealsData)
-      if (generated.length > 0) {
-        handleShoppingListChange(generated)
-      }
-    }
   }
 
   if (!authChecked || dataLoading) {

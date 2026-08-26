@@ -1,4 +1,6 @@
-import type { ShoppingItem, WeekPlanEntry, Rezept } from './state'
+import type { ShoppingItem, WeekPlanEntry, Rezept, WochenSlot } from './state'
+
+const WOCHENTAGE = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag']
 
 const KATEGORIE_MAP: Record<string, string> = {
   frisch: 'Frische & Kühlregal',
@@ -11,17 +13,29 @@ function randomId(): string {
   return Math.random().toString(36).slice(2, 9)
 }
 
+export interface ShoppingGroup {
+  tag: string
+  slot: WochenSlot
+  gericht: string
+  emoji: string
+  items: ShoppingItem[]
+}
+
 export function generateShoppingList(
   weekPlan: WeekPlanEntry[],
   mealsData: Record<string, Rezept>,
+  selectedDays?: string[],
 ): ShoppingItem[] {
-  const seen = new Set<string>()
   const items: ShoppingItem[] = []
+  const filtered = selectedDays
+    ? weekPlan.filter(e => selectedDays.includes(e.tag))
+    : weekPlan
 
-  for (const entry of weekPlan) {
+  for (const entry of filtered) {
     const rezept = mealsData[entry.gericht]
     if (!rezept) continue
 
+    const seen = new Set<string>()
     for (const zutat of rezept.zutaten) {
       const key = zutat.name.toLowerCase()
       if (seen.has(key)) continue
@@ -33,11 +47,39 @@ export function generateShoppingList(
         menge: zutat.menge,
         kategorie: KATEGORIE_MAP[zutat.typ] ?? 'Sonstiges',
         erledigt: false,
+        tag: entry.tag,
+        slot: entry.slot,
+        gericht: entry.gericht,
       })
     }
   }
 
-  return items.sort((a, b) => a.kategorie.localeCompare(b.kategorie))
+  return items
+}
+
+export function groupShoppingByMeal(
+  items: ShoppingItem[],
+  weekPlan: WeekPlanEntry[],
+): ShoppingGroup[] {
+  const groups: ShoppingGroup[] = []
+  const seen = new Set<string>()
+
+  for (const day of WOCHENTAGE) {
+    for (const slot of ['Mittag', 'Abend'] as WochenSlot[]) {
+      const entry = weekPlan.find(e => e.tag === day && e.slot === slot)
+      if (!entry) continue
+      const key = `${day}-${slot}-${entry.gericht}`
+      if (seen.has(key)) continue
+      const groupItems = items.filter(
+        i => i.tag === day && i.slot === slot && i.gericht === entry.gericht,
+      )
+      if (groupItems.length === 0) continue
+      seen.add(key)
+      groups.push({ tag: day, slot, gericht: entry.gericht, emoji: entry.emoji, items: groupItems })
+    }
+  }
+
+  return groups
 }
 
 export function addShoppingItem(

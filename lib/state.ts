@@ -69,6 +69,9 @@ export interface ShoppingItem {
   menge: string
   kategorie: string
   erledigt: boolean
+  tag?: string
+  slot?: WochenSlot
+  gericht?: string
 }
 
 export interface DayAttendance {
