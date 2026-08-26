@@ -93,6 +93,12 @@ export default function WocheScreen({
   }
 
   const [chefPickerKey, setChefPickerKey] = useState<string | null>(null)
+  const [editMealKey, setEditMealKey] = useState<string | null>(null)
+
+  function toggleEditMeal(key: string) {
+    setEditMealKey(prev => prev === key ? null : key)
+    setChefPickerKey(null)
+  }
 
   function changePendingChef(tag: string, slot: WochenSlot, chef: Chef) {
     setPendingPlan(prev => prev.map(e => e.tag === tag && e.slot === slot ? { ...e, chef } : e))
@@ -102,6 +108,7 @@ export default function WocheScreen({
   async function changeActiveChef(tag: string, slot: WochenSlot, chef: Chef) {
     const newPlan = weekPlan.map(e => e.tag === tag && e.slot === slot ? { ...e, chef } : e)
     setChefPickerKey(null)
+    setEditMealKey(null)
     await onWeekPlanChange(newPlan, mealsData)
   }
 
@@ -127,6 +134,7 @@ export default function WocheScreen({
   async function replanDay(tag: string) {
     closeWishForm()
     setChefPickerKey(null)
+    setEditMealKey(null)
     setPendingDay(null)
     setDayLoading(tag)
     try {
@@ -452,6 +460,7 @@ export default function WocheScreen({
                     if (!e) return null
                     const key = `${tag}-${slot}`
                     const c = CFG[e.chef] ?? CFG.MA
+                    const isEditing = editMealKey === key
                     return (
                       <div key={slot}>
                         <div style={{ padding: '7px 12px', borderTop: '1px solid #f5f5f5', display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -461,15 +470,24 @@ export default function WocheScreen({
                             style={{ flex: 1, fontSize: 12, fontWeight: 500, color: '#111', cursor: mealsData[e.gericht] ? 'pointer' : 'default' }}
                           >{e.emoji} {e.gericht}{mealsData[e.gericht] ? <span style={{ fontSize: 10, color: '#bbb', marginLeft: 4 }}>›</span> : null}</span>
                           <button
-                            onClick={() => setChefPickerKey(chefPickerKey === key ? null : key)}
-                            className="chef-b"
-                            style={{ background: c.bg, color: c.c, border: 'none', cursor: 'pointer' }}
-                          >
-                            {e.chef}
-                          </button>
+                            onClick={() => toggleEditMeal(key)}
+                            title="Gericht ändern"
+                            style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 13, color: isEditing ? '#1D9E75' : '#ccc', lineHeight: 1, padding: '0 2px' }}
+                          >✏️</button>
+                          <div className="chef-b" style={{ background: c.bg, color: c.c }}>{e.chef}</div>
                         </div>
-                        {chefPickerKey === key && (
-                          <ChefPicker current={e.chef} onSelect={chef => changeActiveChef(tag, slot, chef)} personNames={personNames} members={members} />
+                        {isEditing && (
+                          <div style={{ background: '#f9f9f9', borderTop: '1px solid #eee', padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                            <div style={{ fontSize: 11, fontWeight: 600, color: '#aaa' }}>Koch ändern</div>
+                            <ChefPicker current={e.chef} onSelect={chef => changeActiveChef(tag, slot, chef)} personNames={personNames} members={members} />
+                            <button
+                              onClick={() => replanDay(tag)}
+                              disabled={dayLoading === tag}
+                              style={{ padding: '7px 12px', border: '1px solid #ddd', borderRadius: 8, background: 'white', cursor: 'pointer', fontSize: 12, color: '#555', textAlign: 'left' }}
+                            >
+                              ↺ Rémy neu vorschlagen (ganzer Tag)
+                            </button>
+                          </div>
                         )}
                       </div>
                     )
