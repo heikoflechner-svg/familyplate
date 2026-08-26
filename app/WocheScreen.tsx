@@ -35,6 +35,7 @@ interface Props {
   onWeekPlanChange: (plan: WeekPlanEntry[], meals: Record<string, Rezept>) => Promise<void>
   onWishesChange: (wishes: Wish[]) => Promise<void>
   onAttendanceChange: (a: DayAttendance[]) => Promise<void>
+  onPlanConfirm?: (entries: WeekPlanEntry[]) => Promise<void>
 }
 
 type View = 'home' | 'week' | 'plan'
@@ -42,7 +43,7 @@ type PlanState = 'options' | 'loading' | 'results'
 
 export default function WocheScreen({
   weekPlan, mealsData, planMittag, planWE, freezerItems, pantryItems,
-  wishes, wochenchef, members, attendance, onWeekPlanChange, onWishesChange, onAttendanceChange,
+  wishes, wochenchef, members, attendance, onWeekPlanChange, onWishesChange, onAttendanceChange, onPlanConfirm,
 }: Props) {
   const personNames: Record<Chef, string> = Object.fromEntries(
     (members.length ? members : DEFAULT_MEMBERS).map(m => [m.id, m.name])
@@ -117,6 +118,7 @@ export default function WocheScreen({
     setSaving(true)
     const newPlan = [...weekPlan.filter(e => e.tag !== pendingDay.tag), ...pendingDay.entries]
     await onWeekPlanChange(newPlan, { ...mealsData, ...pendingDayMeals })
+    await onPlanConfirm?.(pendingDay.entries)
     setPendingDay(null)
     setPendingDayMeals({})
     setSaving(false)
@@ -192,6 +194,7 @@ export default function WocheScreen({
   async function acceptPlan() {
     setSaving(true)
     await onWeekPlanChange(pendingPlan, { ...mealsData, ...pendingPlanMeals })
+    await onPlanConfirm?.(pendingPlan)
     setSaving(false)
     setPlanState('options')
     setPendingPlanMeals({})
@@ -327,7 +330,7 @@ export default function WocheScreen({
                           </button>
                         </div>
                         {chefPickerKey === key && (
-                          <ChefPicker current={e.chef} onSelect={chef => changePendingChef(tag, slot, chef)} personNames={personNames} />
+                          <ChefPicker current={e.chef} onSelect={chef => changePendingChef(tag, slot, chef)} personNames={personNames} members={members} />
                         )}
                       </div>
                     )
@@ -421,7 +424,7 @@ export default function WocheScreen({
                               </button>
                             </div>
                             {chefPickerKey === key && (
-                              <ChefPicker current={e.chef} onSelect={chef => changePendingDayChef(e.slot, chef)} personNames={personNames} />
+                              <ChefPicker current={e.chef} onSelect={chef => changePendingDayChef(e.slot, chef)} personNames={personNames} members={members} />
                             )}
                           </div>
                         )
@@ -466,7 +469,7 @@ export default function WocheScreen({
                           </button>
                         </div>
                         {chefPickerKey === key && (
-                          <ChefPicker current={e.chef} onSelect={chef => changeActiveChef(tag, slot, chef)} personNames={personNames} />
+                          <ChefPicker current={e.chef} onSelect={chef => changeActiveChef(tag, slot, chef)} personNames={personNames} members={members} />
                         )}
                       </div>
                     )
@@ -729,19 +732,21 @@ function AttendanceRow({
   )
 }
 
-function ChefPicker({ current, onSelect, personNames }: { current: Chef; onSelect: (c: Chef) => void; personNames: Record<Chef, string> }) {
+function ChefPicker({ current, onSelect, personNames, members }: { current: Chef; onSelect: (c: Chef) => void; personNames: Record<Chef, string>; members: import('../lib/state').FamilyMember[] }) {
   return (
     <div style={{ padding: '4px 12px 8px', display: 'flex', gap: 4 }}>
       {(['PA', 'MA', 'TI'] as Chef[]).map(p => {
         const c = CFG[p]
         const active = current === p
+        const stat = members.find(m => m.id === p)?.chefStat
         return (
           <button
             key={p}
             onClick={() => onSelect(p)}
-            style={{ padding: '3px 10px', borderRadius: 8, border: '1px solid', borderColor: active ? c.c : '#ddd', background: active ? c.bg : 'white', color: active ? c.c : '#aaa', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
+            style={{ padding: '4px 10px 5px', borderRadius: 8, border: '1px solid', borderColor: active ? c.c : '#ddd', background: active ? c.bg : 'white', color: active ? c.c : '#aaa', fontSize: 11, fontWeight: 700, cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}
           >
-            {p} · {personNames[p]}
+            <span>{p} · {personNames[p]}</span>
+            {stat && <span style={{ fontSize: 9, fontWeight: 400, opacity: 0.7 }}>{stat.count}×</span>}
           </button>
         )
       })}

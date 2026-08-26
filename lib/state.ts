@@ -80,11 +80,17 @@ export interface DayAttendance {
   gaeste: number
 }
 
+export interface ChefStat {
+  count: number
+  lastCook: string | null
+}
+
 export interface FamilyMember {
   id: Chef
   name: string
   allergien: string[]
   vorlieben: string[]
+  chefStat?: ChefStat
 }
 
 export interface FamilyProfile {

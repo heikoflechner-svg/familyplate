@@ -1,5 +1,5 @@
 import { supabase, FAMILY_ID } from './supabase'
-import type { Chef, FamilyMember, FamilyProfile } from './state'
+import type { Chef, FamilyMember, FamilyProfile, WeekPlanEntry } from './state'
 
 export const DEFAULT_MEMBERS: FamilyMember[] = [
   { id: 'PA', name: 'Heiko', allergien: [], vorlieben: [] },
@@ -38,6 +38,24 @@ export async function saveFamilyProfile(profile: FamilyProfile): Promise<void> {
   } else {
     await supabase.from('family_profiles').insert({ family_id: FAMILY_ID, ...payload })
   }
+}
+
+export function applyChefStats(members: FamilyMember[], confirmedEntries: WeekPlanEntry[], today: string): FamilyMember[] {
+  const counts: Partial<Record<Chef, number>> = {}
+  for (const e of confirmedEntries) {
+    counts[e.chef] = (counts[e.chef] ?? 0) + 1
+  }
+  return members.map(m => {
+    const added = counts[m.id] ?? 0
+    if (added === 0) return m
+    return {
+      ...m,
+      chefStat: {
+        count: (m.chefStat?.count ?? 0) + added,
+        lastCook: today,
+      },
+    }
+  })
 }
 
 export function buildFamilyPrompt(members: FamilyMember[]): string {

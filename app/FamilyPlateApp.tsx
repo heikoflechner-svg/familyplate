@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { loadWeekPlan, saveWeekPlan, saveAttendance, saveShoppingList } from '../lib/mealLogic'
 import { loadFreezerItems, loadPantryItems } from '../lib/freezerLogic'
-import { loadFamilyProfile, DEFAULT_MEMBERS } from '../lib/familyLogic'
+import { loadFamilyProfile, saveFamilyProfile, applyChefStats, DEFAULT_MEMBERS } from '../lib/familyLogic'
 import { signOut, onAuthChange } from '../lib/auth'
 import type { WeekPlanEntry, Rezept, FreezerItem, PantryItem, ShoppingItem, Tab, Wish, Chef, FamilyProfile, DayAttendance } from '../lib/state'
 import LoginScreen from './LoginScreen'
@@ -95,6 +95,15 @@ export default function FamilyPlateApp() {
     await saveShoppingList(list)
   }
 
+  async function handlePlanConfirm(confirmedEntries: WeekPlanEntry[]) {
+    if (!familyProfile) return
+    const today = new Date().toISOString().slice(0, 10)
+    const updatedMembers = applyChefStats(familyProfile.members, confirmedEntries, today)
+    const updated: FamilyProfile = { ...familyProfile, members: updatedMembers }
+    setFamilyProfile(updated)
+    await saveFamilyProfile(updated)
+  }
+
   function handleTabChange(tab: Tab) {
     setActiveTab(tab)
   }
@@ -153,6 +162,7 @@ export default function FamilyPlateApp() {
             onWeekPlanChange={handleWeekPlanChange}
             onWishesChange={handleWishesChange}
             onAttendanceChange={handleAttendanceChange}
+            onPlanConfirm={handlePlanConfirm}
           />
         )}
         {activeTab === 'gefriertruhe' && (

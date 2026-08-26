@@ -7,6 +7,22 @@ const CHEF_COLORS: Record<Chef, { bg: string; c: string }> = {
   TI: { bg: '#FBEAF0', c: '#72243E' },
 }
 
+const WOCHENTAGE_SHORT: Record<string, string> = {
+  'Montag': 'Mo', 'Dienstag': 'Di', 'Mittwoch': 'Mi',
+  'Donnerstag': 'Do', 'Freitag': 'Fr', 'Samstag': 'Sa', 'Sonntag': 'So',
+}
+
+function formatLastCook(iso: string | null | undefined): string {
+  if (!iso) return 'noch nie'
+  const date = new Date(iso)
+  const today = new Date()
+  const diff = Math.floor((today.getTime() - date.getTime()) / 86400000)
+  if (diff === 0) return 'heute'
+  if (diff === 1) return 'gestern'
+  if (diff < 7) return `vor ${diff} Tagen`
+  return date.toLocaleDateString('de-DE', { day: 'numeric', month: 'short' })
+}
+
 interface Props {
   planMittag: boolean
   planWE: boolean
@@ -22,6 +38,8 @@ export default function ProfilScreen({
   planMittag, planWE, currentUser, familyProfile,
   onPlanMittagChange, onPlanWEChange, onSignOut, onEditProfile,
 }: Props) {
+  const maxCount = Math.max(...familyProfile.members.map(m => m.chefStat?.count ?? 0), 1)
+
   return (
     <div className="screen active">
       <div className="topbar"><h1>👤 Profil</h1></div>
@@ -48,8 +66,11 @@ export default function ProfilScreen({
           const isMe = m.id === currentUser
           const allergienText = m.allergien.length ? m.allergien.join(', ') : null
           const vorliebText = m.vorlieben.length ? m.vorlieben.join(', ') : null
+          const stat = m.chefStat
+          const barPct = stat ? Math.round((stat.count / maxCount) * 100) : 0
+
           return (
-            <div key={m.id} className="profile-person" style={{ opacity: isMe ? 1 : 0.6 }}>
+            <div key={m.id} className="profile-person" style={{ opacity: isMe ? 1 : 0.75 }}>
               <div className="profile-person-head">
                 <div
                   className="chef-b"
@@ -61,15 +82,30 @@ export default function ProfilScreen({
                 >
                   {m.id}
                 </div>
-                <div>
+                <div style={{ flex: 1 }}>
                   <div style={{ fontSize: 14, fontWeight: 600 }}>
                     {m.name}
                     {isMe && <span style={{ fontSize: 10, color: col.c, marginLeft: 6, fontWeight: 400 }}>· eingeloggt</span>}
                   </div>
                   <div style={{ fontSize: 11, color: '#aaa' }}>{m.id === 'PA' ? 'Wochenchef' : 'Mitglied'}</div>
                 </div>
+                {stat && (
+                  <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: col.c }}>{stat.count}×</div>
+                    <div style={{ fontSize: 10, color: '#bbb' }}>{formatLastCook(stat.lastCook)}</div>
+                  </div>
+                )}
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 3, marginTop: 4 }}>
+
+              {stat && stat.count > 0 && (
+                <div style={{ marginTop: 8, marginBottom: 2 }}>
+                  <div style={{ height: 4, borderRadius: 2, background: '#f0f0f0', overflow: 'hidden' }}>
+                    <div style={{ height: '100%', width: `${barPct}%`, background: col.c, borderRadius: 2, transition: 'width .3s' }} />
+                  </div>
+                </div>
+              )}
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 3, marginTop: 6 }}>
                 {allergienText && (
                   <div style={{ fontSize: 12, color: '#888' }}>
                     <span style={{ color: '#c0392b' }}>✗</span> {allergienText}
