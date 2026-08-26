@@ -530,6 +530,59 @@ export default function WocheScreen({
   const todayMittag = getSlot(weekPlan, today, 'Mittag')
   const todayAbend = getSlot(weekPlan, today, 'Abend')
 
+  function renderHomeSlot(tag: string, slot: WochenSlot, entry: WeekPlanEntry | null) {
+    const slotIcon = slot === 'Mittag' ? '🌞' : '🌙'
+    if (!entry) {
+      return (
+        <div key={slot} className="slot-empty">
+          <span style={{ fontSize: 11 }}>{slotIcon}</span>
+          <span style={{ fontSize: 12 }}>{slot} · noch nicht geplant</span>
+        </div>
+      )
+    }
+    const key = `${tag}-${slot}`
+    const c = CFG[entry.chef] ?? CFG.MA
+    const isEditing = editMealKey === key
+    const hasRecipe = !!mealsData[entry.gericht]
+    return (
+      <div key={slot}>
+        <div style={{ padding: '10px 12px', borderRadius: 12, border: '1px solid #eee', marginBottom: 6, background: '#fff', display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 20 }}>{entry.emoji}</span>
+          <div
+            style={{ flex: 1, cursor: hasRecipe ? 'pointer' : 'default' }}
+            onClick={hasRecipe ? () => setSelectedMealName(entry.gericht) : undefined}
+          >
+            <div style={{ fontSize: 13, fontWeight: 600, color: '#111' }}>
+              {entry.gericht}
+              {hasRecipe && <span style={{ fontSize: 11, color: '#bbb', marginLeft: 4 }}>›</span>}
+            </div>
+            <div style={{ fontSize: 11, color: '#888' }}>{entry.minuten} min</div>
+          </div>
+          <button
+            onClick={() => toggleEditMeal(key)}
+            title="Gericht ändern"
+            style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 14, color: isEditing ? '#1D9E75' : '#bbb', lineHeight: 1, padding: '0 4px' }}
+          >✏️</button>
+          <div className="chef-b" style={{ background: c.bg, color: c.c }}>{entry.chef}</div>
+          <span className={`badge${slot === 'Mittag' ? ' mid' : ''}`}>{slotIcon}</span>
+        </div>
+        {isEditing && (
+          <div style={{ background: '#f9f9f9', padding: '10px 12px', marginTop: -8, marginBottom: 6, display: 'flex', flexDirection: 'column', gap: 8, borderRadius: '0 0 12px 12px', border: '1px solid #eee', borderTop: 'none' }}>
+            <div style={{ fontSize: 11, fontWeight: 600, color: '#aaa' }}>Koch ändern</div>
+            <ChefPicker current={entry.chef} onSelect={chef => changeActiveChef(tag, slot, chef)} personNames={personNames} members={members} />
+            <button
+              onClick={() => replanDay(tag)}
+              disabled={dayLoading === tag}
+              style={{ padding: '7px 12px', border: '1px solid #ddd', borderRadius: 8, background: 'white', cursor: 'pointer', fontSize: 12, color: '#555', textAlign: 'left' }}
+            >
+              ↺ Rémy neu vorschlagen (ganzer Tag)
+            </button>
+          </div>
+        )}
+      </div>
+    )
+  }
+
   if (weekPlan.length === 0) {
     return (
       <div className="screen active">
@@ -560,8 +613,8 @@ export default function WocheScreen({
           <span className="pill today" style={{ marginLeft: 6 }}>Heute</span>
         </div>
         <AttendanceRow tag={today} attendance={attendance} members={members} onSave={handleAttendanceSave} />
-        {planMittag && <MealRow entry={todayMittag} slot="Mittag" onSelect={todayMittag ? () => setSelectedMealName(todayMittag.gericht) : undefined} hasRecipe={!!todayMittag && !!mealsData[todayMittag.gericht]} onChefChange={todayMittag ? chef => changeActiveChef(today, 'Mittag', chef) : undefined} onReplan={() => replanDay(today)} personNames={personNames} members={members} />}
-        <MealRow entry={todayAbend} slot="Abend" onSelect={todayAbend ? () => setSelectedMealName(todayAbend.gericht) : undefined} hasRecipe={!!todayAbend && !!mealsData[todayAbend.gericht]} onChefChange={todayAbend ? chef => changeActiveChef(today, 'Abend', chef) : undefined} onReplan={() => replanDay(today)} personNames={personNames} members={members} />
+        {planMittag && renderHomeSlot(today, 'Mittag', todayMittag)}
+        {renderHomeSlot(today, 'Abend', todayAbend)}
         <WishesSection
           tag={today}
           wishes={wishes}
@@ -589,8 +642,8 @@ export default function WocheScreen({
           <div key={tag}>
             <div className="day-lbl" style={{ marginTop: 16 }}>{tag}</div>
             <AttendanceRow tag={tag} attendance={attendance} members={members} onSave={handleAttendanceSave} />
-            {planMittag && <MealRow entry={nextMittag} slot="Mittag" onSelect={nextMittag ? () => setSelectedMealName(nextMittag.gericht) : undefined} hasRecipe={!!nextMittag && !!mealsData[nextMittag.gericht]} onChefChange={nextMittag ? chef => changeActiveChef(tag, 'Mittag', chef) : undefined} onReplan={() => replanDay(tag)} personNames={personNames} members={members} />}
-            <MealRow entry={nextAbend} slot="Abend" onSelect={nextAbend ? () => setSelectedMealName(nextAbend.gericht) : undefined} hasRecipe={!!nextAbend && !!mealsData[nextAbend.gericht]} onChefChange={nextAbend ? chef => changeActiveChef(tag, 'Abend', chef) : undefined} onReplan={() => replanDay(tag)} personNames={personNames} members={members} />
+            {planMittag && renderHomeSlot(tag, 'Mittag', nextMittag)}
+            {renderHomeSlot(tag, 'Abend', nextAbend)}
             <WishesSection
               tag={tag}
               wishes={wishes}
