@@ -560,8 +560,8 @@ export default function WocheScreen({
           <span className="pill today" style={{ marginLeft: 6 }}>Heute</span>
         </div>
         <AttendanceRow tag={today} attendance={attendance} members={members} onSave={handleAttendanceSave} />
-        {planMittag && <MealRow entry={todayMittag} slot="Mittag" onSelect={todayMittag ? () => setSelectedMealName(todayMittag.gericht) : undefined} hasRecipe={!!todayMittag && !!mealsData[todayMittag.gericht]} />}
-        <MealRow entry={todayAbend} slot="Abend" onSelect={todayAbend ? () => setSelectedMealName(todayAbend.gericht) : undefined} hasRecipe={!!todayAbend && !!mealsData[todayAbend.gericht]} />
+        {planMittag && <MealRow entry={todayMittag} slot="Mittag" onSelect={todayMittag ? () => setSelectedMealName(todayMittag.gericht) : undefined} hasRecipe={!!todayMittag && !!mealsData[todayMittag.gericht]} onChefChange={todayMittag ? chef => changeActiveChef(today, 'Mittag', chef) : undefined} onReplan={() => replanDay(today)} personNames={personNames} members={members} />}
+        <MealRow entry={todayAbend} slot="Abend" onSelect={todayAbend ? () => setSelectedMealName(todayAbend.gericht) : undefined} hasRecipe={!!todayAbend && !!mealsData[todayAbend.gericht]} onChefChange={todayAbend ? chef => changeActiveChef(today, 'Abend', chef) : undefined} onReplan={() => replanDay(today)} personNames={personNames} members={members} />
         <WishesSection
           tag={today}
           wishes={wishes}
@@ -589,8 +589,8 @@ export default function WocheScreen({
           <div key={tag}>
             <div className="day-lbl" style={{ marginTop: 16 }}>{tag}</div>
             <AttendanceRow tag={tag} attendance={attendance} members={members} onSave={handleAttendanceSave} />
-            {planMittag && <MealRow entry={nextMittag} slot="Mittag" onSelect={nextMittag ? () => setSelectedMealName(nextMittag.gericht) : undefined} hasRecipe={!!nextMittag && !!mealsData[nextMittag.gericht]} />}
-            <MealRow entry={nextAbend} slot="Abend" onSelect={nextAbend ? () => setSelectedMealName(nextAbend.gericht) : undefined} hasRecipe={!!nextAbend && !!mealsData[nextAbend.gericht]} />
+            {planMittag && <MealRow entry={nextMittag} slot="Mittag" onSelect={nextMittag ? () => setSelectedMealName(nextMittag.gericht) : undefined} hasRecipe={!!nextMittag && !!mealsData[nextMittag.gericht]} onChefChange={nextMittag ? chef => changeActiveChef(tag, 'Mittag', chef) : undefined} onReplan={() => replanDay(tag)} personNames={personNames} members={members} />}
+            <MealRow entry={nextAbend} slot="Abend" onSelect={nextAbend ? () => setSelectedMealName(nextAbend.gericht) : undefined} hasRecipe={!!nextAbend && !!mealsData[nextAbend.gericht]} onChefChange={nextAbend ? chef => changeActiveChef(tag, 'Abend', chef) : undefined} onReplan={() => replanDay(tag)} personNames={personNames} members={members} />
             <WishesSection
               tag={tag}
               wishes={wishes}
@@ -948,7 +948,17 @@ function RecipeModal({ name, rezept, onClose }: { name: string; rezept: import('
   )
 }
 
-function MealRow({ entry, slot, onSelect, hasRecipe }: { entry: WeekPlanEntry | null; slot: 'Mittag' | 'Abend'; onSelect?: () => void; hasRecipe?: boolean }) {
+function MealRow({ entry, slot, onSelect, hasRecipe, onChefChange, onReplan, personNames, members: mems }: {
+  entry: WeekPlanEntry | null
+  slot: 'Mittag' | 'Abend'
+  onSelect?: () => void
+  hasRecipe?: boolean
+  onChefChange?: (chef: Chef) => void
+  onReplan?: () => void
+  personNames?: Record<Chef, string>
+  members?: import('../lib/state').FamilyMember[]
+}) {
+  const [editing, setEditing] = useState(false)
   const icon = slot === 'Mittag' ? '🌞' : '🌙'
   if (!entry) {
     return (
@@ -959,18 +969,45 @@ function MealRow({ entry, slot, onSelect, hasRecipe }: { entry: WeekPlanEntry | 
     )
   }
   const c = CFG[entry.chef] ?? CFG.MA
+  const canEdit = !!onChefChange && !!personNames && !!mems
   return (
-    <div className="meal-row" onClick={hasRecipe ? onSelect : undefined} style={{ cursor: hasRecipe ? 'pointer' : 'default' }}>
-      <span style={{ fontSize: 20 }}>{entry.emoji}</span>
-      <div style={{ flex: 1 }}>
-        <div style={{ fontSize: 13, fontWeight: 600, color: '#111' }}>
-          {entry.gericht}
-          {hasRecipe && <span style={{ fontSize: 11, color: '#bbb', marginLeft: 4 }}>›</span>}
+    <div>
+      <div className="meal-row">
+        <span style={{ fontSize: 20 }}>{entry.emoji}</span>
+        <div
+          style={{ flex: 1, cursor: hasRecipe ? 'pointer' : 'default' }}
+          onClick={hasRecipe ? onSelect : undefined}
+        >
+          <div style={{ fontSize: 13, fontWeight: 600, color: '#111' }}>
+            {entry.gericht}
+            {hasRecipe && <span style={{ fontSize: 11, color: '#bbb', marginLeft: 4 }}>›</span>}
+          </div>
+          <div style={{ fontSize: 11, color: '#888' }}>{entry.minuten} min</div>
         </div>
-        <div style={{ fontSize: 11, color: '#888' }}>{entry.minuten} min</div>
+        {canEdit && (
+          <button
+            onClick={() => setEditing(e => !e)}
+            title="Gericht ändern"
+            style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 13, color: editing ? '#1D9E75' : '#ccc', lineHeight: 1, padding: '0 2px' }}
+          >✏️</button>
+        )}
+        <div className="chef-b" style={{ background: c.bg, color: c.c }}>{entry.chef}</div>
+        <span className={`badge${slot === 'Mittag' ? ' mid' : ''}`}>{icon}</span>
       </div>
-      <div className="chef-b" style={{ background: c.bg, color: c.c }}>{entry.chef}</div>
-      <span className={`badge${slot === 'Mittag' ? ' mid' : ''}`}>{icon}</span>
+      {editing && canEdit && (
+        <div style={{ background: '#f9f9f9', borderTop: '1px solid #eee', padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={{ fontSize: 11, fontWeight: 600, color: '#aaa' }}>Koch ändern</div>
+          <ChefPicker current={entry.chef} onSelect={chef => { onChefChange!(chef); setEditing(false) }} personNames={personNames!} members={mems!} />
+          {onReplan && (
+            <button
+              onClick={() => { onReplan(); setEditing(false) }}
+              style={{ padding: '7px 12px', border: '1px solid #ddd', borderRadius: 8, background: 'white', cursor: 'pointer', fontSize: 12, color: '#555', textAlign: 'left' }}
+            >
+              ↺ Rémy neu vorschlagen (ganzer Tag)
+            </button>
+          )}
+        </div>
+      )}
     </div>
   )
 }
