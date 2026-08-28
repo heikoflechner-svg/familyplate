@@ -32,6 +32,16 @@ export interface WeekPlanEntry {
   chef: Chef
 }
 
+export interface ChangeProposal {
+  id: string
+  tag: string
+  slot: WochenSlot
+  vonChef: Chef
+  fuerChef: Chef
+  entry: WeekPlanEntry
+  createdAt: string
+}
+
 export type Wish = {
   id: string
   person: Chef

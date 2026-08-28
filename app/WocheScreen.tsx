@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { generateWeekPlan } from '../lib/mealLogic'
 import { getFreezerListString, getPantryListString } from '../lib/freezerLogic'
 import { buildFamilyPrompt, DEFAULT_MEMBERS } from '../lib/familyLogic'
-import type { WeekPlanEntry, Rezept, FreezerItem, PantryItem, Wish, Chef, WochenSlot, FamilyMember, DayAttendance } from '../lib/state'
+import type { WeekPlanEntry, Rezept, FreezerItem, PantryItem, Wish, Chef, WochenSlot, FamilyMember, DayAttendance, ChangeProposal } from '../lib/state'
 
 const WOCHENTAGE = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag']
 
@@ -32,10 +32,12 @@ interface Props {
   wochenchef: Chef
   members: FamilyMember[]
   attendance: DayAttendance[]
+  proposals: ChangeProposal[]
   onWeekPlanChange: (plan: WeekPlanEntry[], meals: Record<string, Rezept>) => Promise<void>
   onWishesChange: (wishes: Wish[]) => Promise<void>
   onAttendanceChange: (a: DayAttendance[]) => Promise<void>
   onPlanConfirm?: (entries: WeekPlanEntry[]) => Promise<void>
+  onProposalsChange: (proposals: ChangeProposal[]) => Promise<void>
 }
 
 type View = 'home' | 'week' | 'plan'
@@ -43,7 +45,8 @@ type PlanState = 'options' | 'loading' | 'results'
 
 export default function WocheScreen({
   weekPlan, mealsData, planMittag, planWE, freezerItems, pantryItems,
-  wishes, wochenchef, members, attendance, onWeekPlanChange, onWishesChange, onAttendanceChange, onPlanConfirm,
+  wishes, wochenchef, members, attendance, proposals, onWeekPlanChange, onWishesChange,
+  onAttendanceChange, onPlanConfirm, onProposalsChange,
 }: Props) {
   const personNames: Record<Chef, string> = Object.fromEntries(
     (members.length ? members : DEFAULT_MEMBERS).map(m => [m.id, m.name])
@@ -118,9 +121,67 @@ export default function WocheScreen({
   }
 
   async function changeActiveChef(tag: string, slot: WochenSlot, chef: Chef) {
-    const newPlan = weekPlan.map(e => e.tag === tag && e.slot === slot ? { ...e, chef } : e)
+    const currentEntry = weekPlan.find(e => e.tag === tag && e.slot === slot)
+    if (!currentEntry) return
     closeMealPanel()
+    if (wochenchef === currentEntry.chef) {
+      const newPlan = weekPlan.map(e => e.tag === tag && e.slot === slot ? { ...e, chef } : e)
+      await onWeekPlanChange(newPlan, mealsData)
+    } else {
+      await onProposalsChange([...proposals, {
+        id: crypto.randomUUID(),
+        tag,
+        slot,
+        vonChef: wochenchef,
+        fuerChef: currentEntry.chef,
+        entry: { ...currentEntry, chef },
+        createdAt: new Date().toISOString(),
+      }])
+    }
+  }
+
+  async function acceptProposal(proposal: ChangeProposal) {
+    const newPlan = weekPlan.map(e =>
+      e.tag === proposal.tag && e.slot === proposal.slot ? proposal.entry : e
+    )
     await onWeekPlanChange(newPlan, mealsData)
+    await onProposalsChange(proposals.filter(p => p.id !== proposal.id))
+  }
+
+  async function rejectProposal(id: string) {
+    await onProposalsChange(proposals.filter(p => p.id !== id))
+  }
+
+  function renderProposals(tag: string) {
+    const dayProposals = proposals.filter(p => p.fuerChef === wochenchef && p.tag === tag)
+    if (dayProposals.length === 0) return null
+    return (
+      <div style={{ padding: '4px 12px 2px' }}>
+        {dayProposals.map(p => {
+          const slot = p.slot === 'Mittag' ? '🌞 Mittag' : '🌙 Abend'
+          return (
+            <div key={p.id} style={{ background: '#FFFBEB', border: '1px solid #FCD34D', borderRadius: 8, padding: '8px 10px', marginBottom: 6 }}>
+              <div style={{ fontSize: 10, color: '#92400E', fontWeight: 700, marginBottom: 3 }}>
+                {personNames[p.vonChef]} schlägt vor · {slot}
+              </div>
+              <div style={{ fontSize: 12, color: '#111', marginBottom: 6 }}>
+                {p.entry.emoji} {p.entry.gericht} · Koch: {personNames[p.entry.chef]}
+              </div>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <button
+                  onClick={() => acceptProposal(p)}
+                  style={{ flex: 1, padding: '5px', background: '#1D9E75', color: 'white', border: 'none', borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer' }}
+                >✅ Übernehmen</button>
+                <button
+                  onClick={() => rejectProposal(p.id)}
+                  style={{ padding: '5px 10px', background: 'white', border: '1px solid #ddd', borderRadius: 6, fontSize: 11, cursor: 'pointer', color: '#888' }}
+                >✕ Ablehnen</button>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    )
   }
 
   const [dayLoading, setDayLoading] = useState<string | null>(null)
@@ -501,6 +562,9 @@ export default function WocheScreen({
                   <div className="week-plan-head" style={{ display: 'flex', alignItems: 'center' }}>
                     <span style={{ flex: 1, fontSize: 11, fontWeight: 700, color: tag === today ? '#085041' : '#aaa', textTransform: 'uppercase', letterSpacing: '.5px' }}>
                       {tag}
+                      {proposals.some(p => p.fuerChef === wochenchef && p.tag === tag) && (
+                        <span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: '50%', background: '#F59E0B', marginLeft: 5, verticalAlign: 'middle' }} />
+                      )}
                     </span>
                     {tag === today && <span className="pill today" style={{ marginLeft: 6 }}>Heute</span>}
                     {!isLoading && !isPending && (
@@ -515,6 +579,7 @@ export default function WocheScreen({
                   </div>
 
                   <AttendanceRow tag={tag} attendance={attendance} members={members} onSave={handleAttendanceSave} />
+                  {renderProposals(tag)}
 
                   {isLoading && (
                     <div style={{ padding: '10px 12px', fontSize: 12, color: '#aaa' }}>🐀 Rémy schlägt vor…</div>
@@ -719,8 +784,12 @@ export default function WocheScreen({
         <div className="day-lbl">
           Heute · <span style={{ color: '#111', fontWeight: 700 }}>{today}</span>
           <span className="pill today" style={{ marginLeft: 6 }}>Heute</span>
+          {proposals.some(p => p.fuerChef === wochenchef && p.tag === today) && (
+            <span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: '50%', background: '#F59E0B', marginLeft: 6, verticalAlign: 'middle' }} />
+          )}
         </div>
         <AttendanceRow tag={today} attendance={attendance} members={members} onSave={handleAttendanceSave} />
+        {renderProposals(today)}
         {planMittag && renderHomeSlot(today, 'Mittag', todayMittag)}
         {renderHomeSlot(today, 'Abend', todayAbend)}
         <WishesSection
@@ -748,8 +817,14 @@ export default function WocheScreen({
           const nextAbend = getSlot(weekPlan, tag, 'Abend')
           return (
           <div key={tag}>
-            <div className="day-lbl" style={{ marginTop: 16 }}>{tag}</div>
+            <div className="day-lbl" style={{ marginTop: 16 }}>
+              {tag}
+              {proposals.some(p => p.fuerChef === wochenchef && p.tag === tag) && (
+                <span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: '50%', background: '#F59E0B', marginLeft: 6, verticalAlign: 'middle' }} />
+              )}
+            </div>
             <AttendanceRow tag={tag} attendance={attendance} members={members} onSave={handleAttendanceSave} />
+            {renderProposals(tag)}
             {planMittag && renderHomeSlot(tag, 'Mittag', nextMittag)}
             {renderHomeSlot(tag, 'Abend', nextAbend)}
             <WishesSection

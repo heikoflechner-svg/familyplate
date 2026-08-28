@@ -1,10 +1,10 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
-import { loadWeekPlan, saveWeekPlan, saveAttendance, saveShoppingList } from '../lib/mealLogic'
+import { loadWeekPlan, saveWeekPlan, saveAttendance, saveShoppingList, saveProposals } from '../lib/mealLogic'
 import { loadFreezerItems, loadPantryItems } from '../lib/freezerLogic'
 import { loadFamilyProfile, saveFamilyProfile, applyChefStats, DEFAULT_MEMBERS } from '../lib/familyLogic'
 import { signOut, onAuthChange } from '../lib/auth'
-import type { WeekPlanEntry, Rezept, FreezerItem, PantryItem, ShoppingItem, Tab, Wish, Chef, FamilyProfile, DayAttendance } from '../lib/state'
+import type { WeekPlanEntry, Rezept, FreezerItem, PantryItem, ShoppingItem, Tab, Wish, Chef, FamilyProfile, DayAttendance, ChangeProposal } from '../lib/state'
 import LoginScreen from './LoginScreen'
 import WocheScreen from './WocheScreen'
 import VorraeteScreen from './VorraeteScreen'
@@ -29,6 +29,7 @@ export default function FamilyPlateApp() {
   const [pantryItems, setPantryItems] = useState<PantryItem[]>([])
   const [wishes, setWishes] = useState<Wish[]>([])
   const [shoppingList, setShoppingList] = useState<ShoppingItem[]>([])
+  const [proposals, setProposals] = useState<ChangeProposal[]>([])
   const [activeTab, setActiveTab] = useState<Tab>('woche')
 
   useEffect(() => {
@@ -50,6 +51,7 @@ export default function FamilyPlateApp() {
         setPantryItems([])
         setShoppingList([])
         setFamilyProfile(null)
+        setProposals([])
       }
     })
   }, [])
@@ -57,12 +59,13 @@ export default function FamilyPlateApp() {
   useEffect(() => {
     if (!currentUser) return
     Promise.all([loadWeekPlan(), loadFreezerItems(), loadPantryItems(), loadFamilyProfile()])
-      .then(([{ plan, mealsData: md, wishes: w, attendance: att, shoppingList: sl }, freezer, pantry, profile]) => {
+      .then(([{ plan, mealsData: md, wishes: w, attendance: att, shoppingList: sl, proposals: pr }, freezer, pantry, profile]) => {
         setWeekPlan(plan)
         setMealsData(md)
         setWishes(w)
         setAttendance(att)
         setShoppingList(sl)
+        setProposals(pr)
         setFreezerItems(freezer)
         setPantryItems(pantry)
         setFamilyProfile(profile)
@@ -88,6 +91,11 @@ export default function FamilyPlateApp() {
   async function handleAttendanceChange(newAttendance: DayAttendance[]) {
     setAttendance(newAttendance)
     await saveAttendance(newAttendance)
+  }
+
+  async function handleProposalsChange(newProposals: ChangeProposal[]) {
+    setProposals(newProposals)
+    await saveProposals(newProposals)
   }
 
   async function handleShoppingListChange(list: ShoppingItem[]) {
@@ -159,10 +167,12 @@ export default function FamilyPlateApp() {
             wochenchef={currentUser}
             members={members}
             attendance={attendance}
+            proposals={proposals}
             onWeekPlanChange={handleWeekPlanChange}
             onWishesChange={handleWishesChange}
             onAttendanceChange={handleAttendanceChange}
             onPlanConfirm={handlePlanConfirm}
+            onProposalsChange={handleProposalsChange}
           />
         )}
         {activeTab === 'gefriertruhe' && (
