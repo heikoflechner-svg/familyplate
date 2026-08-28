@@ -103,6 +103,7 @@ export default function WocheScreen({
   function changePendingChef(tag: string, slot: WochenSlot, chef: Chef) {
     setPendingPlan(prev => prev.map(e => e.tag === tag && e.slot === slot ? { ...e, chef } : e))
     setChefPickerKey(null)
+    setEditMealKey(null)
   }
 
   async function changeActiveChef(tag: string, slot: WochenSlot, chef: Chef) {
@@ -129,6 +130,29 @@ export default function WocheScreen({
     setPendingDay(null)
     setPendingDayMeals({})
     setSaving(false)
+  }
+
+  async function replanPendingDay(tag: string) {
+    setEditMealKey(null)
+    setChefPickerKey(null)
+    setDayLoading(tag)
+    try {
+      const { plan: result, mealsData: newMeals } = await generateWeekPlan({
+        planMittag,
+        planWE,
+        freezerList: getFreezerListString(freezerItems),
+        pantryList: getPantryListString(pantryItems),
+        behaltene: pendingPlan.filter(e => e.tag !== tag),
+        neuTage: [tag],
+        wishes: wishes.filter(w => w.tag === tag),
+        familyPrompt,
+      })
+      setPendingPlan(prev => [...prev.filter(e => e.tag !== tag), ...result.filter(e => e.tag === tag)])
+      setPendingPlanMeals(prev => ({ ...prev, ...newMeals }))
+    } catch {
+      // silently fail
+    }
+    setDayLoading(null)
   }
 
   async function replanDay(tag: string) {
@@ -316,11 +340,15 @@ export default function WocheScreen({
                       {tag}
                     </span>
                   </div>
-                  {(['Mittag', 'Abend'] as const).map(slot => {
+                  {dayLoading === tag && (
+                    <div style={{ padding: '10px 12px', fontSize: 12, color: '#aaa' }}>🐀 Rémy schlägt vor…</div>
+                  )}
+                  {dayLoading !== tag && (['Mittag', 'Abend'] as const).map(slot => {
                     const e = getSlot(pendingPlan, tag, slot)
                     if (!e) return null
                     const key = `${tag}-${slot}`
                     const c = CFG[e.chef] ?? CFG.MA
+                    const isEditing = editMealKey === key
                     return (
                       <div key={slot}>
                         <div style={{ padding: '8px 12px', borderTop: '1px solid #f5f5f5', display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -330,15 +358,24 @@ export default function WocheScreen({
                             <div style={{ fontSize: 10, color: '#aaa' }}>{slot} · {e.minuten} min</div>
                           </div>
                           <button
-                            onClick={() => setChefPickerKey(chefPickerKey === key ? null : key)}
+                            onClick={() => toggleEditMeal(key)}
                             className="chef-b"
                             style={{ background: c.bg, color: c.c, border: 'none', cursor: 'pointer' }}
                           >
                             {e.chef}
                           </button>
                         </div>
-                        {chefPickerKey === key && (
-                          <ChefPicker current={e.chef} onSelect={chef => changePendingChef(tag, slot, chef)} personNames={personNames} members={members} />
+                        {isEditing && (
+                          <div style={{ background: '#f9f9f9', borderTop: '1px solid #eee', padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                            <div style={{ fontSize: 11, fontWeight: 600, color: '#aaa' }}>Koch ändern</div>
+                            <ChefPicker current={e.chef} onSelect={chef => changePendingChef(tag, slot, chef)} personNames={personNames} members={members} />
+                            <button
+                              onClick={() => replanPendingDay(tag)}
+                              style={{ padding: '7px 12px', border: '1px solid #ddd', borderRadius: 8, background: 'white', cursor: 'pointer', fontSize: 12, color: '#555', textAlign: 'left' }}
+                            >
+                              ↺ Rémy neu vorschlagen (ganzer Tag)
+                            </button>
+                          </div>
                         )}
                       </div>
                     )
