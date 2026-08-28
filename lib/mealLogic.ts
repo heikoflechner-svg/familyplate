@@ -1,16 +1,16 @@
 import { supabase, FAMILY_ID } from './supabase'
 import type { WeekPlanEntry, Rezept, Wish, RemyVorschlag, WochenSlot, DayAttendance, Chef, ShoppingItem, ChangeProposal } from './state'
 
-export async function loadWeekPlan(): Promise<{ plan: WeekPlanEntry[]; mealsData: Record<string, Rezept>; wishes: Wish[]; attendance: DayAttendance[]; shoppingList: ShoppingItem[]; proposals: ChangeProposal[]; wochenchef: Chef }> {
+export async function loadWeekPlan(): Promise<{ plan: WeekPlanEntry[]; mealsData: Record<string, Rezept>; wishes: Wish[]; attendance: DayAttendance[]; shoppingList: ShoppingItem[]; proposals: ChangeProposal[]; wochenchef: Chef; planConfirmed: boolean }> {
   const { data, error } = await supabase
     .from('week_plans')
-    .select('plan_data, meals_data, wishes, attendance, shopping_list, proposals, wochenchef')
+    .select('plan_data, meals_data, wishes, attendance, shopping_list, proposals, wochenchef, plan_confirmed')
     .eq('family_id', FAMILY_ID)
     .order('updated_at', { ascending: false })
     .limit(1)
     .single()
 
-  if (error || !data) return { plan: [], mealsData: {}, wishes: [], attendance: [], shoppingList: [], proposals: [], wochenchef: 'PA' }
+  if (error || !data) return { plan: [], mealsData: {}, wishes: [], attendance: [], shoppingList: [], proposals: [], wochenchef: 'PA', planConfirmed: false }
   return {
     plan: (data.plan_data as WeekPlanEntry[]) ?? [],
     mealsData: (data.meals_data as Record<string, Rezept>) ?? {},
@@ -19,6 +19,7 @@ export async function loadWeekPlan(): Promise<{ plan: WeekPlanEntry[]; mealsData
     shoppingList: (data.shopping_list as ShoppingItem[]) ?? [],
     proposals: (data.proposals as ChangeProposal[]) ?? [],
     wochenchef: ((data.wochenchef as Chef | null) ?? 'PA'),
+    planConfirmed: (data.plan_confirmed as boolean | null) ?? false,
   }
 }
 
@@ -49,6 +50,19 @@ export async function saveWochenchef(chef: Chef): Promise<void> {
     await supabase.from('week_plans').update({ wochenchef: chef }).eq('id', existing.id)
   } else {
     await supabase.from('week_plans').insert({ family_id: FAMILY_ID, plan_data: [], meals_data: {}, wishes: [], wochenchef: chef })
+  }
+}
+
+export async function savePlanConfirmed(confirmed: boolean): Promise<void> {
+  const { data: existing } = await supabase
+    .from('week_plans')
+    .select('id')
+    .eq('family_id', FAMILY_ID)
+    .limit(1)
+    .single()
+
+  if (existing?.id) {
+    await supabase.from('week_plans').update({ plan_confirmed: confirmed }).eq('id', existing.id)
   }
 }
 

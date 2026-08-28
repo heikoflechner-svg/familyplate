@@ -34,12 +34,14 @@ interface Props {
   members: FamilyMember[]
   attendance: DayAttendance[]
   proposals: ChangeProposal[]
+  planConfirmed: boolean
   onWeekPlanChange: (plan: WeekPlanEntry[], meals: Record<string, Rezept>) => Promise<void>
   onWishesChange: (wishes: Wish[]) => Promise<void>
   onAttendanceChange: (a: DayAttendance[]) => Promise<void>
   onPlanConfirm?: (entries: WeekPlanEntry[]) => Promise<void>
   onProposalsChange: (proposals: ChangeProposal[]) => Promise<void>
   onWochenchefChange: (chef: Chef) => Promise<void>
+  onPlanConfirmedChange: (confirmed: boolean) => Promise<void>
 }
 
 type View = 'home' | 'week' | 'plan'
@@ -47,8 +49,8 @@ type PlanState = 'options' | 'loading' | 'results'
 
 export default function WocheScreen({
   weekPlan, mealsData, planMittag, planWE, freezerItems, pantryItems,
-  wishes, currentUser, wochenchef, members, attendance, proposals, onWeekPlanChange, onWishesChange,
-  onAttendanceChange, onPlanConfirm, onProposalsChange, onWochenchefChange,
+  wishes, currentUser, wochenchef, members, attendance, proposals, planConfirmed, onWeekPlanChange, onWishesChange,
+  onAttendanceChange, onPlanConfirm, onProposalsChange, onWochenchefChange, onPlanConfirmedChange,
 }: Props) {
   const personNames: Record<Chef, string> = Object.fromEntries(
     (members.length ? members : DEFAULT_MEMBERS).map(m => [m.id, m.name])
@@ -318,6 +320,7 @@ export default function WocheScreen({
     setSaving(true)
     await onWeekPlanChange(pendingPlan, { ...mealsData, ...pendingPlanMeals })
     await onPlanConfirm?.(pendingPlan)
+    await onPlanConfirmedChange(true)
     setSaving(false)
     setPlanState('options')
     setPendingPlanMeals({})
@@ -636,6 +639,7 @@ export default function WocheScreen({
                     const key = `${tag}-${slot}`
                     const c = CFG[e.chef] ?? CFG.MA
                     const isEditing = editMealKey === key
+                    const canEdit = !planConfirmed || currentUser === wochenchef
                     return (
                       <div key={slot}>
                         <div style={{ padding: '7px 12px', borderTop: '1px solid #f5f5f5', display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -644,14 +648,16 @@ export default function WocheScreen({
                             onClick={() => mealsData[e.gericht] && setSelectedMealName(e.gericht)}
                             style={{ flex: 1, fontSize: 12, fontWeight: 500, color: '#111', cursor: mealsData[e.gericht] ? 'pointer' : 'default' }}
                           >{e.emoji} {e.gericht}{mealsData[e.gericht] ? <span style={{ fontSize: 10, color: '#bbb', marginLeft: 4 }}>›</span> : null}</span>
-                          <button
-                            onClick={() => toggleEditMeal(key)}
-                            title="Gericht ändern"
-                            style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 13, color: isEditing ? '#1D9E75' : '#ccc', lineHeight: 1, padding: '0 2px' }}
-                          >✏️</button>
+                          {canEdit && (
+                            <button
+                              onClick={() => toggleEditMeal(key)}
+                              title="Gericht ändern"
+                              style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 13, color: isEditing ? '#1D9E75' : '#ccc', lineHeight: 1, padding: '0 2px' }}
+                            >✏️</button>
+                          )}
                           <div className="chef-b" style={{ background: c.bg, color: c.c }}>{e.chef}</div>
                         </div>
-                        {isEditing && (
+                        {isEditing && canEdit && (
                           <div style={{ background: '#f9f9f9', borderTop: '1px solid #eee', padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
                             <div style={{ fontSize: 11, fontWeight: 600, color: '#aaa' }}>Koch ändern</div>
                             <ChefPicker current={e.chef} onSelect={chef => changeActiveChef(tag, slot, chef)} personNames={personNames} members={members} />
@@ -719,6 +725,7 @@ export default function WocheScreen({
     const c = CFG[entry.chef] ?? CFG.MA
     const isEditing = editMealKey === key
     const hasRecipe = !!mealsData[entry.gericht]
+    const canEdit = !planConfirmed || currentUser === wochenchef
     return (
       <div key={slot}>
         <div style={{ padding: '10px 12px', borderRadius: 12, border: '1px solid #eee', marginBottom: 6, background: '#fff', display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -733,15 +740,17 @@ export default function WocheScreen({
             </div>
             <div style={{ fontSize: 11, color: '#888' }}>{entry.minuten} min</div>
           </div>
-          <button
-            onClick={() => toggleEditMeal(key)}
-            title="Gericht ändern"
-            style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 14, color: isEditing ? '#1D9E75' : '#bbb', lineHeight: 1, padding: '0 4px' }}
-          >✏️</button>
+          {canEdit && (
+            <button
+              onClick={() => toggleEditMeal(key)}
+              title="Gericht ändern"
+              style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 14, color: isEditing ? '#1D9E75' : '#bbb', lineHeight: 1, padding: '0 4px' }}
+            >✏️</button>
+          )}
           <div className="chef-b" style={{ background: c.bg, color: c.c }}>{entry.chef}</div>
           <span className={`badge${slot === 'Mittag' ? ' mid' : ''}`}>{slotIcon}</span>
         </div>
-        {isEditing && (
+        {isEditing && canEdit && (
           <div style={{ background: '#f9f9f9', padding: '10px 12px', marginTop: -8, marginBottom: 6, display: 'flex', flexDirection: 'column', gap: 8, borderRadius: '0 0 12px 12px', border: '1px solid #eee', borderTop: 'none' }}>
             <div style={{ fontSize: 11, fontWeight: 600, color: '#aaa' }}>Koch ändern</div>
             <ChefPicker current={entry.chef} onSelect={chef => changeActiveChef(tag, slot, chef)} personNames={personNames} members={members} />
