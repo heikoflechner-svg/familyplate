@@ -216,6 +216,8 @@ export default function WocheScreen({
       })
       setPendingPlan(newPlan)
       setPendingPlanMeals(newMeals)
+      setEditMealKey(null)
+      setChefPickerKey(null)
       setPlanState('results')
     } catch {
       setError('Rémy konnte nicht planen. Bitte erneut versuchen.')
@@ -388,7 +390,7 @@ export default function WocheScreen({
                 </button>
                 <button
                   className="btn"
-                  onClick={() => setPlanState('options')}
+                  onClick={() => { setPlanState('options'); setEditMealKey(null); setChefPickerKey(null) }}
                   style={{ width: 'auto', padding: '13px 16px' }}
                 >
                   ✕
