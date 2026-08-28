@@ -29,6 +29,7 @@ interface Props {
   freezerItems: FreezerItem[]
   pantryItems: PantryItem[]
   wishes: Wish[]
+  currentUser: Chef
   wochenchef: Chef
   members: FamilyMember[]
   attendance: DayAttendance[]
@@ -38,6 +39,7 @@ interface Props {
   onAttendanceChange: (a: DayAttendance[]) => Promise<void>
   onPlanConfirm?: (entries: WeekPlanEntry[]) => Promise<void>
   onProposalsChange: (proposals: ChangeProposal[]) => Promise<void>
+  onWochenchefChange: (chef: Chef) => Promise<void>
 }
 
 type View = 'home' | 'week' | 'plan'
@@ -45,8 +47,8 @@ type PlanState = 'options' | 'loading' | 'results'
 
 export default function WocheScreen({
   weekPlan, mealsData, planMittag, planWE, freezerItems, pantryItems,
-  wishes, wochenchef, members, attendance, proposals, onWeekPlanChange, onWishesChange,
-  onAttendanceChange, onPlanConfirm, onProposalsChange,
+  wishes, currentUser, wochenchef, members, attendance, proposals, onWeekPlanChange, onWishesChange,
+  onAttendanceChange, onPlanConfirm, onProposalsChange, onWochenchefChange,
 }: Props) {
   const personNames: Record<Chef, string> = Object.fromEntries(
     (members.length ? members : DEFAULT_MEMBERS).map(m => [m.id, m.name])
@@ -99,6 +101,7 @@ export default function WocheScreen({
   const [editMealKey, setEditMealKey] = useState<string | null>(null)
   const [mealSubMode, setMealSubMode] = useState<'manual' | 'pantry' | null>(null)
   const [manualDishInput, setManualDishInput] = useState('')
+  const [wochenchefPickerOpen, setWochenchefPickerOpen] = useState(false)
 
   function closeMealPanel() {
     setEditMealKey(null)
@@ -124,7 +127,7 @@ export default function WocheScreen({
     const currentEntry = weekPlan.find(e => e.tag === tag && e.slot === slot)
     if (!currentEntry) return
     closeMealPanel()
-    if (wochenchef === currentEntry.chef) {
+    if (currentUser === wochenchef) {
       const newPlan = weekPlan.map(e => e.tag === tag && e.slot === slot ? { ...e, chef } : e)
       await onWeekPlanChange(newPlan, mealsData)
     } else {
@@ -132,8 +135,8 @@ export default function WocheScreen({
         id: crypto.randomUUID(),
         tag,
         slot,
-        vonChef: wochenchef,
-        fuerChef: currentEntry.chef,
+        vonChef: currentUser,
+        fuerChef: wochenchef,
         entry: { ...currentEntry, chef },
         createdAt: new Date().toISOString(),
       }])
@@ -152,17 +155,19 @@ export default function WocheScreen({
     await onProposalsChange(proposals.filter(p => p.id !== id))
   }
 
-  function renderProposals(tag: string) {
-    const dayProposals = proposals.filter(p => p.fuerChef === wochenchef && p.tag === tag)
-    if (dayProposals.length === 0) return null
+  function renderAllProposals() {
+    if (currentUser !== wochenchef || proposals.length === 0) return null
     return (
-      <div style={{ padding: '4px 12px 2px' }}>
-        {dayProposals.map(p => {
-          const slot = p.slot === 'Mittag' ? '🌞 Mittag' : '🌙 Abend'
+      <div style={{ marginBottom: 12 }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: '#92400E', marginBottom: 6 }}>
+          📬 Offene Vorschläge ({proposals.length})
+        </div>
+        {proposals.map(p => {
+          const slotLabel = p.slot === 'Mittag' ? '🌞 Mittag' : '🌙 Abend'
           return (
             <div key={p.id} style={{ background: '#FFFBEB', border: '1px solid #FCD34D', borderRadius: 8, padding: '8px 10px', marginBottom: 6 }}>
               <div style={{ fontSize: 10, color: '#92400E', fontWeight: 700, marginBottom: 3 }}>
-                {personNames[p.vonChef]} schlägt vor · {slot}
+                {personNames[p.vonChef]} · {p.tag} {slotLabel}
               </div>
               <div style={{ fontSize: 12, color: '#111', marginBottom: 6 }}>
                 {p.entry.emoji} {p.entry.gericht} · Koch: {personNames[p.entry.chef]}
@@ -546,6 +551,7 @@ export default function WocheScreen({
           <h1>📋 Wochenplan</h1>
         </div>
         <div className="content">
+          {renderAllProposals()}
           {plannedDays.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '40px 0' }}>
               <div style={{ fontSize: 36, marginBottom: 10 }}>🐀</div>
@@ -562,9 +568,6 @@ export default function WocheScreen({
                   <div className="week-plan-head" style={{ display: 'flex', alignItems: 'center' }}>
                     <span style={{ flex: 1, fontSize: 11, fontWeight: 700, color: tag === today ? '#085041' : '#aaa', textTransform: 'uppercase', letterSpacing: '.5px' }}>
                       {tag}
-                      {proposals.some(p => p.fuerChef === wochenchef && p.tag === tag) && (
-                        <span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: '50%', background: '#F59E0B', marginLeft: 5, verticalAlign: 'middle' }} />
-                      )}
                     </span>
                     {tag === today && <span className="pill today" style={{ marginLeft: 6 }}>Heute</span>}
                     {!isLoading && !isPending && (
@@ -579,7 +582,6 @@ export default function WocheScreen({
                   </div>
 
                   <AttendanceRow tag={tag} attendance={attendance} members={members} onSave={handleAttendanceSave} />
-                  {renderProposals(tag)}
 
                   {isLoading && (
                     <div style={{ padding: '10px 12px', fontSize: 12, color: '#aaa' }}>🐀 Rémy schlägt vor…</div>
@@ -781,15 +783,39 @@ export default function WocheScreen({
       )}
       <div className="topbar"><h1>🍽 FamilyPlate</h1></div>
       <div className="content">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, paddingBottom: 10, borderBottom: '1px solid #f0f0f0' }}>
+          <span style={{ fontSize: 11, color: '#aaa', flex: 1 }}>Wochenchef</span>
+          <button
+            onClick={() => setWochenchefPickerOpen(prev => !prev)}
+            style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '4px 10px', borderRadius: 8, border: `1px solid ${CFG[wochenchef]?.c ?? '#ddd'}`, background: CFG[wochenchef]?.bg ?? 'white', color: CFG[wochenchef]?.c ?? '#333', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+          >
+            {personNames[wochenchef]}
+            <span style={{ fontSize: 9, opacity: 0.7 }}>{wochenchefPickerOpen ? '▴' : '▾'}</span>
+          </button>
+        </div>
+        {wochenchefPickerOpen && (
+          <div style={{ display: 'flex', gap: 4, marginBottom: 10 }}>
+            {(Object.keys(personNames) as Chef[]).map(c => {
+              const cfg = CFG[c] ?? CFG.MA
+              const active = wochenchef === c
+              return (
+                <button
+                  key={c}
+                  onClick={async () => { await onWochenchefChange(c); setWochenchefPickerOpen(false) }}
+                  style={{ flex: 1, padding: '7px 4px', borderRadius: 8, border: `1px solid ${active ? cfg.c : '#ddd'}`, background: active ? cfg.bg : 'white', color: active ? cfg.c : '#999', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}
+                >
+                  {personNames[c]}
+                </button>
+              )
+            })}
+          </div>
+        )}
+        {renderAllProposals()}
         <div className="day-lbl">
           Heute · <span style={{ color: '#111', fontWeight: 700 }}>{today}</span>
           <span className="pill today" style={{ marginLeft: 6 }}>Heute</span>
-          {proposals.some(p => p.fuerChef === wochenchef && p.tag === today) && (
-            <span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: '50%', background: '#F59E0B', marginLeft: 6, verticalAlign: 'middle' }} />
-          )}
         </div>
         <AttendanceRow tag={today} attendance={attendance} members={members} onSave={handleAttendanceSave} />
-        {renderProposals(today)}
         {planMittag && renderHomeSlot(today, 'Mittag', todayMittag)}
         {renderHomeSlot(today, 'Abend', todayAbend)}
         <WishesSection
@@ -817,14 +843,8 @@ export default function WocheScreen({
           const nextAbend = getSlot(weekPlan, tag, 'Abend')
           return (
           <div key={tag}>
-            <div className="day-lbl" style={{ marginTop: 16 }}>
-              {tag}
-              {proposals.some(p => p.fuerChef === wochenchef && p.tag === tag) && (
-                <span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: '50%', background: '#F59E0B', marginLeft: 6, verticalAlign: 'middle' }} />
-              )}
-            </div>
+            <div className="day-lbl" style={{ marginTop: 16 }}>{tag}</div>
             <AttendanceRow tag={tag} attendance={attendance} members={members} onSave={handleAttendanceSave} />
-            {renderProposals(tag)}
             {planMittag && renderHomeSlot(tag, 'Mittag', nextMittag)}
             {renderHomeSlot(tag, 'Abend', nextAbend)}
             <WishesSection

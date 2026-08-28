@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
-import { loadWeekPlan, saveWeekPlan, saveAttendance, saveShoppingList, saveProposals } from '../lib/mealLogic'
+import { loadWeekPlan, saveWeekPlan, saveAttendance, saveShoppingList, saveProposals, saveWochenchef } from '../lib/mealLogic'
 import { loadFreezerItems, loadPantryItems } from '../lib/freezerLogic'
 import { loadFamilyProfile, saveFamilyProfile, applyChefStats, DEFAULT_MEMBERS } from '../lib/familyLogic'
 import { signOut, onAuthChange } from '../lib/auth'
@@ -30,6 +30,7 @@ export default function FamilyPlateApp() {
   const [wishes, setWishes] = useState<Wish[]>([])
   const [shoppingList, setShoppingList] = useState<ShoppingItem[]>([])
   const [proposals, setProposals] = useState<ChangeProposal[]>([])
+  const [activeWochenchef, setActiveWochenchef] = useState<Chef>('PA')
   const [activeTab, setActiveTab] = useState<Tab>('woche')
 
   useEffect(() => {
@@ -52,6 +53,7 @@ export default function FamilyPlateApp() {
         setShoppingList([])
         setFamilyProfile(null)
         setProposals([])
+        setActiveWochenchef('PA')
       }
     })
   }, [])
@@ -59,13 +61,14 @@ export default function FamilyPlateApp() {
   useEffect(() => {
     if (!currentUser) return
     Promise.all([loadWeekPlan(), loadFreezerItems(), loadPantryItems(), loadFamilyProfile()])
-      .then(([{ plan, mealsData: md, wishes: w, attendance: att, shoppingList: sl, proposals: pr }, freezer, pantry, profile]) => {
+      .then(([{ plan, mealsData: md, wishes: w, attendance: att, shoppingList: sl, proposals: pr, wochenchef: wc }, freezer, pantry, profile]) => {
         setWeekPlan(plan)
         setMealsData(md)
         setWishes(w)
         setAttendance(att)
         setShoppingList(sl)
         setProposals(pr)
+        setActiveWochenchef(wc)
         setFreezerItems(freezer)
         setPantryItems(pantry)
         setFamilyProfile(profile)
@@ -96,6 +99,11 @@ export default function FamilyPlateApp() {
   async function handleProposalsChange(newProposals: ChangeProposal[]) {
     setProposals(newProposals)
     await saveProposals(newProposals)
+  }
+
+  async function handleWochenchefChange(chef: Chef) {
+    setActiveWochenchef(chef)
+    await saveWochenchef(chef)
   }
 
   async function handleShoppingListChange(list: ShoppingItem[]) {
@@ -164,7 +172,8 @@ export default function FamilyPlateApp() {
             freezerItems={freezerItems}
             pantryItems={pantryItems}
             wishes={wishes}
-            wochenchef={currentUser}
+            currentUser={currentUser}
+            wochenchef={activeWochenchef}
             members={members}
             attendance={attendance}
             proposals={proposals}
@@ -173,6 +182,7 @@ export default function FamilyPlateApp() {
             onAttendanceChange={handleAttendanceChange}
             onPlanConfirm={handlePlanConfirm}
             onProposalsChange={handleProposalsChange}
+            onWochenchefChange={handleWochenchefChange}
           />
         )}
         {activeTab === 'gefriertruhe' && (
@@ -207,7 +217,12 @@ export default function FamilyPlateApp() {
       <nav className="nav">
         <button className={`nav-tab${activeTab === 'woche' ? ' active' : ''}`} onClick={() => handleTabChange('woche')}>
           <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" /></svg>
-          <span>Woche</span>
+          <span style={{ position: 'relative' }}>
+            Woche
+            {proposals.length > 0 && activeWochenchef === currentUser && (
+              <span style={{ position: 'absolute', top: -1, right: -8, width: 6, height: 6, borderRadius: '50%', background: '#F59E0B', display: 'inline-block' }} />
+            )}
+          </span>
         </button>
         <button className={`nav-tab${activeTab === 'gefriertruhe' ? ' active' : ''}`} onClick={() => handleTabChange('gefriertruhe')}>
           <svg viewBox="0 0 24 24"><path d="M20 7H4a1 1 0 0 0-1 1v11a1 1 0 0 0 1 1h16a1 1 0 0 0 1-1V8a1 1 0 0 0-1-1z" /><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2" /><line x1="12" y1="12" x2="12" y2="16" /><line x1="10" y1="14" x2="14" y2="14" /></svg>
