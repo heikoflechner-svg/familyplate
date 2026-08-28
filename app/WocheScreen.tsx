@@ -94,22 +94,32 @@ export default function WocheScreen({
 
   const [chefPickerKey, setChefPickerKey] = useState<string | null>(null)
   const [editMealKey, setEditMealKey] = useState<string | null>(null)
+  const [mealSubMode, setMealSubMode] = useState<'manual' | 'pantry' | null>(null)
+  const [manualDishInput, setManualDishInput] = useState('')
+
+  function closeMealPanel() {
+    setEditMealKey(null)
+    setChefPickerKey(null)
+    setMealSubMode(null)
+    setManualDishInput('')
+  }
 
   function toggleEditMeal(key: string) {
-    setEditMealKey(prev => prev === key ? null : key)
+    if (editMealKey === key) { closeMealPanel(); return }
+    setEditMealKey(key)
     setChefPickerKey(null)
+    setMealSubMode(null)
+    setManualDishInput('')
   }
 
   function changePendingChef(tag: string, slot: WochenSlot, chef: Chef) {
     setPendingPlan(prev => prev.map(e => e.tag === tag && e.slot === slot ? { ...e, chef } : e))
-    setChefPickerKey(null)
-    setEditMealKey(null)
+    closeMealPanel()
   }
 
   async function changeActiveChef(tag: string, slot: WochenSlot, chef: Chef) {
     const newPlan = weekPlan.map(e => e.tag === tag && e.slot === slot ? { ...e, chef } : e)
-    setChefPickerKey(null)
-    setEditMealKey(null)
+    closeMealPanel()
     await onWeekPlanChange(newPlan, mealsData)
   }
 
@@ -132,9 +142,23 @@ export default function WocheScreen({
     setSaving(false)
   }
 
+  function applyManualDish(tag: string, slot: WochenSlot, name: string) {
+    if (!name.trim()) return
+    setPendingPlan(prev => prev.map(e =>
+      e.tag === tag && e.slot === slot ? { ...e, gericht: name.trim(), emoji: '🍽' } : e
+    ))
+    closeMealPanel()
+  }
+
+  function applyStockItem(tag: string, slot: WochenSlot, name: string, emoji: string) {
+    setPendingPlan(prev => prev.map(e =>
+      e.tag === tag && e.slot === slot ? { ...e, gericht: name, emoji } : e
+    ))
+    closeMealPanel()
+  }
+
   async function replanPendingDay(tag: string) {
-    setEditMealKey(null)
-    setChefPickerKey(null)
+    closeMealPanel()
     setDayLoading(tag)
     try {
       const { plan: result, mealsData: newMeals } = await generateWeekPlan({
@@ -216,8 +240,7 @@ export default function WocheScreen({
       })
       setPendingPlan(newPlan)
       setPendingPlanMeals(newMeals)
-      setEditMealKey(null)
-      setChefPickerKey(null)
+      closeMealPanel()
       setPlanState('results')
     } catch {
       setError('Rémy konnte nicht planen. Bitte erneut versuchen.')
@@ -351,6 +374,7 @@ export default function WocheScreen({
                     const key = `${tag}-${slot}`
                     const c = CFG[e.chef] ?? CFG.MA
                     const isEditing = editMealKey === key
+                    const stockItems = [...freezerItems, ...pantryItems]
                     return (
                       <div key={slot}>
                         <div style={{ padding: '8px 12px', borderTop: '1px solid #f5f5f5', display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -371,12 +395,57 @@ export default function WocheScreen({
                           <div style={{ background: '#f9f9f9', borderTop: '1px solid #eee', padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
                             <div style={{ fontSize: 11, fontWeight: 600, color: '#aaa' }}>Koch ändern</div>
                             <ChefPicker current={e.chef} onSelect={chef => changePendingChef(tag, slot, chef)} personNames={personNames} members={members} />
-                            <button
-                              onClick={() => replanPendingDay(tag)}
-                              style={{ padding: '7px 12px', border: '1px solid #ddd', borderRadius: 8, background: 'white', cursor: 'pointer', fontSize: 12, color: '#555', textAlign: 'left' }}
-                            >
-                              ↺ Rémy neu vorschlagen (ganzer Tag)
-                            </button>
+                            <div style={{ display: 'flex', gap: 4 }}>
+                              <button
+                                onClick={() => replanPendingDay(tag)}
+                                style={{ flex: 1, padding: '6px 4px', border: '1px solid #ddd', borderRadius: 8, background: 'white', cursor: 'pointer', fontSize: 11, color: '#555' }}
+                              >↺ Rémy</button>
+                              <button
+                                onClick={() => { if (mealSubMode === 'manual') setMealSubMode(null); else { setMealSubMode('manual'); setManualDishInput('') } }}
+                                style={{ flex: 1, padding: '6px 4px', border: `1px solid ${mealSubMode === 'manual' ? '#1D9E75' : '#ddd'}`, borderRadius: 8, background: mealSubMode === 'manual' ? '#E1F5EE' : 'white', cursor: 'pointer', fontSize: 11, color: mealSubMode === 'manual' ? '#0F6E56' : '#555' }}
+                              >✏️ Eigenes</button>
+                              <button
+                                onClick={() => setMealSubMode(prev => prev === 'pantry' ? null : 'pantry')}
+                                style={{ flex: 1, padding: '6px 4px', border: `1px solid ${mealSubMode === 'pantry' ? '#1D9E75' : '#ddd'}`, borderRadius: 8, background: mealSubMode === 'pantry' ? '#E1F5EE' : 'white', cursor: 'pointer', fontSize: 11, color: mealSubMode === 'pantry' ? '#0F6E56' : '#555' }}
+                              >❄️ Vorrat</button>
+                            </div>
+                            {mealSubMode === 'manual' && (
+                              <div style={{ display: 'flex', gap: 6 }}>
+                                <input
+                                  type="text"
+                                  value={manualDishInput}
+                                  onChange={ev => setManualDishInput(ev.target.value)}
+                                  onKeyDown={ev => ev.key === 'Enter' && !!manualDishInput.trim() && applyManualDish(tag, slot, manualDishInput)}
+                                  placeholder="Gerichtsname…"
+                                  autoFocus
+                                  style={{ flex: 1, fontSize: 12, padding: '6px 10px', border: '1px solid #ddd', borderRadius: 6, outline: 'none' }}
+                                />
+                                <button
+                                  onClick={() => applyManualDish(tag, slot, manualDishInput)}
+                                  disabled={!manualDishInput.trim()}
+                                  style={{ padding: '6px 12px', border: 'none', borderRadius: 6, background: '#1D9E75', color: 'white', fontSize: 12, fontWeight: 600, cursor: manualDishInput.trim() ? 'pointer' : 'default', opacity: manualDishInput.trim() ? 1 : 0.4 }}
+                                >✓</button>
+                              </div>
+                            )}
+                            {mealSubMode === 'pantry' && (
+                              stockItems.length === 0 ? (
+                                <div style={{ fontSize: 11, color: '#bbb', textAlign: 'center', padding: '4px 0' }}>Nichts im Vorrat</div>
+                              ) : (
+                                <div style={{ maxHeight: 120, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 3 }}>
+                                  {stockItems.map(item => (
+                                    <button
+                                      key={item.id}
+                                      onClick={() => applyStockItem(tag, slot, item.name, item.emoji)}
+                                      style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 8px', border: '1px solid #eee', borderRadius: 6, background: 'white', cursor: 'pointer', textAlign: 'left' }}
+                                    >
+                                      <span style={{ fontSize: 14 }}>{item.emoji}</span>
+                                      <span style={{ flex: 1, fontSize: 12, color: '#333' }}>{item.name}</span>
+                                      <span style={{ fontSize: 10, color: '#bbb' }}>{item.menge}</span>
+                                    </button>
+                                  ))}
+                                </div>
+                              )
+                            )}
                           </div>
                         )}
                       </div>
@@ -390,7 +459,7 @@ export default function WocheScreen({
                 </button>
                 <button
                   className="btn"
-                  onClick={() => { setPlanState('options'); setEditMealKey(null); setChefPickerKey(null) }}
+                  onClick={() => { setPlanState('options'); closeMealPanel() }}
                   style={{ width: 'auto', padding: '13px 16px' }}
                 >
                   ✕
