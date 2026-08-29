@@ -361,15 +361,17 @@ export default function WocheScreen({
     for (const wishId of chefErgaenzungIds) {
       const wish = wishes.find(w => w.id === wishId)
       if (!wish || wish.type !== 'ergaenzung') continue
-      newItems.push({
-        id: crypto.randomUUID(),
-        name: wish.text,
-        menge: '',
-        kategorie: 'Sonstiges',
-        erledigt: false,
-        tag: wish.tag,
-        slot: wish.slot,
-      })
+      for (const part of wish.text.split(',').map(s => s.trim()).filter(Boolean)) {
+        newItems.push({
+          id: crypto.randomUUID(),
+          name: part,
+          menge: '',
+          kategorie: 'Sonstiges',
+          erledigt: false,
+          tag: wish.tag,
+          slot: wish.slot,
+        })
+      }
     }
 
     await onWeekPlanChange(finalPlan, mealsData)
