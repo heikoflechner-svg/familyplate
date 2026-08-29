@@ -94,7 +94,26 @@ export default function WocheScreen({
   const [editMealKey, setEditMealKey] = useState<string | null>(null)
   const [mealSubMode, setMealSubMode] = useState<'manual' | 'pantry' | null>(null)
   const [manualDishInput, setManualDishInput] = useState('')
-  const [wochenchefPickerOpen, setWochenchefPickerOpen] = useState(false) // unused after refactor, kept for safety
+  const [personsEditKey, setPersonsEditKey] = useState<string | null>(null)
+
+  function getSlotPersonen(tag: string, slot: WochenSlot): number {
+    const memberCount = (members.length ? members : DEFAULT_MEMBERS).length
+    const day = attendance.find(a => a.tag === tag)
+    if (!day) return memberCount
+    if (slot === 'Mittag' && day.mittagPersonen != null) return day.mittagPersonen
+    if (slot === 'Abend' && day.abendPersonen != null) return day.abendPersonen
+    return day.anwesend.length + day.gaeste
+  }
+
+  async function handleSlotPersonenSave(tag: string, slot: WochenSlot, total: number) {
+    const chefs = (members.length ? members : DEFAULT_MEMBERS).map(m => m.id) as Chef[]
+    const current = attendance.find(a => a.tag === tag) ?? { tag, anwesend: chefs, gaeste: 0 }
+    const updated = slot === 'Mittag'
+      ? { ...current, mittagPersonen: total }
+      : { ...current, abendPersonen: total }
+    await onAttendanceChange([...attendance.filter(a => a.tag !== tag), updated])
+    setPersonsEditKey(null)
+  }
 
   function closeMealPanel() {
     setEditMealKey(null)
@@ -606,24 +625,20 @@ export default function WocheScreen({
               const isLoading = dayLoading === tag
               const isPending = pendingDay?.tag === tag
               return (
-                <div key={tag} className="week-plan-row">
-                  <div className="week-plan-head" style={{ display: 'flex', alignItems: 'center' }}>
-                    <span style={{ flex: 1, fontSize: 11, fontWeight: 700, color: tag === today ? '#085041' : '#aaa', textTransform: 'uppercase', letterSpacing: '.5px' }}>
+                <div key={tag} style={{ borderRadius: 12, border: '1px solid #e5e7eb', marginBottom: 14, overflow: 'hidden' }}>
+                  <div style={{ padding: '8px 12px', background: '#f9fafb', borderBottom: '1px solid #f0f0f0', display: 'flex', alignItems: 'center' }}>
+                    <span style={{ flex: 1, fontSize: 12, fontWeight: 700, color: tag === today ? '#085041' : '#666', textTransform: 'uppercase', letterSpacing: '.5px' }}>
                       {tag}
                     </span>
-                    {tag === today && <span className="pill today" style={{ marginLeft: 6 }}>Heute</span>}
+                    {tag === today && <span className="pill today">Heute</span>}
                     {!isLoading && !isPending && (
                       <button
                         onClick={() => replanDay(tag)}
                         title="Rémy neu vorschlagen"
                         style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 14, color: '#ccc', padding: '0 0 0 8px', lineHeight: 1 }}
-                      >
-                        ↺
-                      </button>
+                      >↺</button>
                     )}
                   </div>
-
-                  <AttendanceRow tag={tag} attendance={attendance} members={members} onSave={handleAttendanceSave} canEdit={!planConfirmed || currentUser === wochenchef} wochenchef={wochenchef} personNames={personNames} onWochenchefChange={onWochenchefChange} />
 
                   {isLoading && (
                     <div style={{ padding: '10px 12px', fontSize: 12, color: '#aaa' }}>🐀 Rémy schlägt vor…</div>
@@ -640,13 +655,7 @@ export default function WocheScreen({
                             <div style={{ padding: '7px 12px', borderTop: '1px solid #f5f5f5', display: 'flex', alignItems: 'center', gap: 8 }}>
                               <SlotPill slot={e.slot} />
                               <span style={{ flex: 1, fontSize: 12, fontWeight: 500, color: '#111' }}>{e.emoji} {e.gericht}</span>
-                              <button
-                                onClick={() => setChefPickerKey(chefPickerKey === key ? null : key)}
-                                className="chef-b"
-                                style={{ background: c.bg, color: c.c, border: 'none', cursor: 'pointer' }}
-                              >
-                                {e.chef}
-                              </button>
+                              <button onClick={() => setChefPickerKey(chefPickerKey === key ? null : key)} className="chef-b" style={{ background: c.bg, color: c.c, border: 'none', cursor: 'pointer' }}>{e.chef}</button>
                             </div>
                             {chefPickerKey === key && (
                               <ChefPicker current={e.chef} onSelect={chef => changePendingDayChef(e.slot, chef)} personNames={personNames} members={members} />
@@ -655,19 +664,10 @@ export default function WocheScreen({
                         )
                       })}
                       <div style={{ display: 'flex', gap: 6, padding: '8px 12px' }}>
-                        <button
-                          onClick={confirmPendingDay}
-                          disabled={saving}
-                          style={{ flex: 1, padding: '7px', background: '#1D9E75', color: 'white', border: 'none', borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer', opacity: saving ? 0.6 : 1 }}
-                        >
+                        <button onClick={confirmPendingDay} disabled={saving} style={{ flex: 1, padding: '7px', background: '#1D9E75', color: 'white', border: 'none', borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer', opacity: saving ? 0.6 : 1 }}>
                           {saving ? '⏳…' : `✅ Bestätigen (${personNames[wochenchef]})`}
                         </button>
-                        <button
-                          onClick={() => setPendingDay(null)}
-                          style={{ padding: '7px 12px', background: 'white', border: '1px solid #ddd', borderRadius: 6, fontSize: 12, cursor: 'pointer', color: '#666' }}
-                        >
-                          ✕
-                        </button>
+                        <button onClick={() => setPendingDay(null)} style={{ padding: '7px 12px', background: 'white', border: '1px solid #ddd', borderRadius: 6, fontSize: 12, cursor: 'pointer', color: '#666' }}>✕</button>
                       </div>
                     </>
                   )}
@@ -676,74 +676,61 @@ export default function WocheScreen({
                     const slot = (i === 0 ? 'Mittag' : 'Abend') as WochenSlot
                     if (!e) return null
                     const key = `${tag}-${slot}`
-                    const c = CFG[e.chef] ?? CFG.MA
                     const isEditing = editMealKey === key
+                    const isPersonsEdit = personsEditKey === key
                     const canEdit = !planConfirmed || currentUser === wochenchef
+                    const slotPersonen = getSlotPersonen(tag, slot)
                     return (
-                      <div key={slot}>
-                        <div style={{ padding: '7px 12px', borderTop: '1px solid #f5f5f5', display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <div key={slot} style={{ borderTop: '1px solid #f0f0f0' }}>
+                        <div style={{ padding: '8px 12px 3px', display: 'flex', alignItems: 'center', gap: 6 }}>
                           <SlotPill slot={slot} />
                           <span
-                            onClick={() => mealsData[e.gericht] && setSelectedMealName(e.gericht)}
-                            style={{ flex: 1, fontSize: 12, fontWeight: 500, color: '#111', cursor: mealsData[e.gericht] ? 'pointer' : 'default' }}
-                          >{e.emoji} {e.gericht}{mealsData[e.gericht] ? <span style={{ fontSize: 10, color: '#bbb', marginLeft: 4 }}>›</span> : null}</span>
-                          {canEdit && (
-                            <button
-                              onClick={() => toggleEditMeal(key)}
-                              title="Gericht ändern"
-                              style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 13, color: isEditing ? '#1D9E75' : '#ccc', lineHeight: 1, padding: '0 2px' }}
-                            >✏️</button>
-                          )}
-                          <div className="chef-b" style={{ background: c.bg, color: c.c }}>{e.chef}</div>
+                            onClick={canEdit ? () => toggleEditMeal(key) : undefined}
+                            style={{ fontSize: 11, color: '#555', cursor: canEdit ? 'pointer' : 'default', textDecoration: canEdit ? 'underline' : 'none', textDecorationStyle: 'dashed', textDecorationColor: '#bbb' }}
+                          >{personNames[e.chef]}</span>
+                          <span style={{ fontSize: 10, color: '#ddd' }}>·</span>
+                          <span
+                            onClick={canEdit ? () => setPersonsEditKey(isPersonsEdit ? null : key) : undefined}
+                            style={{ fontSize: 11, color: '#555', cursor: canEdit ? 'pointer' : 'default', textDecoration: canEdit ? 'underline' : 'none', textDecorationStyle: 'dashed', textDecorationColor: '#bbb' }}
+                          >{slotPersonen} {slotPersonen === 1 ? 'Person' : 'Personen'}</span>
                         </div>
                         {isEditing && canEdit && (
-                          <div style={{ background: '#f9f9f9', borderTop: '1px solid #eee', padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-                            <div style={{ fontSize: 11, fontWeight: 600, color: '#aaa' }}>Koch ändern</div>
+                          <div style={{ padding: '4px 12px 8px', background: '#f9f9f9' }}>
                             <ChefPicker current={e.chef} onSelect={chef => changeActiveChef(tag, slot, chef)} personNames={personNames} members={members} />
                             {planConfirmed && currentUser === wochenchef && (
-                              <button
-                                onClick={() => replanDay(tag)}
-                                disabled={dayLoading === tag}
-                                style={{ padding: '7px 12px', border: '1px solid #ddd', borderRadius: 8, background: 'white', cursor: 'pointer', fontSize: 12, color: '#555', textAlign: 'left' }}
-                              >
+                              <button onClick={() => replanDay(tag)} disabled={dayLoading === tag} style={{ padding: '6px 12px', border: '1px solid #ddd', borderRadius: 8, background: 'white', cursor: 'pointer', fontSize: 12, color: '#555', textAlign: 'left', width: '100%', marginTop: 4 }}>
                                 ↺ Rémy neu vorschlagen (ganzer Tag)
                               </button>
                             )}
                           </div>
                         )}
+                        {isPersonsEdit && canEdit && (
+                          <PersonsEditor tag={tag} slot={slot} initial={slotPersonen} onSave={handleSlotPersonenSave} />
+                        )}
+                        <div
+                          onClick={() => mealsData[e.gericht] ? setSelectedMealName(e.gericht) : undefined}
+                          style={{ padding: '3px 12px 10px', display: 'flex', alignItems: 'center', gap: 8, cursor: mealsData[e.gericht] ? 'pointer' : 'default' }}
+                        >
+                          <span style={{ fontSize: 18 }}>{e.emoji}</span>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontSize: 13, fontWeight: 700, color: '#111' }}>
+                              {e.gericht}{mealsData[e.gericht] ? <span style={{ fontSize: 10, color: '#bbb', marginLeft: 4 }}>›</span> : null}
+                            </div>
+                            <div style={{ fontSize: 11, color: '#aaa' }}>{e.minuten} min</div>
+                          </div>
+                        </div>
                         <SlotWunschPanel
-                          tag={tag}
-                          slot={slot}
-                          wishes={wishes}
-                          personNames={personNames}
-                          originalEntry={e}
-                          isWochenchef={currentUser === wochenchef}
-                          planConfirmed={planConfirmed}
-                          selectedAltId={chefAltSelection[`${tag}-${slot}`] ?? 'original'}
-                          checkedErgIds={chefErgaenzungIds}
+                          tag={tag} slot={slot} wishes={wishes} personNames={personNames} originalEntry={e}
+                          isWochenchef={currentUser === wochenchef} planConfirmed={planConfirmed}
+                          selectedAltId={chefAltSelection[`${tag}-${slot}`] ?? 'original'} checkedErgIds={chefErgaenzungIds}
                           onSelectAlt={(id) => setChefAltSelection(prev => ({ ...prev, [`${tag}-${slot}`]: id }))}
-                          onToggleErg={(wishId) => setChefErgaenzungIds(prev => {
-                            const next = new Set(prev)
-                            next.has(wishId) ? next.delete(wishId) : next.add(wishId)
-                            return next
-                          })}
+                          onToggleErg={(wishId) => setChefErgaenzungIds(prev => { const next = new Set(prev); next.has(wishId) ? next.delete(wishId) : next.add(wishId); return next })}
                         />
                         <WishesSection
-                          tag={tag}
-                          wishes={wishes}
-                          freezerItems={freezerItems}
-                          pantryItems={pantryItems}
-                          personNames={personNames}
-                          planMittag={planMittag}
-                          lockedSlot={slot}
-                          showExisting={false}
-                          isOpen={wishFormKey === `${tag}-${slot}`}
-                          initialPerson={currentUser}
-                          familyPrompt={familyPrompt}
-                          onOpen={() => openWishForm(tag, slot)}
-                          onClose={closeWishForm}
-                          onSubmitWish={handleWishSubmit}
-                          onRemove={removeWish}
+                          tag={tag} wishes={wishes} freezerItems={freezerItems} pantryItems={pantryItems}
+                          personNames={personNames} planMittag={planMittag} lockedSlot={slot} showExisting={false}
+                          isOpen={wishFormKey === `${tag}-${slot}`} initialPerson={currentUser} familyPrompt={familyPrompt}
+                          onOpen={() => openWishForm(tag, slot)} onClose={closeWishForm} onSubmitWish={handleWishSubmit} onRemove={removeWish}
                         />
                       </div>
                     )
@@ -790,71 +777,62 @@ export default function WocheScreen({
   function renderHomeSlot(tag: string, slot: WochenSlot, entry: WeekPlanEntry | null) {
     if (!entry) {
       return (
-        <div key={slot} className="slot-empty">
+        <div key={slot} style={{ padding: '10px 12px', borderTop: '1px solid #f0f0f0', display: 'flex', alignItems: 'center', gap: 8 }}>
           <SlotPill slot={slot} />
-          <span style={{ fontSize: 12 }}>noch nicht geplant</span>
+          <span style={{ fontSize: 12, color: '#bbb' }}>noch nicht geplant</span>
         </div>
       )
     }
     const key = `${tag}-${slot}`
-    const c = CFG[entry.chef] ?? CFG.MA
     const isEditing = editMealKey === key
+    const isPersonsEdit = personsEditKey === key
     const hasRecipe = !!mealsData[entry.gericht]
     const canEdit = !planConfirmed || currentUser === wochenchef
+    const slotPersonen = getSlotPersonen(tag, slot)
     return (
-      <div key={slot}>
-        <div style={{ padding: '10px 12px', borderRadius: 12, border: '1px solid #eee', marginBottom: 6, background: '#fff', display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ fontSize: 20 }}>{entry.emoji}</span>
+      <div key={slot} style={{ borderTop: '1px solid #f0f0f0' }}>
+        <div style={{ padding: '8px 12px 3px', display: 'flex', alignItems: 'center', gap: 6 }}>
           <SlotPill slot={slot} />
-          <div
-            style={{ flex: 1, cursor: hasRecipe ? 'pointer' : 'default' }}
-            onClick={hasRecipe ? () => setSelectedMealName(entry.gericht) : undefined}
-          >
-            <div style={{ fontSize: 13, fontWeight: 600, color: '#111' }}>
-              {entry.gericht}
-              {hasRecipe && <span style={{ fontSize: 11, color: '#bbb', marginLeft: 4 }}>›</span>}
-            </div>
-            <div style={{ fontSize: 11, color: '#888' }}>{entry.minuten} min</div>
-          </div>
-          {canEdit && (
-            <button
-              onClick={() => toggleEditMeal(key)}
-              title="Gericht ändern"
-              style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 14, color: isEditing ? '#1D9E75' : '#bbb', lineHeight: 1, padding: '0 4px' }}
-            >✏️</button>
-          )}
-          <div className="chef-b" style={{ background: c.bg, color: c.c }}>{entry.chef}</div>
+          <span
+            onClick={canEdit ? () => toggleEditMeal(key) : undefined}
+            style={{ fontSize: 11, color: '#555', cursor: canEdit ? 'pointer' : 'default', textDecoration: canEdit ? 'underline' : 'none', textDecorationStyle: 'dashed', textDecorationColor: '#bbb' }}
+          >{personNames[entry.chef]}</span>
+          <span style={{ fontSize: 10, color: '#ddd' }}>·</span>
+          <span
+            onClick={canEdit ? () => setPersonsEditKey(isPersonsEdit ? null : key) : undefined}
+            style={{ fontSize: 11, color: '#555', cursor: canEdit ? 'pointer' : 'default', textDecoration: canEdit ? 'underline' : 'none', textDecorationStyle: 'dashed', textDecorationColor: '#bbb' }}
+          >{slotPersonen} {slotPersonen === 1 ? 'Person' : 'Personen'}</span>
         </div>
         {isEditing && canEdit && (
-          <div style={{ background: '#f9f9f9', padding: '10px 12px', marginTop: -8, marginBottom: 6, display: 'flex', flexDirection: 'column', gap: 8, borderRadius: '0 0 12px 12px', border: '1px solid #eee', borderTop: 'none' }}>
-            <div style={{ fontSize: 11, fontWeight: 600, color: '#aaa' }}>Koch ändern</div>
+          <div style={{ padding: '4px 12px 8px', background: '#f9f9f9' }}>
             <ChefPicker current={entry.chef} onSelect={chef => changeActiveChef(tag, slot, chef)} personNames={personNames} members={members} />
             {planConfirmed && currentUser === wochenchef && (
-              <button
-                onClick={() => replanDay(tag)}
-                disabled={dayLoading === tag}
-                style={{ padding: '7px 12px', border: '1px solid #ddd', borderRadius: 8, background: 'white', cursor: 'pointer', fontSize: 12, color: '#555', textAlign: 'left' }}
-              >
+              <button onClick={() => replanDay(tag)} disabled={dayLoading === tag} style={{ padding: '6px 12px', border: '1px solid #ddd', borderRadius: 8, background: 'white', cursor: 'pointer', fontSize: 12, color: '#555', textAlign: 'left', width: '100%', marginTop: 4 }}>
                 ↺ Rémy neu vorschlagen (ganzer Tag)
               </button>
             )}
           </div>
         )}
+        {isPersonsEdit && canEdit && (
+          <PersonsEditor tag={tag} slot={slot} initial={slotPersonen} onSave={handleSlotPersonenSave} />
+        )}
+        <div
+          onClick={hasRecipe ? () => setSelectedMealName(entry.gericht) : undefined}
+          style={{ padding: '3px 12px 10px', display: 'flex', alignItems: 'center', gap: 8, cursor: hasRecipe ? 'pointer' : 'default' }}
+        >
+          <span style={{ fontSize: 18 }}>{entry.emoji}</span>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#111' }}>
+              {entry.gericht}{hasRecipe ? <span style={{ fontSize: 10, color: '#bbb', marginLeft: 4 }}>›</span> : null}
+            </div>
+            <div style={{ fontSize: 11, color: '#aaa' }}>{entry.minuten} min</div>
+          </div>
+        </div>
         <WishesSection
-          tag={tag}
-          wishes={wishes}
-          freezerItems={freezerItems}
-          pantryItems={pantryItems}
-          personNames={personNames}
-          planMittag={planMittag}
-          lockedSlot={slot}
-          isOpen={wishFormKey === `${tag}-${slot}`}
-          initialPerson={currentUser}
-          familyPrompt={familyPrompt}
-          onOpen={() => openWishForm(tag, slot)}
-          onClose={closeWishForm}
-          onSubmitWish={handleWishSubmit}
-          onRemove={removeWish}
+          tag={tag} wishes={wishes} freezerItems={freezerItems} pantryItems={pantryItems}
+          personNames={personNames} planMittag={planMittag} lockedSlot={slot}
+          isOpen={wishFormKey === `${tag}-${slot}`} initialPerson={currentUser} familyPrompt={familyPrompt}
+          onOpen={() => openWishForm(tag, slot)} onClose={closeWishForm} onSubmitWish={handleWishSubmit} onRemove={removeWish}
         />
       </div>
     )
@@ -886,24 +864,26 @@ export default function WocheScreen({
       <div className="topbar"><h1>🍽 FamilyPlate</h1></div>
       <div className="content">
         {renderAllProposals()}
-        <div className="day-lbl">
-          Heute · <span style={{ color: '#111', fontWeight: 700 }}>{today}</span>
-          <span className="pill today" style={{ marginLeft: 6 }}>Heute</span>
+        <div style={{ borderRadius: 12, border: '1px solid #e5e7eb', marginBottom: 14, overflow: 'hidden' }}>
+          <div style={{ padding: '8px 12px', background: '#f0faf5', borderBottom: '1px solid #e0f0e8', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ flex: 1, fontSize: 12, fontWeight: 700, color: '#085041' }}>Heute · {today}</span>
+            <span className="pill today">Heute</span>
+          </div>
+          {planMittag && renderHomeSlot(today, 'Mittag', todayMittag)}
+          {renderHomeSlot(today, 'Abend', todayAbend)}
         </div>
-        <AttendanceRow tag={today} attendance={attendance} members={members} onSave={handleAttendanceSave} canEdit={!planConfirmed || currentUser === wochenchef} wochenchef={wochenchef} personNames={personNames} onWochenchefChange={onWochenchefChange} />
-        {planMittag && renderHomeSlot(today, 'Mittag', todayMittag)}
-        {renderHomeSlot(today, 'Abend', todayAbend)}
 
         {nextDays.map(tag => {
           const nextMittag = getSlot(weekPlan, tag, 'Mittag')
           const nextAbend = getSlot(weekPlan, tag, 'Abend')
           return (
-          <div key={tag}>
-            <div className="day-lbl" style={{ marginTop: 16 }}>{tag}</div>
-            <AttendanceRow tag={tag} attendance={attendance} members={members} onSave={handleAttendanceSave} canEdit={!planConfirmed || currentUser === wochenchef} wochenchef={wochenchef} personNames={personNames} onWochenchefChange={onWochenchefChange} />
-            {planMittag && renderHomeSlot(tag, 'Mittag', nextMittag)}
-            {renderHomeSlot(tag, 'Abend', nextAbend)}
-          </div>
+            <div key={tag} style={{ borderRadius: 12, border: '1px solid #e5e7eb', marginBottom: 14, overflow: 'hidden' }}>
+              <div style={{ padding: '8px 12px', background: '#f9fafb', borderBottom: '1px solid #f0f0f0' }}>
+                <span style={{ fontSize: 12, fontWeight: 700, color: '#444' }}>{tag}</span>
+              </div>
+              {planMittag && renderHomeSlot(tag, 'Mittag', nextMittag)}
+              {renderHomeSlot(tag, 'Abend', nextAbend)}
+            </div>
           )
         })}
 
@@ -927,118 +907,32 @@ function SlotPill({ slot }: { slot: WochenSlot }) {
   return (
     <span style={{
       fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 5, whiteSpace: 'nowrap',
-      background: slot === 'Mittag' ? '#FEF3C7' : '#EDE9FE',
-      color: slot === 'Mittag' ? '#92400E' : '#5B21B6',
+      background: slot === 'Mittag' ? '#FEF3C7' : '#FFF1EE',
+      color: slot === 'Mittag' ? '#92400E' : '#C2410C',
     }}>
       {slot}
     </span>
   )
 }
 
-function AttendanceRow({
-  tag, attendance, members, onSave, canEdit = true, wochenchef, personNames, onWochenchefChange,
-}: {
-  tag: string
-  attendance: DayAttendance[]
-  members: FamilyMember[]
-  onSave: (updated: DayAttendance) => void
-  canEdit?: boolean
-  wochenchef: Chef
-  personNames: Record<Chef, string>
-  onWochenchefChange?: (chef: Chef) => void
+function PersonsEditor({ tag, slot, initial, onSave }: {
+  tag: string; slot: WochenSlot; initial: number; onSave: (tag: string, slot: WochenSlot, total: number) => void
 }) {
-  const chefs = members.map(m => m.id) as Chef[]
-  const current = attendance.find(a => a.tag === tag) ?? { tag, anwesend: chefs, gaeste: 0 }
-  const totalEsser = current.anwesend.length + current.gaeste
-
-  const [open, setOpen] = useState(false)
-  const [localTotal, setLocalTotal] = useState(totalEsser)
-
-  function handleOpen() {
-    if (!canEdit) return
-    setLocalTotal(current.anwesend.length + current.gaeste)
-    setOpen(true)
-  }
-
-  function handleSave() {
-    const total = Math.max(1, localTotal)
-    const anwesend = chefs.slice(0, Math.min(total, chefs.length))
-    const gaeste = Math.max(0, total - chefs.length)
-    onSave({ tag, anwesend, gaeste })
-    setOpen(false)
-  }
-
+  const [local, setLocal] = useState(initial)
   return (
-    <div style={{ padding: '4px 12px 5px', borderTop: '1px solid #f5f5f5' }}>
-      {!open ? (
-        <div
-          onClick={handleOpen}
-          style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: canEdit ? 'pointer' : 'default', minHeight: 24 }}
-        >
-          <span style={{ flex: 1, fontSize: 11, color: '#888' }}>
-            {totalEsser} {totalEsser === 1 ? 'Person' : 'Personen'} · Küchenchef: <strong style={{ color: '#444' }}>{personNames[wochenchef]}</strong>
-          </span>
-          {canEdit && <span style={{ fontSize: 13, color: '#ccc' }}>›</span>}
-        </div>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, paddingTop: 6 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <span style={{ fontSize: 12, color: '#888', flex: 1 }}>Personen</span>
-            <button
-              onClick={() => setLocalTotal(t => Math.max(1, t - 1))}
-              style={{ width: 30, height: 30, borderRadius: 8, border: '1px solid #eee', background: 'white', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}
-            >−</button>
-            <span style={{ fontSize: 15, fontWeight: 600, minWidth: 24, textAlign: 'center' }}>{localTotal}</span>
-            <button
-              onClick={() => setLocalTotal(t => t + 1)}
-              style={{ width: 30, height: 30, borderRadius: 8, border: '1px solid #eee', background: 'white', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}
-            >+</button>
-          </div>
-          {onWochenchefChange && (
-            <div>
-              <div style={{ fontSize: 11, color: '#aaa', marginBottom: 5 }}>Küchenchef</div>
-              <div style={{ display: 'flex', gap: 6 }}>
-                {members.map(m => {
-                  const active = wochenchef === m.id
-                  const col = CFG[m.id] ?? CFG.MA
-                  return (
-                    <button
-                      key={m.id}
-                      onClick={() => onWochenchefChange(m.id as Chef)}
-                      style={{
-                        flex: 1, padding: '7px 0', borderRadius: 8, fontSize: 11, fontWeight: 600,
-                        border: `1px solid ${active ? col.c : '#eee'}`,
-                        background: active ? col.bg : 'white',
-                        color: active ? col.c : '#aaa',
-                        cursor: 'pointer',
-                      }}
-                    >
-                      {m.name}
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
-          )}
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button
-              onClick={() => setOpen(false)}
-              style={{ flex: 1, padding: '8px', border: '1px solid #eee', borderRadius: 8, fontSize: 12, background: 'white', cursor: 'pointer', color: '#aaa' }}
-            >
-              Abbrechen
-            </button>
-            <button
-              onClick={handleSave}
-              style={{ flex: 2, padding: '8px', border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 600, background: '#0C447C', color: 'white', cursor: 'pointer' }}
-            >
-              ✓ Übernehmen
-            </button>
-          </div>
-        </div>
-      )}
+    <div style={{ padding: '6px 12px 8px', display: 'flex', alignItems: 'center', gap: 10, background: '#f9f9f9', borderTop: '1px solid #f0f0f0' }}>
+      <span style={{ fontSize: 11, color: '#888', flex: 1 }}>Personen</span>
+      <button onClick={() => setLocal(t => Math.max(1, t - 1))}
+        style={{ width: 28, height: 28, borderRadius: 7, border: '1px solid #eee', background: 'white', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>−</button>
+      <span style={{ fontSize: 14, fontWeight: 600, minWidth: 22, textAlign: 'center' }}>{local}</span>
+      <button onClick={() => setLocal(t => t + 1)}
+        style={{ width: 28, height: 28, borderRadius: 7, border: '1px solid #eee', background: 'white', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>+</button>
+      <button onClick={() => onSave(tag, slot, local)}
+        style={{ padding: '5px 12px', border: 'none', borderRadius: 7, background: '#1D9E75', color: 'white', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>✓</button>
     </div>
   )
 }
+
 
 function ChefPicker({ current, onSelect, personNames, members }: { current: Chef; onSelect: (c: Chef) => void; personNames: Record<Chef, string>; members: import('../lib/state').FamilyMember[] }) {
   return (
