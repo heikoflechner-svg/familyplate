@@ -700,13 +700,15 @@ export default function WocheScreen({
                           <div style={{ background: '#f9f9f9', borderTop: '1px solid #eee', padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
                             <div style={{ fontSize: 11, fontWeight: 600, color: '#aaa' }}>Koch ändern</div>
                             <ChefPicker current={e.chef} onSelect={chef => changeActiveChef(tag, slot, chef)} personNames={personNames} members={members} />
-                            <button
-                              onClick={() => replanDay(tag)}
-                              disabled={dayLoading === tag}
-                              style={{ padding: '7px 12px', border: '1px solid #ddd', borderRadius: 8, background: 'white', cursor: 'pointer', fontSize: 12, color: '#555', textAlign: 'left' }}
-                            >
-                              ↺ Rémy neu vorschlagen (ganzer Tag)
-                            </button>
+                            {planConfirmed && currentUser === wochenchef && (
+                              <button
+                                onClick={() => replanDay(tag)}
+                                disabled={dayLoading === tag}
+                                style={{ padding: '7px 12px', border: '1px solid #ddd', borderRadius: 8, background: 'white', cursor: 'pointer', fontSize: 12, color: '#555', textAlign: 'left' }}
+                              >
+                                ↺ Rémy neu vorschlagen (ganzer Tag)
+                              </button>
+                            )}
                           </div>
                         )}
                         <SlotWunschPanel
@@ -828,13 +830,15 @@ export default function WocheScreen({
           <div style={{ background: '#f9f9f9', padding: '10px 12px', marginTop: -8, marginBottom: 6, display: 'flex', flexDirection: 'column', gap: 8, borderRadius: '0 0 12px 12px', border: '1px solid #eee', borderTop: 'none' }}>
             <div style={{ fontSize: 11, fontWeight: 600, color: '#aaa' }}>Koch ändern</div>
             <ChefPicker current={entry.chef} onSelect={chef => changeActiveChef(tag, slot, chef)} personNames={personNames} members={members} />
-            <button
-              onClick={() => replanDay(tag)}
-              disabled={dayLoading === tag}
-              style={{ padding: '7px 12px', border: '1px solid #ddd', borderRadius: 8, background: 'white', cursor: 'pointer', fontSize: 12, color: '#555', textAlign: 'left' }}
-            >
-              ↺ Rémy neu vorschlagen (ganzer Tag)
-            </button>
+            {planConfirmed && currentUser === wochenchef && (
+              <button
+                onClick={() => replanDay(tag)}
+                disabled={dayLoading === tag}
+                style={{ padding: '7px 12px', border: '1px solid #ddd', borderRadius: 8, background: 'white', cursor: 'pointer', fontSize: 12, color: '#555', textAlign: 'left' }}
+              >
+                ↺ Rémy neu vorschlagen (ganzer Tag)
+              </button>
+            )}
           </div>
         )}
         <WishesSection
