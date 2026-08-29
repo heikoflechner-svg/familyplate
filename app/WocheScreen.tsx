@@ -761,9 +761,11 @@ export default function WocheScreen({
             </div>
           )}
 
-          <button className="btn soft" style={{ marginTop: 8 }} onClick={goToPlan}>
-            🔄 {weekPlan.length > 0 ? 'Neu planen' : 'Woche planen'}
-          </button>
+          {currentUser === wochenchef && (
+            <button className="btn soft" style={{ marginTop: 8 }} onClick={goToPlan}>
+              🔄 {weekPlan.length > 0 ? 'Neu planen' : 'Woche planen'}
+            </button>
+          )}
         </div>
       </div>
     )
@@ -847,9 +849,15 @@ export default function WocheScreen({
           <div style={{ fontSize: 13, color: '#aaa', marginBottom: 28, textAlign: 'center' }}>
             Tippe hier – Rémy plant deine Woche in Sekunden.
           </div>
-          <button className="btn primary" style={{ width: 'auto', padding: '12px 32px' }} onClick={goToPlan}>
-            🐀 Woche planen
-          </button>
+          {currentUser === wochenchef ? (
+            <button className="btn primary" style={{ width: 'auto', padding: '12px 32px' }} onClick={goToPlan}>
+              🐀 Woche planen
+            </button>
+          ) : (
+            <div style={{ fontSize: 12, color: '#bbb' }}>
+              {personNames[wochenchef]} ist diese Woche Wochenchef
+            </div>
+          )}
         </div>
       </div>
     )
@@ -895,9 +903,11 @@ export default function WocheScreen({
           </button>
         </div>
       </div>
-      <div style={{ padding: '0 20px 16px' }}>
-        <button className="btn soft" onClick={goToPlan}>🔄 Neu planen</button>
-      </div>
+      {currentUser === wochenchef && (
+        <div style={{ padding: '0 20px 16px' }}>
+          <button className="btn soft" onClick={goToPlan}>🔄 Neu planen</button>
+        </div>
+      )}
     </div>
   )
 }
