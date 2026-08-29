@@ -486,8 +486,8 @@ export default function WocheScreen({
               </div>
               <div style={{ fontSize: 11, color: '#bbb', marginBottom: 14 }}>Koch antippen zum Ändern</div>
               {WOCHENTAGE.filter(t => pendingPlan.some(e => e.tag === t)).map(tag => (
-                <div key={tag} className="week-plan-row">
-                  <div className="week-plan-head">
+                <div key={tag} style={{ borderRadius: 12, border: '1px solid #e5e7eb', marginBottom: 14, overflow: 'hidden' }}>
+                  <div style={{ padding: '8px 12px', background: '#f9fafb', borderBottom: '1px solid #f0f0f0' }}>
                     <span style={{ fontSize: 11, fontWeight: 700, color: '#aaa', textTransform: 'uppercase', letterSpacing: '.5px' }}>
                       {tag}
                     </span>
@@ -499,24 +499,23 @@ export default function WocheScreen({
                     const e = getSlot(pendingPlan, tag, slot)
                     if (!e) return null
                     const key = `${tag}-${slot}`
-                    const c = CFG[e.chef] ?? CFG.MA
                     const isEditing = editMealKey === key
                     const stockItems = [...freezerItems, ...pantryItems]
                     return (
-                      <div key={slot}>
-                        <div style={{ padding: '8px 12px', borderTop: '1px solid #f5f5f5', display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <div key={slot} style={{ borderTop: '1px solid #f0f0f0' }}>
+                        <div style={{ padding: '8px 12px 3px', display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <SlotPill slot={slot} />
+                          <span
+                            onClick={() => toggleEditMeal(key)}
+                            style={{ fontSize: 11, color: '#555', cursor: 'pointer', textDecoration: 'underline', textDecorationStyle: 'dashed', textDecorationColor: '#bbb' }}
+                          >{personNames[e.chef]}</span>
+                        </div>
+                        <div style={{ padding: '3px 12px 10px', display: 'flex', alignItems: 'center', gap: 8 }}>
                           <span style={{ fontSize: 18 }}>{e.emoji}</span>
                           <div style={{ flex: 1 }}>
-                            <div style={{ fontSize: 12, fontWeight: 600 }}>{e.gericht}</div>
-                            <div style={{ fontSize: 10, color: '#aaa' }}>{slot} · {e.minuten} min</div>
+                            <div style={{ fontSize: 13, fontWeight: 700, color: '#111' }}>{e.gericht}</div>
+                            <div style={{ fontSize: 11, color: '#aaa' }}>{e.minuten} min</div>
                           </div>
-                          <button
-                            onClick={() => toggleEditMeal(key)}
-                            className="chef-b"
-                            style={{ background: c.bg, color: c.c, border: 'none', cursor: 'pointer' }}
-                          >
-                            {e.chef}
-                          </button>
                         </div>
                         {isEditing && (
                           <div style={{ background: '#f9f9f9', borderTop: '1px solid #eee', padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
