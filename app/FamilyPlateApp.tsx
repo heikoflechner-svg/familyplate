@@ -193,6 +193,8 @@ export default function FamilyPlateApp() {
             onProposalsChange={handleProposalsChange}
             onWochenchefChange={handleWochenchefChange}
             onPlanConfirmedChange={handlePlanConfirmedChange}
+            shoppingList={shoppingList}
+            onShoppingListChange={handleShoppingListChange}
           />
         )}
         {activeTab === 'gefriertruhe' && (

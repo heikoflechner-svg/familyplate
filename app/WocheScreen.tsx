@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { generateWeekPlan } from '../lib/mealLogic'
 import { getFreezerListString, getPantryListString } from '../lib/freezerLogic'
 import { buildFamilyPrompt, DEFAULT_MEMBERS } from '../lib/familyLogic'
-import type { WeekPlanEntry, Rezept, FreezerItem, PantryItem, Wish, Chef, WochenSlot, FamilyMember, DayAttendance, ChangeProposal } from '../lib/state'
+import type { WeekPlanEntry, Rezept, FreezerItem, PantryItem, Wish, Chef, WochenSlot, FamilyMember, DayAttendance, ChangeProposal, ShoppingItem } from '../lib/state'
 import SlotWunschPanel from './SlotWunschPanel'
 
 const WOCHENTAGE = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag']
@@ -43,6 +43,8 @@ interface Props {
   onProposalsChange: (proposals: ChangeProposal[]) => Promise<void>
   onWochenchefChange: (chef: Chef) => Promise<void>
   onPlanConfirmedChange: (confirmed: boolean) => Promise<void>
+  shoppingList: ShoppingItem[]
+  onShoppingListChange: (list: ShoppingItem[]) => Promise<void>
 }
 
 type View = 'home' | 'week' | 'plan'
@@ -52,6 +54,7 @@ export default function WocheScreen({
   weekPlan, mealsData, planMittag, planWE, freezerItems, pantryItems,
   wishes, currentUser, wochenchef, members, attendance, proposals, planConfirmed, onWeekPlanChange, onWishesChange,
   onAttendanceChange, onPlanConfirm, onProposalsChange, onWochenchefChange, onPlanConfirmedChange,
+  shoppingList, onShoppingListChange,
 }: Props) {
   const personNames: Record<Chef, string> = Object.fromEntries(
     (members.length ? members : DEFAULT_MEMBERS).map(m => [m.id, m.name])
@@ -333,12 +336,57 @@ export default function WocheScreen({
     setSaving(true)
     await onWeekPlanChange(pendingPlan, { ...mealsData, ...pendingPlanMeals })
     await onPlanConfirm?.(pendingPlan)
-    await onPlanConfirmedChange(true)
     setSaving(false)
     setPlanState('options')
     setPendingPlanMeals({})
     setNeuTage(new Set(['alle']))
     setView('home')
+  }
+
+  async function confirmAsChef() {
+    setSaving(true)
+
+    // Gewählte Alternativen in weekPlan übernehmen
+    let finalPlan = [...weekPlan]
+    for (const [key, selectedId] of Object.entries(chefAltSelection)) {
+      if (selectedId === 'original') continue
+      const wish = wishes.find(w => w.id === selectedId)
+      if (!wish || wish.type !== 'alternative') continue
+      const dashIdx = key.lastIndexOf('-')
+      const tag = key.slice(0, dashIdx)
+      const slot = key.slice(dashIdx + 1) as WochenSlot
+      finalPlan = finalPlan.map(e =>
+        e.tag === tag && e.slot === slot
+          ? { ...e, gericht: wish.dishName, emoji: wish.emoji }
+          : e
+      )
+    }
+
+    // Aktivierte Ergänzungen an Einkaufsliste übergeben
+    const newItems: ShoppingItem[] = []
+    for (const wishId of chefErgaenzungIds) {
+      const wish = wishes.find(w => w.id === wishId)
+      if (!wish || wish.type !== 'ergaenzung') continue
+      newItems.push({
+        id: crypto.randomUUID(),
+        name: wish.text,
+        menge: '',
+        kategorie: 'Sonstiges',
+        erledigt: false,
+        tag: wish.tag,
+        slot: wish.slot,
+      })
+    }
+
+    await onWeekPlanChange(finalPlan, mealsData)
+    if (newItems.length > 0) {
+      await onShoppingListChange([...shoppingList, ...newItems])
+    }
+    await onPlanConfirmedChange(true)
+
+    setChefAltSelection({})
+    setChefErgaenzungIds(new Set())
+    setSaving(false)
   }
 
   function toggleNeuTag(tag: string) {
@@ -540,7 +588,7 @@ export default function WocheScreen({
               ))}
               <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
                 <button className="btn primary" onClick={acceptPlan} disabled={saving}>
-                  {saving ? '⏳ Speichern…' : `✅ Als Wochenchef bestätigen (${personNames[wochenchef]})`}
+                  {saving ? '⏳ Speichern…' : '✅ Plan übernehmen'}
                 </button>
                 <button
                   className="btn"
@@ -736,6 +784,29 @@ export default function WocheScreen({
               )
             })
           )}
+          {currentUser === wochenchef && !planConfirmed && weekPlan.length > 0 && (
+            <div style={{
+              margin: '16px 0 0', padding: '14px 16px',
+              background: '#F0FAF5', borderRadius: 12, border: '1px solid #B2DFCC',
+            }}>
+              <div style={{ fontSize: 12, color: '#0F6E56', fontWeight: 600, marginBottom: 6 }}>
+                Wochenchef-Entscheidung abschließen
+              </div>
+              <div style={{ fontSize: 11, color: '#555', marginBottom: 10 }}>
+                {Object.keys(chefAltSelection).filter(k => chefAltSelection[k] !== 'original').length} Alternative(n) übernommen ·{' '}
+                {chefErgaenzungIds.size} Ergänzung(en) auf Einkaufsliste
+              </div>
+              <button
+                className="btn primary"
+                onClick={confirmAsChef}
+                disabled={saving}
+                style={{ background: '#1D9E75', fontSize: 13 }}
+              >
+                {saving ? '⏳ Speichern…' : `✅ Als Wochenchef bestätigen (${personNames[wochenchef]})`}
+              </button>
+            </div>
+          )}
+
           <button className="btn soft" style={{ marginTop: 8 }} onClick={goToPlan}>
             🔄 {weekPlan.length > 0 ? 'Neu planen' : 'Woche planen'}
           </button>
