@@ -71,7 +71,7 @@ export default function WocheScreen({
   const [selectedMealName, setSelectedMealName] = useState<string | null>(null)
 
   const [chefAltSelection, setChefAltSelection] = useState<Record<string, string>>({})
-  const [chefErgaenzungIds, setChefErgaenzungIds] = useState<Set<string>>(new Set())
+  const [chefErgaenzungIds, setChefErgaenzungIds] = useState<string[]>([])
 
   const [wishFormKey, setWishFormKey] = useState<string | null>(null)
 
@@ -379,7 +379,7 @@ export default function WocheScreen({
     await onPlanConfirmedChange(true)
 
     setChefAltSelection({})
-    setChefErgaenzungIds(new Set())
+    setChefErgaenzungIds([])
     setSaving(false)
   }
 
@@ -723,7 +723,7 @@ export default function WocheScreen({
                           isWochenchef={currentUser === wochenchef} planConfirmed={planConfirmed}
                           selectedAltId={chefAltSelection[`${tag}-${slot}`] ?? 'original'} checkedErgIds={chefErgaenzungIds}
                           onSelectAlt={(id) => setChefAltSelection(prev => ({ ...prev, [`${tag}-${slot}`]: id }))}
-                          onToggleErg={(wishId) => setChefErgaenzungIds(prev => { const next = new Set(prev); next.has(wishId) ? next.delete(wishId) : next.add(wishId); return next })}
+                          onToggleErg={(wishId) => setChefErgaenzungIds(prev => prev.includes(wishId) ? prev.filter(id => id !== wishId) : [...prev, wishId])}
                         />
                         <WishesSection
                           tag={tag} wishes={wishes} freezerItems={freezerItems} pantryItems={pantryItems}
@@ -748,7 +748,7 @@ export default function WocheScreen({
               </div>
               <div style={{ fontSize: 11, color: '#555', marginBottom: 10 }}>
                 {Object.keys(chefAltSelection).filter(k => chefAltSelection[k] !== 'original').length} Alternative(n) übernommen ·{' '}
-                {chefErgaenzungIds.size} Ergänzung(en) auf Einkaufsliste
+                {chefErgaenzungIds.length} Ergänzung(en) auf Einkaufsliste
               </div>
               <button
                 className="btn primary"

@@ -16,7 +16,7 @@ interface Props {
   isWochenchef?: boolean
   planConfirmed?: boolean
   selectedAltId?: string
-  checkedErgIds?: Set<string>
+  checkedErgIds?: string[]
   onSelectAlt?: (id: string | 'original') => void
   onToggleErg?: (id: string) => void
 }
@@ -104,7 +104,7 @@ export default function SlotWunschPanel({
           </div>
           {ergaenzungen.map(w => {
             const c = CFG[w.person] ?? CFG.MA
-            const checked = checkedErgIds?.has(w.id) ?? false
+            const checked = checkedErgIds?.includes(w.id) ?? false
             return (
               <div key={w.id} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
                 {showDecision && (
