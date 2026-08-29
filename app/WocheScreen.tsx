@@ -1,9 +1,9 @@
 'use client'
 import { useState } from 'react'
-import { generateWeekPlan } from '../lib/mealLogic'
+import { generateWeekPlan, getRemySuggestions } from '../lib/mealLogic'
 import { getFreezerListString, getPantryListString } from '../lib/freezerLogic'
 import { buildFamilyPrompt, DEFAULT_MEMBERS } from '../lib/familyLogic'
-import type { WeekPlanEntry, Rezept, FreezerItem, PantryItem, Wish, Chef, WochenSlot, FamilyMember, DayAttendance, ChangeProposal, ShoppingItem } from '../lib/state'
+import type { WeekPlanEntry, Rezept, FreezerItem, PantryItem, Wish, Chef, WochenSlot, FamilyMember, DayAttendance, ChangeProposal, ShoppingItem, RemyVorschlag } from '../lib/state'
 import SlotWunschPanel from './SlotWunschPanel'
 
 const WOCHENTAGE = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag']
@@ -74,40 +74,15 @@ export default function WocheScreen({
   const [chefErgaenzungIds, setChefErgaenzungIds] = useState<Set<string>>(new Set())
 
   const [wishFormTag, setWishFormTag] = useState<string | null>(null)
-  const [wishPerson, setWishPerson] = useState<Chef>('PA')
-  const [wishSlot, setWishSlot] = useState<WochenSlot>('Abend')
-  const [wishType, setWishType] = useState<'alternative' | 'ergaenzung'>('ergaenzung')
-  const [wishText, setWishText] = useState('')
-  const [wishDish, setWishDish] = useState<{ name: string; emoji: string } | null>(null)
 
-  function openWishForm(tag: string) {
-    setWishFormTag(tag)
-    setWishPerson(wochenchef)
-    setWishSlot('Abend')
-    setWishType('ergaenzung')
-    setWishText('')
-    setWishDish(null)
-  }
-
+  function openWishForm(tag: string) { setWishFormTag(tag) }
   function closeWishForm() { setWishFormTag(null) }
 
-  async function submitWish() {
-    if (!wishFormTag) return
-    if (wishType === 'ergaenzung' && !wishText.trim()) return
-    if (wishType === 'alternative' && !wishDish && !wishText.trim()) return
-    const base = { id: crypto.randomUUID(), person: wishPerson, tag: wishFormTag, slot: wishSlot }
-    const newWish: Wish = wishType === 'ergaenzung'
-      ? { ...base, type: 'ergaenzung', text: wishText.trim() }
-      : wishDish
-        ? { ...base, type: 'alternative', dishName: wishDish.name, emoji: wishDish.emoji }
-        : { ...base, type: 'alternative', dishName: wishText.trim(), emoji: '🍽️' }
+  async function handleWishSubmit(wish: Wish) {
     const filtered = wishes.filter(w => !(
-      w.person === wishPerson &&
-      w.tag === wishFormTag &&
-      w.slot === wishSlot &&
-      w.type === wishType
+      w.person === wish.person && w.tag === wish.tag && w.slot === wish.slot && w.type === wish.type
     ))
-    await onWishesChange([...filtered, newWish])
+    await onWishesChange([...filtered, wish])
     closeWishForm()
   }
 
@@ -648,7 +623,7 @@ export default function WocheScreen({
                     )}
                   </div>
 
-                  <AttendanceRow tag={tag} attendance={attendance} members={members} onSave={handleAttendanceSave} />
+                  <AttendanceRow tag={tag} attendance={attendance} members={members} onSave={handleAttendanceSave} canEdit={!planConfirmed || currentUser === wochenchef} />
 
                   {isLoading && (
                     <div style={{ padding: '10px 12px', fontSize: 12, color: '#aaa' }}>🐀 Rémy schlägt vor…</div>
@@ -759,24 +734,17 @@ export default function WocheScreen({
                     <WishesSection
                       tag={tag}
                       wishes={wishes}
-                      mealsData={mealsData}
-                      wishFormTag={wishFormTag}
-                      wishPerson={wishPerson}
-                      wishSlot={wishSlot}
-                      wishType={wishType}
-                      wishText={wishText}
-                      wishDish={wishDish}
+                      freezerItems={freezerItems}
+                      pantryItems={pantryItems}
                       personNames={personNames}
                       planMittag={planMittag}
                       showExisting={false}
-                      onOpen={openWishForm}
+                      isOpen={wishFormTag === tag}
+                      initialPerson={currentUser}
+                      familyPrompt={familyPrompt}
+                      onOpen={() => openWishForm(tag)}
                       onClose={closeWishForm}
-                      onPersonChange={setWishPerson}
-                      onSlotChange={setWishSlot}
-                      onTypeChange={setWishType}
-                      onTextChange={setWishText}
-                      onDishChange={setWishDish}
-                      onSubmit={submitWish}
+                      onSubmitWish={handleWishSubmit}
                       onRemove={removeWish}
                     />
                   )}
@@ -932,29 +900,22 @@ export default function WocheScreen({
           Heute · <span style={{ color: '#111', fontWeight: 700 }}>{today}</span>
           <span className="pill today" style={{ marginLeft: 6 }}>Heute</span>
         </div>
-        <AttendanceRow tag={today} attendance={attendance} members={members} onSave={handleAttendanceSave} />
+        <AttendanceRow tag={today} attendance={attendance} members={members} onSave={handleAttendanceSave} canEdit={!planConfirmed || currentUser === wochenchef} />
         {planMittag && renderHomeSlot(today, 'Mittag', todayMittag)}
         {renderHomeSlot(today, 'Abend', todayAbend)}
         <WishesSection
           tag={today}
           wishes={wishes}
-          mealsData={mealsData}
-          wishFormTag={wishFormTag}
-          wishPerson={wishPerson}
-          wishSlot={wishSlot}
-          wishType={wishType}
-          wishText={wishText}
-          wishDish={wishDish}
+          freezerItems={freezerItems}
+          pantryItems={pantryItems}
           personNames={personNames}
           planMittag={planMittag}
-          onOpen={openWishForm}
+          isOpen={wishFormTag === today}
+          initialPerson={currentUser}
+          familyPrompt={familyPrompt}
+          onOpen={() => openWishForm(today)}
           onClose={closeWishForm}
-          onPersonChange={setWishPerson}
-          onSlotChange={setWishSlot}
-          onTypeChange={setWishType}
-          onTextChange={setWishText}
-          onDishChange={setWishDish}
-          onSubmit={submitWish}
+          onSubmitWish={handleWishSubmit}
           onRemove={removeWish}
         />
 
@@ -964,29 +925,22 @@ export default function WocheScreen({
           return (
           <div key={tag}>
             <div className="day-lbl" style={{ marginTop: 16 }}>{tag}</div>
-            <AttendanceRow tag={tag} attendance={attendance} members={members} onSave={handleAttendanceSave} />
+            <AttendanceRow tag={tag} attendance={attendance} members={members} onSave={handleAttendanceSave} canEdit={!planConfirmed || currentUser === wochenchef} />
             {planMittag && renderHomeSlot(tag, 'Mittag', nextMittag)}
             {renderHomeSlot(tag, 'Abend', nextAbend)}
             <WishesSection
               tag={tag}
               wishes={wishes}
-              mealsData={mealsData}
-              wishFormTag={wishFormTag}
-              wishPerson={wishPerson}
-              wishSlot={wishSlot}
-              wishType={wishType}
-              wishText={wishText}
-              wishDish={wishDish}
+              freezerItems={freezerItems}
+              pantryItems={pantryItems}
               personNames={personNames}
               planMittag={planMittag}
-              onOpen={openWishForm}
+              isOpen={wishFormTag === tag}
+              initialPerson={currentUser}
+              familyPrompt={familyPrompt}
+              onOpen={() => openWishForm(tag)}
               onClose={closeWishForm}
-              onPersonChange={setWishPerson}
-              onSlotChange={setWishSlot}
-              onTypeChange={setWishType}
-              onTextChange={setWishText}
-              onDishChange={setWishDish}
-              onSubmit={submitWish}
+              onSubmitWish={handleWishSubmit}
               onRemove={removeWish}
             />
           </div>
@@ -1010,12 +964,13 @@ export default function WocheScreen({
 }
 
 function AttendanceRow({
-  tag, attendance, members, onSave,
+  tag, attendance, members, onSave, canEdit = true,
 }: {
   tag: string
   attendance: DayAttendance[]
   members: FamilyMember[]
   onSave: (updated: DayAttendance) => void
+  canEdit?: boolean
 }) {
   const chefs = members.map(m => m.id) as Chef[]
   const current = attendance.find(a => a.tag === tag) ?? { tag, anwesend: chefs, gaeste: 0 }
@@ -1025,6 +980,7 @@ function AttendanceRow({
   const [localGaeste, setLocalGaeste] = useState(0)
 
   function handleOpen() {
+    if (!canEdit) return
     setLocalAnwesend(current.anwesend)
     setLocalGaeste(current.gaeste)
     setOpen(true)
@@ -1046,7 +1002,7 @@ function AttendanceRow({
       {!open ? (
         <div
           onClick={handleOpen}
-          style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', minHeight: 26 }}
+          style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: canEdit ? 'pointer' : 'default', minHeight: 26 }}
         >
           <span style={{ fontSize: 11, color: '#ccc' }}>👥</span>
           {members.map(m => {
@@ -1071,7 +1027,7 @@ function AttendanceRow({
           <span style={{ fontSize: 10, color: '#999', marginLeft: 2 }}>
             {totalEsser} {totalEsser === 1 ? 'Person' : 'Personen'}
           </span>
-          <span style={{ marginLeft: 'auto', fontSize: 10, color: '#ddd' }}>✏️</span>
+          {canEdit && <span style={{ marginLeft: 'auto', fontSize: 10, color: '#ddd' }}>✏️</span>}
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10, paddingTop: 4 }}>
@@ -1151,39 +1107,107 @@ function ChefPicker({ current, onSelect, personNames, members }: { current: Chef
   )
 }
 
+type WishMode = 'ergaenzung' | 'alternative' | 'vorrat' | 'remy'
+
 interface WishesSectionProps {
   tag: string
   wishes: Wish[]
-  mealsData: Record<string, Rezept>
-  wishFormTag: string | null
-  wishPerson: Chef
-  wishSlot: WochenSlot
-  wishType: 'alternative' | 'ergaenzung'
-  wishText: string
-  wishDish: { name: string; emoji: string } | null
+  freezerItems: FreezerItem[]
+  pantryItems: PantryItem[]
   personNames: Record<Chef, string>
   planMittag: boolean
   showExisting?: boolean
-  onOpen: (tag: string) => void
+  isOpen: boolean
+  initialPerson: Chef
+  familyPrompt: string
+  onOpen: () => void
   onClose: () => void
-  onPersonChange: (p: Chef) => void
-  onSlotChange: (s: WochenSlot) => void
-  onTypeChange: (t: 'alternative' | 'ergaenzung') => void
-  onTextChange: (t: string) => void
-  onDishChange: (d: { name: string; emoji: string } | null) => void
-  onSubmit: () => void
+  onSubmitWish: (wish: Wish) => void
   onRemove: (id: string) => void
 }
 
 function WishesSection({
-  tag, wishes, mealsData, wishFormTag, wishPerson, wishSlot, wishType, wishText, wishDish, personNames, planMittag,
-  showExisting = true,
-  onOpen, onClose, onPersonChange, onSlotChange, onTypeChange, onTextChange, onDishChange, onSubmit, onRemove,
+  tag, wishes, freezerItems, pantryItems, personNames, planMittag,
+  showExisting = true, isOpen, initialPerson, familyPrompt,
+  onOpen, onClose, onSubmitWish, onRemove,
 }: WishesSectionProps) {
   const dayWishes = wishes.filter(w => w.tag === tag)
-  const dishes = Object.entries(mealsData).map(([name, r]) => ({ name, emoji: r.emoji }))
-  const isOpen = wishFormTag === tag
-  const canSubmit = wishType === 'ergaenzung'
+
+  const [wishPerson, setWishPerson] = useState<Chef>(initialPerson)
+  const [wishSlot, setWishSlot] = useState<WochenSlot>('Abend')
+  const [wishMode, setWishMode] = useState<WishMode>('ergaenzung')
+  const [wishText, setWishText] = useState('')
+  const [wishDish, setWishDish] = useState<{ name: string; emoji: string } | null>(null)
+  const [remySuggestions, setRemySuggestions] = useState<RemyVorschlag[]>([])
+  const [remyLoading, setRemyLoading] = useState(false)
+
+  function handleOpen() {
+    setWishPerson(initialPerson)
+    setWishSlot('Abend')
+    setWishMode('ergaenzung')
+    setWishText('')
+    setWishDish(null)
+    setRemySuggestions([])
+    onOpen()
+  }
+
+  function switchMode(mode: WishMode) {
+    setWishMode(mode)
+    setWishText('')
+    setWishDish(null)
+    setRemySuggestions([])
+    if (mode === 'remy') fetchRemy(mode)
+  }
+
+  async function fetchRemy(mode: WishMode) {
+    if (mode !== 'remy') return
+    setRemyLoading(true)
+    try {
+      const results = await getRemySuggestions({
+        wishes: wishes.filter(w => w.tag === tag && w.slot === wishSlot),
+        zustimmungen: [],
+        choDay: tag,
+        choSlot: wishSlot,
+        freezerList: getFreezerListString(freezerItems),
+        pantryList: getPantryListString(pantryItems),
+        familyPrompt,
+      })
+      setRemySuggestions(results)
+    } catch {
+      setRemySuggestions([])
+    }
+    setRemyLoading(false)
+  }
+
+  function handleSlotChange(s: WochenSlot) {
+    setWishSlot(s)
+    if (wishMode === 'remy') {
+      setRemySuggestions([])
+      fetchRemy('remy')
+    }
+  }
+
+  function handleSubmit() {
+    const base = { id: crypto.randomUUID(), person: wishPerson, tag, slot: wishSlot }
+    let wish: Wish
+    if (wishMode === 'ergaenzung') {
+      if (!wishText.trim()) return
+      wish = { ...base, type: 'ergaenzung', text: wishText.trim() }
+    } else {
+      if (!wishDish && !wishText.trim()) return
+      wish = wishDish
+        ? { ...base, type: 'alternative', dishName: wishDish.name, emoji: wishDish.emoji }
+        : { ...base, type: 'alternative', dishName: wishText.trim(), emoji: '🍽️' }
+    }
+    onSubmitWish(wish)
+    setWishText('')
+    setWishDish(null)
+    setWishMode('ergaenzung')
+    setRemySuggestions([])
+  }
+
+  const stockItems = [...freezerItems, ...pantryItems]
+  const canSubmit = wishMode === 'ergaenzung'
     ? wishText.trim().length > 0
     : wishDish !== null || wishText.trim().length > 0
 
@@ -1194,11 +1218,7 @@ function WishesSection({
           const c = CFG[w.person] ?? CFG.MA
           const slotIcon = w.slot === 'Mittag' ? '🌞' : '🌙'
           const typeLabel = w.type === 'alternative' ? '🔄 ' : ''
-          const content = w.type === 'ergaenzung'
-            ? w.text
-            : w.type === 'alternative'
-              ? `${w.emoji} ${w.dishName}`
-              : ''
+          const content = w.type === 'ergaenzung' ? w.text : `${w.emoji} ${w.dishName}`
           return (
             <span key={w.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 3, background: c.bg, color: c.c, borderRadius: 8, padding: '2px 6px', fontSize: 11 }}>
               <span style={{ fontWeight: 700 }}>{personNames[w.person]}</span>
@@ -1210,7 +1230,7 @@ function WishesSection({
         })}
         {!isOpen && (
           <button
-            onClick={() => onOpen(tag)}
+            onClick={handleOpen}
             style={{ fontSize: 11, color: '#bbb', border: '1px dashed #ddd', borderRadius: 8, padding: '2px 8px', background: 'none', cursor: 'pointer' }}
           >
             + Wunsch
@@ -1226,9 +1246,7 @@ function WishesSection({
               const c = CFG[p]
               const active = wishPerson === p
               return (
-                <button
-                  key={p}
-                  onClick={() => onPersonChange(p)}
+                <button key={p} onClick={() => setWishPerson(p)}
                   style={{ padding: '3px 10px', borderRadius: 8, border: '1px solid', borderColor: active ? c.c : '#ddd', background: active ? c.bg : 'white', color: active ? c.c : '#aaa', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
                 >
                   {personNames[p]}
@@ -1241,9 +1259,7 @@ function WishesSection({
           {planMittag && (
             <div style={{ display: 'flex', gap: 4 }}>
               {(['Mittag', 'Abend'] as const).map(s => (
-                <button
-                  key={s}
-                  onClick={() => onSlotChange(s)}
+                <button key={s} onClick={() => handleSlotChange(s)}
                   style={{ fontSize: 11, padding: '2px 10px', border: '1px solid', borderColor: wishSlot === s ? '#1D9E75' : '#ddd', borderRadius: 6, background: wishSlot === s ? '#E1F5EE' : 'white', color: wishSlot === s ? '#0F6E56' : '#aaa', cursor: 'pointer' }}
                 >
                   {s === 'Mittag' ? '🌞 Mittag' : '🌙 Abend'}
@@ -1252,71 +1268,108 @@ function WishesSection({
             </div>
           )}
 
-          {/* Typ */}
-          <div style={{ display: 'flex', gap: 4 }}>
-            {(['ergaenzung', 'alternative'] as const).map(t => (
-              <button
-                key={t}
-                onClick={() => { onTypeChange(t); onTextChange(''); onDishChange(null) }}
-                style={{ fontSize: 11, padding: '2px 10px', border: '1px solid', borderColor: wishType === t ? '#1D9E75' : '#ddd', borderRadius: 6, background: wishType === t ? '#E1F5EE' : 'white', color: wishType === t ? '#0F6E56' : '#aaa', cursor: 'pointer' }}
+          {/* Modus */}
+          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+            {([
+              { mode: 'ergaenzung', label: '➕ Ergänzung' },
+              { mode: 'alternative', label: '✏️ Eigenes Gericht' },
+              { mode: 'vorrat', label: '❄️ Aus Vorrat' },
+              { mode: 'remy', label: '🐀 Rémy fragen' },
+            ] as { mode: WishMode; label: string }[]).map(({ mode, label }) => (
+              <button key={mode} onClick={() => switchMode(mode)}
+                style={{ fontSize: 11, padding: '2px 10px', border: '1px solid', borderColor: wishMode === mode ? '#1D9E75' : '#ddd', borderRadius: 6, background: wishMode === mode ? '#E1F5EE' : 'white', color: wishMode === mode ? '#0F6E56' : '#aaa', cursor: 'pointer' }}
               >
-                {t === 'ergaenzung' ? '➕ Ergänzung' : '🔄 Alternative'}
+                {label}
               </button>
             ))}
           </div>
 
-          {/* Input */}
-          {wishType === 'ergaenzung' ? (
+          {/* Ergänzung */}
+          {wishMode === 'ergaenzung' && (
             <input
-              type="text"
-              value={wishText}
-              onChange={e => onTextChange(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && canSubmit && onSubmit()}
+              type="text" value={wishText}
+              onChange={e => setWishText(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && canSubmit && handleSubmit()}
               placeholder="z.B. Erbsen dazu, kein Käse bitte…"
               autoFocus
               style={{ fontSize: 12, padding: '6px 10px', border: '1px solid #ddd', borderRadius: 6, outline: 'none' }}
             />
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <input
-                type="text"
-                value={wishText}
-                onChange={e => { onTextChange(e.target.value); onDishChange(null) }}
-                onKeyDown={e => e.key === 'Enter' && canSubmit && onSubmit()}
-                placeholder="Gerichtsname eingeben…"
-                autoFocus
-                style={{ fontSize: 12, padding: '6px 10px', border: '1px solid #ddd', borderRadius: 6, outline: 'none' }}
-              />
-              {dishes.length > 0 && (
-                <>
-                  <div style={{ fontSize: 10, color: '#bbb', textAlign: 'center' }}>— oder aus bisherigen Gerichten wählen —</div>
-                  <div style={{ maxHeight: 120, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 3 }}>
-                    {dishes.map(d => (
-                      <button
-                        key={d.name}
-                        onClick={() => { onDishChange(wishDish?.name === d.name ? null : d); onTextChange('') }}
-                        style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 8px', border: '1px solid', borderColor: wishDish?.name === d.name ? '#1D9E75' : '#eee', borderRadius: 6, background: wishDish?.name === d.name ? '#E1F5EE' : 'white', cursor: 'pointer', textAlign: 'left' }}
-                      >
-                        <span>{d.emoji}</span>
-                        <span style={{ fontSize: 12 }}>{d.name}</span>
-                      </button>
-                    ))}
-                  </div>
-                </>
-              )}
-            </div>
+          )}
+
+          {/* Eigenes Gericht */}
+          {wishMode === 'alternative' && (
+            <input
+              type="text" value={wishText}
+              onChange={e => { setWishText(e.target.value); setWishDish(null) }}
+              onKeyDown={e => e.key === 'Enter' && canSubmit && handleSubmit()}
+              placeholder="Gerichtsname eingeben…"
+              autoFocus
+              style={{ fontSize: 12, padding: '6px 10px', border: '1px solid #ddd', borderRadius: 6, outline: 'none' }}
+            />
+          )}
+
+          {/* Aus Vorrat */}
+          {wishMode === 'vorrat' && (
+            stockItems.length === 0 ? (
+              <div style={{ fontSize: 11, color: '#bbb', textAlign: 'center', padding: '6px 0' }}>Nichts im Vorrat eingetragen</div>
+            ) : (
+              <div style={{ maxHeight: 140, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 3 }}>
+                {stockItems.map(item => {
+                  const selected = wishDish?.name === item.name
+                  return (
+                    <button key={item.id}
+                      onClick={() => setWishDish(selected ? null : { name: item.name, emoji: item.emoji })}
+                      style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 8px', border: '1px solid', borderColor: selected ? '#1D9E75' : '#eee', borderRadius: 6, background: selected ? '#E1F5EE' : 'white', cursor: 'pointer', textAlign: 'left' }}
+                    >
+                      <span style={{ fontSize: 15 }}>{item.emoji}</span>
+                      <span style={{ flex: 1, fontSize: 12, color: '#333' }}>{item.name}</span>
+                      <span style={{ fontSize: 10, color: '#bbb' }}>{item.menge}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            )
+          )}
+
+          {/* Rémy-Vorschläge */}
+          {wishMode === 'remy' && (
+            remyLoading ? (
+              <div style={{ textAlign: 'center', padding: '10px 0', fontSize: 12, color: '#aaa' }}>🐀 Rémy denkt nach…</div>
+            ) : remySuggestions.length === 0 ? (
+              <div style={{ fontSize: 11, color: '#bbb', textAlign: 'center', padding: '6px 0' }}>
+                Keine Vorschläge – bitte erneut versuchen
+                <button onClick={() => fetchRemy('remy')} style={{ display: 'block', margin: '6px auto 0', fontSize: 11, color: '#1D9E75', background: 'none', border: 'none', cursor: 'pointer' }}>↺ Nochmal</button>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {remySuggestions.map((s, i) => {
+                  const selected = wishDish?.name === s.name
+                  return (
+                    <button key={i}
+                      onClick={() => setWishDish(selected ? null : { name: s.name, emoji: s.emoji })}
+                      style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', border: '1px solid', borderColor: selected ? '#1D9E75' : '#eee', borderRadius: 8, background: selected ? '#E1F5EE' : 'white', cursor: 'pointer', textAlign: 'left' }}
+                    >
+                      <span style={{ fontSize: 16 }}>{s.emoji}</span>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 12, fontWeight: 600, color: '#111' }}>{s.name}</div>
+                        <div style={{ fontSize: 10, color: '#999' }}>{s.info}</div>
+                      </div>
+                      <span style={{ fontSize: 10, color: '#bbb' }}>{s.minuten} min</span>
+                    </button>
+                  )
+                })}
+              </div>
+            )
           )}
 
           <div style={{ display: 'flex', gap: 6 }}>
             <button
-              onClick={onSubmit}
-              disabled={!canSubmit}
+              onClick={handleSubmit} disabled={!canSubmit}
               style={{ flex: 1, padding: '7px', background: '#1D9E75', color: 'white', border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: canSubmit ? 'pointer' : 'default', opacity: canSubmit ? 1 : 0.45 }}
             >
               Speichern
             </button>
-            <button
-              onClick={onClose}
+            <button onClick={onClose}
               style={{ padding: '7px 12px', background: 'white', border: '1px solid #ddd', borderRadius: 6, fontSize: 12, cursor: 'pointer', color: '#666' }}
             >
               ✕
