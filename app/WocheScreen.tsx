@@ -361,7 +361,7 @@ export default function WocheScreen({
     for (const wishId of chefErgaenzungIds) {
       const wish = wishes.find(w => w.id === wishId)
       if (!wish || wish.type !== 'ergaenzung') continue
-      for (const part of wish.text.split(',').map(s => s.trim()).filter(Boolean)) {
+      for (const part of wish.text.split(/[,;]/).map(s => s.trim()).filter(Boolean)) {
         newItems.push({
           id: crypto.randomUUID(),
           name: part,
