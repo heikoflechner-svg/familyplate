@@ -67,6 +67,9 @@ export default function WocheScreen({
   const [error, setError] = useState('')
   const [selectedMealName, setSelectedMealName] = useState<string | null>(null)
 
+  const [chefAltSelection, setChefAltSelection] = useState<Record<string, string>>({})
+  const [chefErgaenzungIds, setChefErgaenzungIds] = useState<Set<string>>(new Set())
+
   const [wishFormTag, setWishFormTag] = useState<string | null>(null)
   const [wishPerson, setWishPerson] = useState<Chef>('PA')
   const [wishSlot, setWishSlot] = useState<WochenSlot>('Abend')
@@ -683,7 +686,23 @@ export default function WocheScreen({
                             </button>
                           </div>
                         )}
-                        <SlotWunschPanel tag={tag} slot={slot} wishes={wishes} personNames={personNames} />
+                        <SlotWunschPanel
+                          tag={tag}
+                          slot={slot}
+                          wishes={wishes}
+                          personNames={personNames}
+                          originalEntry={e}
+                          isWochenchef={currentUser === wochenchef}
+                          planConfirmed={planConfirmed}
+                          selectedAltId={chefAltSelection[`${tag}-${slot}`] ?? 'original'}
+                          checkedErgIds={chefErgaenzungIds}
+                          onSelectAlt={(id) => setChefAltSelection(prev => ({ ...prev, [`${tag}-${slot}`]: id }))}
+                          onToggleErg={(wishId) => setChefErgaenzungIds(prev => {
+                            const next = new Set(prev)
+                            next.has(wishId) ? next.delete(wishId) : next.add(wishId)
+                            return next
+                          })}
+                        />
                       </div>
                     )
                   })}
