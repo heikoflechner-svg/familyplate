@@ -1083,7 +1083,7 @@ function WishesSection({
             onClick={handleOpen}
             style={{ fontSize: 11, color: '#bbb', border: '1px dashed #ddd', borderRadius: 8, padding: '2px 8px', background: 'none', cursor: 'pointer' }}
           >
-            + Wunsch
+            + Änderungswunsch
           </button>
         )}
       </div>
