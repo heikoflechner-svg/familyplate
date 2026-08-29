@@ -4,6 +4,7 @@ import { generateWeekPlan } from '../lib/mealLogic'
 import { getFreezerListString, getPantryListString } from '../lib/freezerLogic'
 import { buildFamilyPrompt, DEFAULT_MEMBERS } from '../lib/familyLogic'
 import type { WeekPlanEntry, Rezept, FreezerItem, PantryItem, Wish, Chef, WochenSlot, FamilyMember, DayAttendance, ChangeProposal } from '../lib/state'
+import SlotWunschPanel from './SlotWunschPanel'
 
 const WOCHENTAGE = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag']
 
@@ -682,6 +683,7 @@ export default function WocheScreen({
                             </button>
                           </div>
                         )}
+                        <SlotWunschPanel tag={tag} slot={slot} wishes={wishes} personNames={personNames} />
                       </div>
                     )
                   })}
@@ -699,6 +701,7 @@ export default function WocheScreen({
                       wishDish={wishDish}
                       personNames={personNames}
                       planMittag={planMittag}
+                      showExisting={false}
                       onOpen={openWishForm}
                       onClose={closeWishForm}
                       onPersonChange={setWishPerson}
@@ -1070,6 +1073,7 @@ interface WishesSectionProps {
   wishDish: { name: string; emoji: string } | null
   personNames: Record<Chef, string>
   planMittag: boolean
+  showExisting?: boolean
   onOpen: (tag: string) => void
   onClose: () => void
   onPersonChange: (p: Chef) => void
@@ -1083,6 +1087,7 @@ interface WishesSectionProps {
 
 function WishesSection({
   tag, wishes, mealsData, wishFormTag, wishPerson, wishSlot, wishType, wishText, wishDish, personNames, planMittag,
+  showExisting = true,
   onOpen, onClose, onPersonChange, onSlotChange, onTypeChange, onTextChange, onDishChange, onSubmit, onRemove,
 }: WishesSectionProps) {
   const dayWishes = wishes.filter(w => w.tag === tag)
@@ -1095,7 +1100,7 @@ function WishesSection({
   return (
     <div style={{ padding: '6px 12px 8px', borderTop: '1px solid #f0f0f0' }}>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, alignItems: 'center' }}>
-        {dayWishes.map(w => {
+        {showExisting && dayWishes.map(w => {
           const c = CFG[w.person] ?? CFG.MA
           const slotIcon = w.slot === 'Mittag' ? '🌞' : '🌙'
           const typeLabel = w.type === 'alternative' ? '🔄 ' : ''
