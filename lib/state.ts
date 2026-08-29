@@ -46,9 +46,10 @@ export type Wish = {
   id: string
   person: Chef
   tag: string
+  slot: WochenSlot
 } & (
-  | { kind: 'text'; text: string }
-  | { kind: 'dish'; dishName: string; emoji: string }
+  | { type: 'alternative'; emoji: string; dishName: string }
+  | { type: 'ergaenzung'; text: string }
 )
 
 export interface RemyVorschlag {

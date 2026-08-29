@@ -68,14 +68,16 @@ export default function WocheScreen({
 
   const [wishFormTag, setWishFormTag] = useState<string | null>(null)
   const [wishPerson, setWishPerson] = useState<Chef>('PA')
-  const [wishKind, setWishKind] = useState<'text' | 'dish'>('text')
+  const [wishSlot, setWishSlot] = useState<WochenSlot>('Abend')
+  const [wishType, setWishType] = useState<'alternative' | 'ergaenzung'>('ergaenzung')
   const [wishText, setWishText] = useState('')
   const [wishDish, setWishDish] = useState<{ name: string; emoji: string } | null>(null)
 
   function openWishForm(tag: string) {
     setWishFormTag(tag)
     setWishPerson(wochenchef)
-    setWishKind('text')
+    setWishSlot('Abend')
+    setWishType('ergaenzung')
     setWishText('')
     setWishDish(null)
   }
@@ -84,13 +86,20 @@ export default function WocheScreen({
 
   async function submitWish() {
     if (!wishFormTag) return
-    if (wishKind === 'text' && !wishText.trim()) return
-    if (wishKind === 'dish' && !wishDish) return
-    const base = { id: crypto.randomUUID(), person: wishPerson, tag: wishFormTag }
-    const newWish: Wish = wishKind === 'text'
-      ? { ...base, kind: 'text', text: wishText.trim() }
-      : { ...base, kind: 'dish', dishName: wishDish!.name, emoji: wishDish!.emoji }
-    const filtered = wishes.filter(w => !(w.person === wishPerson && w.tag === wishFormTag))
+    if (wishType === 'ergaenzung' && !wishText.trim()) return
+    if (wishType === 'alternative' && !wishDish && !wishText.trim()) return
+    const base = { id: crypto.randomUUID(), person: wishPerson, tag: wishFormTag, slot: wishSlot }
+    const newWish: Wish = wishType === 'ergaenzung'
+      ? { ...base, type: 'ergaenzung', text: wishText.trim() }
+      : wishDish
+        ? { ...base, type: 'alternative', dishName: wishDish.name, emoji: wishDish.emoji }
+        : { ...base, type: 'alternative', dishName: wishText.trim(), emoji: '🍽️' }
+    const filtered = wishes.filter(w => !(
+      w.person === wishPerson &&
+      w.tag === wishFormTag &&
+      w.slot === wishSlot &&
+      w.type === wishType
+    ))
     await onWishesChange([...filtered, newWish])
     closeWishForm()
   }
@@ -398,12 +407,15 @@ export default function WocheScreen({
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                       {relevantWishes.map(w => {
                         const c = CFG[w.person] ?? CFG.MA
+                        const slotIcon = w.slot === 'Mittag' ? '🌞' : '🌙'
+                        const content = w.type === 'ergaenzung' ? w.text : `${w.emoji} ${w.dishName}`
                         return (
                           <div key={w.id} style={{ display: 'flex', alignItems: 'center', gap: 4, background: c.bg, color: c.c, borderRadius: 8, padding: '3px 8px', fontSize: 11, fontWeight: 600 }}>
                             <span>{w.person}</span>
                             <span style={{ fontWeight: 400 }}>{w.tag.slice(0, 2)}</span>
+                            <span style={{ fontWeight: 400 }}>{slotIcon}</span>
                             <span>·</span>
-                            <span style={{ fontWeight: 400 }}>{w.kind === 'text' ? w.text : `${w.emoji} ${w.dishName}`}</span>
+                            <span style={{ fontWeight: 400 }}>{w.type === 'alternative' ? '🔄 ' : ''}{content}</span>
                           </div>
                         )
                       })}
@@ -681,14 +693,17 @@ export default function WocheScreen({
                       mealsData={mealsData}
                       wishFormTag={wishFormTag}
                       wishPerson={wishPerson}
-                      wishKind={wishKind}
+                      wishSlot={wishSlot}
+                      wishType={wishType}
                       wishText={wishText}
                       wishDish={wishDish}
                       personNames={personNames}
+                      planMittag={planMittag}
                       onOpen={openWishForm}
                       onClose={closeWishForm}
                       onPersonChange={setWishPerson}
-                      onKindChange={setWishKind}
+                      onSlotChange={setWishSlot}
+                      onTypeChange={setWishType}
                       onTextChange={setWishText}
                       onDishChange={setWishDish}
                       onSubmit={submitWish}
@@ -833,14 +848,17 @@ export default function WocheScreen({
           mealsData={mealsData}
           wishFormTag={wishFormTag}
           wishPerson={wishPerson}
-          wishKind={wishKind}
+          wishSlot={wishSlot}
+          wishType={wishType}
           wishText={wishText}
           wishDish={wishDish}
           personNames={personNames}
+          planMittag={planMittag}
           onOpen={openWishForm}
           onClose={closeWishForm}
           onPersonChange={setWishPerson}
-          onKindChange={setWishKind}
+          onSlotChange={setWishSlot}
+          onTypeChange={setWishType}
           onTextChange={setWishText}
           onDishChange={setWishDish}
           onSubmit={submitWish}
@@ -862,14 +880,17 @@ export default function WocheScreen({
               mealsData={mealsData}
               wishFormTag={wishFormTag}
               wishPerson={wishPerson}
-              wishKind={wishKind}
+              wishSlot={wishSlot}
+              wishType={wishType}
               wishText={wishText}
               wishDish={wishDish}
               personNames={personNames}
+              planMittag={planMittag}
               onOpen={openWishForm}
               onClose={closeWishForm}
               onPersonChange={setWishPerson}
-              onKindChange={setWishKind}
+              onSlotChange={setWishSlot}
+              onTypeChange={setWishType}
               onTextChange={setWishText}
               onDishChange={setWishDish}
               onSubmit={submitWish}
@@ -1043,14 +1064,17 @@ interface WishesSectionProps {
   mealsData: Record<string, Rezept>
   wishFormTag: string | null
   wishPerson: Chef
-  wishKind: 'text' | 'dish'
+  wishSlot: WochenSlot
+  wishType: 'alternative' | 'ergaenzung'
   wishText: string
   wishDish: { name: string; emoji: string } | null
   personNames: Record<Chef, string>
+  planMittag: boolean
   onOpen: (tag: string) => void
   onClose: () => void
   onPersonChange: (p: Chef) => void
-  onKindChange: (k: 'text' | 'dish') => void
+  onSlotChange: (s: WochenSlot) => void
+  onTypeChange: (t: 'alternative' | 'ergaenzung') => void
   onTextChange: (t: string) => void
   onDishChange: (d: { name: string; emoji: string } | null) => void
   onSubmit: () => void
@@ -1058,24 +1082,33 @@ interface WishesSectionProps {
 }
 
 function WishesSection({
-  tag, wishes, mealsData, wishFormTag, wishPerson, wishKind, wishText, wishDish, personNames,
-  onOpen, onClose, onPersonChange, onKindChange, onTextChange, onDishChange, onSubmit, onRemove,
+  tag, wishes, mealsData, wishFormTag, wishPerson, wishSlot, wishType, wishText, wishDish, personNames, planMittag,
+  onOpen, onClose, onPersonChange, onSlotChange, onTypeChange, onTextChange, onDishChange, onSubmit, onRemove,
 }: WishesSectionProps) {
   const dayWishes = wishes.filter(w => w.tag === tag)
   const dishes = Object.entries(mealsData).map(([name, r]) => ({ name, emoji: r.emoji }))
   const isOpen = wishFormTag === tag
-  const canSubmit = wishKind === 'text' ? wishText.trim().length > 0 : wishDish !== null
+  const canSubmit = wishType === 'ergaenzung'
+    ? wishText.trim().length > 0
+    : wishDish !== null || wishText.trim().length > 0
 
   return (
     <div style={{ padding: '6px 12px 8px', borderTop: '1px solid #f0f0f0' }}>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, alignItems: 'center' }}>
         {dayWishes.map(w => {
           const c = CFG[w.person] ?? CFG.MA
+          const slotIcon = w.slot === 'Mittag' ? '🌞' : '🌙'
+          const typeLabel = w.type === 'alternative' ? '🔄 ' : ''
+          const content = w.type === 'ergaenzung'
+            ? w.text
+            : w.type === 'alternative'
+              ? `${w.emoji} ${w.dishName}`
+              : ''
           return (
             <span key={w.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 3, background: c.bg, color: c.c, borderRadius: 8, padding: '2px 6px', fontSize: 11 }}>
-              <span style={{ fontWeight: 700 }}>{w.person}</span>
-              <span>·</span>
-              <span>{w.kind === 'text' ? w.text : `${w.emoji} ${w.dishName}`}</span>
+              <span style={{ fontWeight: 700 }}>{personNames[w.person]}</span>
+              <span style={{ opacity: 0.6 }}>{slotIcon}</span>
+              <span>{typeLabel}{content}</span>
               <button onClick={() => onRemove(w.id)} style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'inherit', fontSize: 12, padding: '0 0 0 2px', lineHeight: 1 }}>×</button>
             </span>
           )
@@ -1092,6 +1125,7 @@ function WishesSection({
 
       {isOpen && (
         <div style={{ marginTop: 8, padding: 10, background: '#f9f9f9', borderRadius: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {/* Person */}
           <div style={{ display: 'flex', gap: 4 }}>
             {(['PA', 'MA', 'TI'] as Chef[]).map(p => {
               const c = CFG[p]
@@ -1102,48 +1136,79 @@ function WishesSection({
                   onClick={() => onPersonChange(p)}
                   style={{ padding: '3px 10px', borderRadius: 8, border: '1px solid', borderColor: active ? c.c : '#ddd', background: active ? c.bg : 'white', color: active ? c.c : '#aaa', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
                 >
-                  {p} · {personNames[p]}
+                  {personNames[p]}
                 </button>
               )
             })}
           </div>
 
-          {dishes.length > 0 && (
+          {/* Slot */}
+          {planMittag && (
             <div style={{ display: 'flex', gap: 4 }}>
-              {(['text', 'dish'] as const).map(k => (
+              {(['Mittag', 'Abend'] as const).map(s => (
                 <button
-                  key={k}
-                  onClick={() => onKindChange(k)}
-                  style={{ fontSize: 11, padding: '2px 10px', border: '1px solid', borderColor: wishKind === k ? '#1D9E75' : '#ddd', borderRadius: 6, background: wishKind === k ? '#E1F5EE' : 'white', color: wishKind === k ? '#0F6E56' : '#aaa', cursor: 'pointer' }}
+                  key={s}
+                  onClick={() => onSlotChange(s)}
+                  style={{ fontSize: 11, padding: '2px 10px', border: '1px solid', borderColor: wishSlot === s ? '#1D9E75' : '#ddd', borderRadius: 6, background: wishSlot === s ? '#E1F5EE' : 'white', color: wishSlot === s ? '#0F6E56' : '#aaa', cursor: 'pointer' }}
                 >
-                  {k === 'text' ? 'Freitext' : 'Gericht wählen'}
+                  {s === 'Mittag' ? '🌞 Mittag' : '🌙 Abend'}
                 </button>
               ))}
             </div>
           )}
 
-          {wishKind === 'text' ? (
+          {/* Typ */}
+          <div style={{ display: 'flex', gap: 4 }}>
+            {(['ergaenzung', 'alternative'] as const).map(t => (
+              <button
+                key={t}
+                onClick={() => { onTypeChange(t); onTextChange(''); onDishChange(null) }}
+                style={{ fontSize: 11, padding: '2px 10px', border: '1px solid', borderColor: wishType === t ? '#1D9E75' : '#ddd', borderRadius: 6, background: wishType === t ? '#E1F5EE' : 'white', color: wishType === t ? '#0F6E56' : '#aaa', cursor: 'pointer' }}
+              >
+                {t === 'ergaenzung' ? '➕ Ergänzung' : '🔄 Alternative'}
+              </button>
+            ))}
+          </div>
+
+          {/* Input */}
+          {wishType === 'ergaenzung' ? (
             <input
               type="text"
               value={wishText}
               onChange={e => onTextChange(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && canSubmit && onSubmit()}
-              placeholder="z.B. Pizza, etwas Leichtes, Pasta…"
+              placeholder="z.B. Erbsen dazu, kein Käse bitte…"
               autoFocus
               style={{ fontSize: 12, padding: '6px 10px', border: '1px solid #ddd', borderRadius: 6, outline: 'none' }}
             />
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 130, overflowY: 'auto' }}>
-              {dishes.map(d => (
-                <button
-                  key={d.name}
-                  onClick={() => onDishChange(wishDish?.name === d.name ? null : d)}
-                  style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 8px', border: '1px solid', borderColor: wishDish?.name === d.name ? '#1D9E75' : '#eee', borderRadius: 6, background: wishDish?.name === d.name ? '#E1F5EE' : 'white', cursor: 'pointer', textAlign: 'left' }}
-                >
-                  <span>{d.emoji}</span>
-                  <span style={{ fontSize: 12 }}>{d.name}</span>
-                </button>
-              ))}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <input
+                type="text"
+                value={wishText}
+                onChange={e => { onTextChange(e.target.value); onDishChange(null) }}
+                onKeyDown={e => e.key === 'Enter' && canSubmit && onSubmit()}
+                placeholder="Gerichtsname eingeben…"
+                autoFocus
+                style={{ fontSize: 12, padding: '6px 10px', border: '1px solid #ddd', borderRadius: 6, outline: 'none' }}
+              />
+              {dishes.length > 0 && (
+                <>
+                  <div style={{ fontSize: 10, color: '#bbb', textAlign: 'center' }}>— oder aus bisherigen Gerichten wählen —</div>
+                  <div style={{ maxHeight: 120, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 3 }}>
+                    {dishes.map(d => (
+                      <button
+                        key={d.name}
+                        onClick={() => { onDishChange(wishDish?.name === d.name ? null : d); onTextChange('') }}
+                        style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 8px', border: '1px solid', borderColor: wishDish?.name === d.name ? '#1D9E75' : '#eee', borderRadius: 6, background: wishDish?.name === d.name ? '#E1F5EE' : 'white', cursor: 'pointer', textAlign: 'left' }}
+                      >
+                        <span>{d.emoji}</span>
+                        <span style={{ fontSize: 12 }}>{d.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
             </div>
           )}
 

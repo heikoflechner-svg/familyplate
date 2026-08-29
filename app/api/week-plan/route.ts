@@ -108,7 +108,7 @@ function buildFallbackRezepte(entries: { gericht: string; emoji: string }[]): Re
   return rezepte
 }
 
-type WishJSON = { person: string; tag: string; kind: string; text?: string; dishName?: string; emoji?: string }
+type WishJSON = { person: string; tag: string; slot: string; type: string; text?: string; dishName?: string; emoji?: string }
 
 export async function POST(req: NextRequest) {
   const { planMittag, planWE, freezerList, pantryList, behaltene, neuTage, wishes, familyPrompt } = await req.json()
@@ -143,7 +143,7 @@ export async function POST(req: NextRequest) {
 
   const wishList = (wishes ?? []) as WishJSON[]
   const wishHinweis = wishList.length
-    ? ` Familienwünsche (bitte berücksichtigen): ${wishList.map(w => `${w.person} (${w.tag}): ${w.kind === 'text' ? w.text : `${w.emoji} ${w.dishName}`}`).join(', ')}.`
+    ? ` Familienwünsche (bitte berücksichtigen): ${wishList.map(w => `${w.person} (${w.tag} ${w.slot === 'Mittag' ? '🌞' : '🌙'}): ${w.type === 'ergaenzung' ? `Notiz: ${w.text}` : `Alternative: ${w.emoji ?? ''} ${w.dishName ?? ''}`}`).join(', ')}.`
     : ''
 
   const familienProfil = familyPrompt || 'Sabine (MA) keine Nüsse mag Fisch, Heiko (PA) laktosefrei mag Pasta, Tim (TI) kein Fisch mag Nudeln'

@@ -161,9 +161,9 @@ export async function getRemySuggestions(params: {
     body: JSON.stringify({
       ...params,
       wishes: params.wishes.map(w =>
-        w.kind === 'text'
-          ? { person: w.person, tag: w.tag, kind: 'text', text: w.text }
-          : { person: w.person, tag: w.tag, kind: 'dish', dishName: w.dishName, emoji: w.emoji }
+        w.type === 'ergaenzung'
+          ? { person: w.person, tag: w.tag, slot: w.slot, type: 'ergaenzung', text: w.text }
+          : { person: w.person, tag: w.tag, slot: w.slot, type: 'alternative', dishName: w.dishName, emoji: w.emoji }
       ),
     }),
   })
