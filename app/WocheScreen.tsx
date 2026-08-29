@@ -73,10 +73,10 @@ export default function WocheScreen({
   const [chefAltSelection, setChefAltSelection] = useState<Record<string, string>>({})
   const [chefErgaenzungIds, setChefErgaenzungIds] = useState<Set<string>>(new Set())
 
-  const [wishFormTag, setWishFormTag] = useState<string | null>(null)
+  const [wishFormKey, setWishFormKey] = useState<string | null>(null)
 
-  function openWishForm(tag: string) { setWishFormTag(tag) }
-  function closeWishForm() { setWishFormTag(null) }
+  function openWishForm(tag: string, slot: WochenSlot) { setWishFormKey(`${tag}-${slot}`) }
+  function closeWishForm() { setWishFormKey(null) }
 
   async function handleWishSubmit(wish: Wish) {
     const filtered = wishes.filter(w => !(
@@ -726,28 +726,26 @@ export default function WocheScreen({
                             return next
                           })}
                         />
+                        <WishesSection
+                          tag={tag}
+                          wishes={wishes}
+                          freezerItems={freezerItems}
+                          pantryItems={pantryItems}
+                          personNames={personNames}
+                          planMittag={planMittag}
+                          lockedSlot={slot}
+                          showExisting={false}
+                          isOpen={wishFormKey === `${tag}-${slot}`}
+                          initialPerson={currentUser}
+                          familyPrompt={familyPrompt}
+                          onOpen={() => openWishForm(tag, slot)}
+                          onClose={closeWishForm}
+                          onSubmitWish={handleWishSubmit}
+                          onRemove={removeWish}
+                        />
                       </div>
                     )
                   })}
-
-                  {!isLoading && !isPending && (
-                    <WishesSection
-                      tag={tag}
-                      wishes={wishes}
-                      freezerItems={freezerItems}
-                      pantryItems={pantryItems}
-                      personNames={personNames}
-                      planMittag={planMittag}
-                      showExisting={false}
-                      isOpen={wishFormTag === tag}
-                      initialPerson={currentUser}
-                      familyPrompt={familyPrompt}
-                      onOpen={() => openWishForm(tag)}
-                      onClose={closeWishForm}
-                      onSubmitWish={handleWishSubmit}
-                      onRemove={removeWish}
-                    />
-                  )}
                 </div>
               )
             })
@@ -839,6 +837,22 @@ export default function WocheScreen({
             </button>
           </div>
         )}
+        <WishesSection
+          tag={tag}
+          wishes={wishes}
+          freezerItems={freezerItems}
+          pantryItems={pantryItems}
+          personNames={personNames}
+          planMittag={planMittag}
+          lockedSlot={slot}
+          isOpen={wishFormKey === `${tag}-${slot}`}
+          initialPerson={currentUser}
+          familyPrompt={familyPrompt}
+          onOpen={() => openWishForm(tag, slot)}
+          onClose={closeWishForm}
+          onSubmitWish={handleWishSubmit}
+          onRemove={removeWish}
+        />
       </div>
     )
   }
@@ -903,21 +917,6 @@ export default function WocheScreen({
         <AttendanceRow tag={today} attendance={attendance} members={members} onSave={handleAttendanceSave} canEdit={!planConfirmed || currentUser === wochenchef} />
         {planMittag && renderHomeSlot(today, 'Mittag', todayMittag)}
         {renderHomeSlot(today, 'Abend', todayAbend)}
-        <WishesSection
-          tag={today}
-          wishes={wishes}
-          freezerItems={freezerItems}
-          pantryItems={pantryItems}
-          personNames={personNames}
-          planMittag={planMittag}
-          isOpen={wishFormTag === today}
-          initialPerson={currentUser}
-          familyPrompt={familyPrompt}
-          onOpen={() => openWishForm(today)}
-          onClose={closeWishForm}
-          onSubmitWish={handleWishSubmit}
-          onRemove={removeWish}
-        />
 
         {nextDays.map(tag => {
           const nextMittag = getSlot(weekPlan, tag, 'Mittag')
@@ -928,21 +927,6 @@ export default function WocheScreen({
             <AttendanceRow tag={tag} attendance={attendance} members={members} onSave={handleAttendanceSave} canEdit={!planConfirmed || currentUser === wochenchef} />
             {planMittag && renderHomeSlot(tag, 'Mittag', nextMittag)}
             {renderHomeSlot(tag, 'Abend', nextAbend)}
-            <WishesSection
-              tag={tag}
-              wishes={wishes}
-              freezerItems={freezerItems}
-              pantryItems={pantryItems}
-              personNames={personNames}
-              planMittag={planMittag}
-              isOpen={wishFormTag === tag}
-              initialPerson={currentUser}
-              familyPrompt={familyPrompt}
-              onOpen={() => openWishForm(tag)}
-              onClose={closeWishForm}
-              onSubmitWish={handleWishSubmit}
-              onRemove={removeWish}
-            />
           </div>
           )
         })}
@@ -1116,6 +1100,7 @@ interface WishesSectionProps {
   pantryItems: PantryItem[]
   personNames: Record<Chef, string>
   planMittag: boolean
+  lockedSlot?: WochenSlot
   showExisting?: boolean
   isOpen: boolean
   initialPerson: Chef
@@ -1128,13 +1113,13 @@ interface WishesSectionProps {
 
 function WishesSection({
   tag, wishes, freezerItems, pantryItems, personNames, planMittag,
-  showExisting = true, isOpen, initialPerson, familyPrompt,
+  lockedSlot, showExisting = true, isOpen, initialPerson, familyPrompt,
   onOpen, onClose, onSubmitWish, onRemove,
 }: WishesSectionProps) {
-  const dayWishes = wishes.filter(w => w.tag === tag)
+  const dayWishes = wishes.filter(w => w.tag === tag && (!lockedSlot || w.slot === lockedSlot))
 
   const [wishPerson, setWishPerson] = useState<Chef>(initialPerson)
-  const [wishSlot, setWishSlot] = useState<WochenSlot>('Abend')
+  const [wishSlot, setWishSlot] = useState<WochenSlot>(lockedSlot ?? 'Abend')
   const [wishMode, setWishMode] = useState<WishMode>('ergaenzung')
   const [wishText, setWishText] = useState('')
   const [wishDish, setWishDish] = useState<{ name: string; emoji: string } | null>(null)
@@ -1143,7 +1128,7 @@ function WishesSection({
 
   function handleOpen() {
     setWishPerson(initialPerson)
-    setWishSlot('Abend')
+    setWishSlot(lockedSlot ?? 'Abend')
     setWishMode('ergaenzung')
     setWishText('')
     setWishDish(null)
@@ -1256,7 +1241,7 @@ function WishesSection({
           </div>
 
           {/* Slot */}
-          {planMittag && (
+          {planMittag && !lockedSlot && (
             <div style={{ display: 'flex', gap: 4 }}>
               {(['Mittag', 'Abend'] as const).map(s => (
                 <button key={s} onClick={() => handleSlotChange(s)}
