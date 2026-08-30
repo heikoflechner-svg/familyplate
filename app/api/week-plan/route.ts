@@ -114,6 +114,8 @@ export async function POST(req: NextRequest) {
   const { planMittag, planWE, freezerList, pantryList, behaltene, neuTage, wishes, familyPrompt } = await req.json()
 
   const apiKey = process.env.ANTHROPIC_API_KEY
+  console.log('[week-plan] apiKey present:', !!apiKey, '| length:', apiKey?.length ?? 0)
+
   const tage = planWE
     ? ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag']
     : ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag']
@@ -160,11 +162,16 @@ export async function POST(req: NextRequest) {
       },
       body: JSON.stringify({
         model: 'claude-haiku-4-5',
-        max_tokens: 2000,
+        max_tokens: 4000,
         messages: [{ role: 'user', content: prompt }],
       }),
     })
     const data = await resp.json()
+    console.log('[week-plan] API status:', resp.status, '| stop_reason:', data?.stop_reason, '| error:', data?.error?.type)
+    if (!data?.content?.[0]?.text) {
+      console.error('[week-plan] Unexpected API response:', JSON.stringify(data).slice(0, 300))
+      throw new Error('No content in response')
+    }
     const parsed = JSON.parse(data.content[0].text)
 
     // Build complete rezepte: add name+emoji from woche, fall back to FB_REZEPTE for missing entries
@@ -181,7 +188,8 @@ export async function POST(req: NextRequest) {
 
     const result = [...(behaltene || []), ...parsed.woche]
     return NextResponse.json({ woche: result, rezepte })
-  } catch {
+  } catch (e) {
+    console.error('[week-plan] Caught error, returning fallback:', e instanceof Error ? e.message : String(e))
     const fallback: object[] = []
     planTage.forEach((t: string, i: number) => {
       if (planMittag) {
