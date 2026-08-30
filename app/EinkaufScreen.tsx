@@ -11,7 +11,7 @@ import {
   clearCompleted,
 } from '../lib/shoppingLogic'
 import type { ConsolidatedItem } from '../lib/shoppingLogic'
-import type { WeekPlanEntry, Rezept, ShoppingItem } from '../lib/state'
+import type { WeekPlanEntry, Rezept, ShoppingItem, Chef } from '../lib/state'
 
 const WOCHENTAGE = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag']
 
@@ -20,11 +20,15 @@ interface Props {
   mealsData: Record<string, Rezept>
   shoppingList: ShoppingItem[]
   onShoppingListChange: (list: ShoppingItem[]) => void
+  currentUser: Chef | null
+  wochenchef: Chef
+  shopDone: boolean
+  onShopDoneChange: (done: boolean) => void
 }
 
 type ViewMode = 'tag' | 'zusammen'
 
-export default function EinkaufScreen({ weekPlan, mealsData, shoppingList, onShoppingListChange }: Props) {
+export default function EinkaufScreen({ weekPlan, mealsData, shoppingList, onShoppingListChange, currentUser, wochenchef, shopDone, onShopDoneChange }: Props) {
   const [newName, setNewName] = useState('')
   const [newMenge, setNewMenge] = useState('')
   const [dayPickerOpen, setDayPickerOpen] = useState(false)
@@ -250,6 +254,27 @@ export default function EinkaufScreen({ weekPlan, mealsData, shoppingList, onSho
             >+</button>
           </div>
         </div>
+
+        {currentUser === wochenchef && !shopDone && shoppingList.length > 0 && (
+          <div style={{ marginTop: 24, borderTop: '2px solid #f0f0f0', paddingTop: 20 }}>
+            <button
+              onClick={() => onShopDoneChange(true)}
+              style={{
+                width: '100%', padding: '14px', border: 'none', borderRadius: 14,
+                background: '#1D9E75', color: '#fff', fontSize: 15, fontWeight: 700,
+                cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+              }}
+            >
+              ✓ Einkauf erledigt
+            </button>
+          </div>
+        )}
+
+        {shopDone && (
+          <div style={{ marginTop: 24, textAlign: 'center', color: '#1D9E75', fontSize: 13, fontWeight: 600, padding: '12px 0' }}>
+            ✓ Einkauf abgeschlossen
+          </div>
+        )}
 
       </div>
     </div>

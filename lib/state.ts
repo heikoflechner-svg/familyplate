@@ -47,6 +47,7 @@ export type Wish = {
   person: Chef
   tag: string
   slot: WochenSlot
+  postConfirm?: boolean
 } & (
   | { type: 'alternative'; emoji: string; dishName: string }
   | { type: 'ergaenzung'; text: string }

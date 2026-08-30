@@ -36,6 +36,7 @@ interface Props {
   attendance: DayAttendance[]
   proposals: ChangeProposal[]
   planConfirmed: boolean
+  shopDone: boolean
   onWeekPlanChange: (plan: WeekPlanEntry[], meals: Record<string, Rezept>) => Promise<void>
   onWishesChange: (wishes: Wish[]) => Promise<void>
   onAttendanceChange: (a: DayAttendance[]) => Promise<void>
@@ -43,6 +44,7 @@ interface Props {
   onProposalsChange: (proposals: ChangeProposal[]) => Promise<void>
   onWochenchefChange: (chef: Chef) => Promise<void>
   onPlanConfirmedChange: (confirmed: boolean) => Promise<void>
+  onShopDoneChange: (done: boolean) => Promise<void>
   shoppingList: ShoppingItem[]
   onShoppingListChange: (list: ShoppingItem[]) => Promise<void>
 }
@@ -52,8 +54,8 @@ type PlanState = 'options' | 'loading' | 'results'
 
 export default function WocheScreen({
   weekPlan, mealsData, planMittag, planWE, freezerItems, pantryItems,
-  wishes, currentUser, wochenchef, members, attendance, proposals, planConfirmed, onWeekPlanChange, onWishesChange,
-  onAttendanceChange, onPlanConfirm, onProposalsChange, onWochenchefChange, onPlanConfirmedChange,
+  wishes, currentUser, wochenchef, members, attendance, proposals, planConfirmed, shopDone, onWeekPlanChange, onWishesChange,
+  onAttendanceChange, onPlanConfirm, onProposalsChange, onWochenchefChange, onPlanConfirmedChange, onShopDoneChange,
   shoppingList, onShoppingListChange,
 }: Props) {
   const personNames: Record<Chef, string> = Object.fromEntries(
@@ -72,6 +74,7 @@ export default function WocheScreen({
 
   const [chefAltSelection, setChefAltSelection] = useState<Record<string, string>>({})
   const [chefErgaenzungIds, setChefErgaenzungIds] = useState<string[]>([])
+  const [nachtragsIds, setNachtragsIds] = useState<string[]>([])
 
   const [wishFormKey, setWishFormKey] = useState<string | null>(null)
 
@@ -79,10 +82,11 @@ export default function WocheScreen({
   function closeWishForm() { setWishFormKey(null) }
 
   async function handleWishSubmit(wish: Wish) {
+    const tagged = planConfirmed ? { ...wish, postConfirm: true } : wish
     const filtered = wishes.filter(w => !(
       w.person === wish.person && w.tag === wish.tag && w.slot === wish.slot && w.type === wish.type
     ))
-    await onWishesChange([...filtered, wish])
+    await onWishesChange([...filtered, tagged])
     closeWishForm()
   }
 
@@ -384,6 +388,35 @@ export default function WocheScreen({
 
     setChefAltSelection({})
     setChefErgaenzungIds([])
+    setSaving(false)
+  }
+
+  async function confirmNachtraege() {
+    setSaving(true)
+    const newItems: ShoppingItem[] = []
+    for (const wishId of nachtragsIds) {
+      const wish = wishes.find(w => w.id === wishId)
+      if (!wish || wish.type !== 'ergaenzung') continue
+      const meal = weekPlan.find(e => e.tag === wish.tag && e.slot === wish.slot)
+      for (const part of wish.text.split(/[,;]/).map(s => s.trim()).filter(Boolean)) {
+        newItems.push({
+          id: crypto.randomUUID(),
+          name: part,
+          menge: '',
+          kategorie: 'Sonstiges',
+          erledigt: false,
+          tag: wish.tag,
+          slot: wish.slot,
+          gericht: meal?.gericht,
+        })
+      }
+    }
+    if (newItems.length > 0) {
+      await onShoppingListChange([...shoppingList, ...newItems])
+    }
+    const processedIds = new Set(nachtragsIds)
+    await onWishesChange(wishes.filter(w => !processedIds.has(w.id)))
+    setNachtragsIds([])
     setSaving(false)
   }
 
@@ -731,7 +764,7 @@ export default function WocheScreen({
                         />
                         <WishesSection
                           tag={tag} wishes={wishes} freezerItems={freezerItems} pantryItems={pantryItems}
-                          personNames={personNames} planMittag={planMittag} lockedSlot={slot} showExisting={false}
+                          personNames={personNames} planMittag={planMittag} lockedSlot={slot} showExisting={false} canAdd={!shopDone}
                           isOpen={wishFormKey === `${tag}-${slot}`} initialPerson={currentUser} familyPrompt={familyPrompt}
                           onOpen={() => openWishForm(tag, slot)} onClose={closeWishForm} onSubmitWish={handleWishSubmit} onRemove={removeWish}
                         />
@@ -764,6 +797,46 @@ export default function WocheScreen({
               </button>
             </div>
           )}
+
+          {(() => {
+            const nachtragsWishes = wishes.filter(w => w.postConfirm && w.type === 'ergaenzung')
+            if (!planConfirmed || !nachtragsWishes.length || currentUser !== wochenchef) return null
+            return (
+              <div style={{ margin: '16px 0 0', padding: '14px 16px', background: '#FFFBEB', borderRadius: 12, border: '1px solid #FCD34D' }}>
+                <div style={{ fontSize: 12, color: '#92400E', fontWeight: 600, marginBottom: 6 }}>
+                  📬 Nachtrags-Ergänzungen ({nachtragsWishes.length})
+                </div>
+                <div style={{ fontSize: 11, color: '#555', marginBottom: 10 }}>
+                  Neue Wünsche nach der Bestätigung — ankreuzen, was auf die Einkaufsliste soll:
+                </div>
+                {nachtragsWishes.map(w => {
+                  const checked = nachtragsIds.includes(w.id)
+                  const c = CFG[w.person] ?? CFG.MA
+                  return (
+                    <div key={w.id} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                      <button
+                        onClick={() => setNachtragsIds(prev => prev.includes(w.id) ? prev.filter(id => id !== w.id) : [...prev, w.id])}
+                        style={{ width: 18, height: 18, borderRadius: 4, flexShrink: 0, cursor: 'pointer', border: `1px solid ${checked ? '#1D9E75' : '#ddd'}`, background: checked ? '#1D9E75' : 'white', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                      >
+                        {checked && <span style={{ color: 'white', fontSize: 11, lineHeight: 1, fontWeight: 700 }}>✓</span>}
+                      </button>
+                      <span style={{ fontSize: 12, flex: 1, color: '#555', fontStyle: 'italic' }}>„{w.type === 'ergaenzung' ? w.text : ''}"</span>
+                      <span style={{ fontSize: 10, color: '#888' }}>{w.tag.slice(0, 2)} {w.slot === 'Mittag' ? '🌞' : '🌙'}</span>
+                      <span style={{ fontSize: 10, fontWeight: 700, background: c.bg, color: c.c, padding: '1px 7px', borderRadius: 6 }}>{personNames[w.person]}</span>
+                    </div>
+                  )
+                })}
+                <button
+                  className="btn primary"
+                  onClick={confirmNachtraege}
+                  disabled={saving || nachtragsIds.length === 0}
+                  style={{ background: '#1D9E75', fontSize: 12, marginTop: 8, opacity: nachtragsIds.length === 0 ? 0.4 : 1 }}
+                >
+                  {saving ? '⏳…' : `🛒 ${nachtragsIds.length} Ergänzung(en) zur Einkaufsliste`}
+                </button>
+              </div>
+            )
+          })()}
 
           {currentUser === wochenchef && (
             <button className="btn soft" style={{ marginTop: 8 }} onClick={goToPlan}>
@@ -835,7 +908,7 @@ export default function WocheScreen({
         </div>
         <WishesSection
           tag={tag} wishes={wishes} freezerItems={freezerItems} pantryItems={pantryItems}
-          personNames={personNames} planMittag={planMittag} lockedSlot={slot}
+          personNames={personNames} planMittag={planMittag} lockedSlot={slot} canAdd={!shopDone}
           isOpen={wishFormKey === `${tag}-${slot}`} initialPerson={currentUser} familyPrompt={familyPrompt}
           onOpen={() => openWishForm(tag, slot)} onClose={closeWishForm} onSubmitWish={handleWishSubmit} onRemove={removeWish}
         />
@@ -980,6 +1053,7 @@ interface WishesSectionProps {
   planMittag: boolean
   lockedSlot?: WochenSlot
   showExisting?: boolean
+  canAdd?: boolean
   isOpen: boolean
   initialPerson: Chef
   familyPrompt: string
@@ -991,7 +1065,7 @@ interface WishesSectionProps {
 
 function WishesSection({
   tag, wishes, freezerItems, pantryItems, personNames, planMittag,
-  lockedSlot, showExisting = true, isOpen, initialPerson, familyPrompt,
+  lockedSlot, showExisting = true, canAdd = true, isOpen, initialPerson, familyPrompt,
   onOpen, onClose, onSubmitWish, onRemove,
 }: WishesSectionProps) {
   const dayWishes = wishes.filter(w => w.tag === tag && (!lockedSlot || w.slot === lockedSlot))
@@ -1091,7 +1165,7 @@ function WishesSection({
             </span>
           )
         })}
-        {!isOpen && (
+        {!isOpen && canAdd && (
           <button
             onClick={handleOpen}
             style={{ fontSize: 11, color: '#bbb', border: '1px dashed #ddd', borderRadius: 8, padding: '2px 8px', background: 'none', cursor: 'pointer' }}

@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
-import { loadWeekPlan, saveWeekPlan, saveAttendance, saveShoppingList, saveProposals, saveWochenchef, savePlanConfirmed } from '../lib/mealLogic'
+import { loadWeekPlan, saveWeekPlan, saveAttendance, saveShoppingList, saveProposals, saveWochenchef, savePlanConfirmed, saveShopDone } from '../lib/mealLogic'
 import { loadFreezerItems, loadPantryItems } from '../lib/freezerLogic'
 import { loadFamilyProfile, saveFamilyProfile, applyChefStats, DEFAULT_MEMBERS } from '../lib/familyLogic'
 import { signOut, onAuthChange } from '../lib/auth'
@@ -32,6 +32,7 @@ export default function FamilyPlateApp() {
   const [proposals, setProposals] = useState<ChangeProposal[]>([])
   const [activeWochenchef, setActiveWochenchef] = useState<Chef>('PA')
   const [planConfirmed, setPlanConfirmed] = useState(false)
+  const [shopDone, setShopDone] = useState(false)
   const [activeTab, setActiveTab] = useState<Tab>('woche')
 
   useEffect(() => {
@@ -56,6 +57,7 @@ export default function FamilyPlateApp() {
         setProposals([])
         setActiveWochenchef('PA')
         setPlanConfirmed(false)
+        setShopDone(false)
       }
     })
   }, [])
@@ -63,7 +65,7 @@ export default function FamilyPlateApp() {
   useEffect(() => {
     if (!currentUser) return
     Promise.all([loadWeekPlan(), loadFreezerItems(), loadPantryItems(), loadFamilyProfile()])
-      .then(([{ plan, mealsData: md, wishes: w, attendance: att, shoppingList: sl, proposals: pr, wochenchef: wc, planConfirmed: pc }, freezer, pantry, profile]) => {
+      .then(([{ plan, mealsData: md, wishes: w, attendance: att, shoppingList: sl, proposals: pr, wochenchef: wc, planConfirmed: pc, shopDone: sd }, freezer, pantry, profile]) => {
         setWeekPlan(plan)
         setMealsData(md)
         setWishes(w)
@@ -72,6 +74,7 @@ export default function FamilyPlateApp() {
         setProposals(pr)
         setActiveWochenchef(wc)
         setPlanConfirmed(pc)
+        setShopDone(sd)
         setFreezerItems(freezer)
         setPantryItems(pantry)
         setFamilyProfile(profile)
@@ -112,6 +115,11 @@ export default function FamilyPlateApp() {
   async function handlePlanConfirmedChange(confirmed: boolean) {
     setPlanConfirmed(confirmed)
     await savePlanConfirmed(confirmed)
+  }
+
+  async function handleShopDoneChange(done: boolean) {
+    setShopDone(done)
+    await saveShopDone(done)
   }
 
   async function handleShoppingListChange(list: ShoppingItem[]) {
@@ -190,9 +198,11 @@ export default function FamilyPlateApp() {
             onAttendanceChange={handleAttendanceChange}
             onPlanConfirm={handlePlanConfirm}
             planConfirmed={planConfirmed}
+            shopDone={shopDone}
             onProposalsChange={handleProposalsChange}
             onWochenchefChange={handleWochenchefChange}
             onPlanConfirmedChange={handlePlanConfirmedChange}
+            onShopDoneChange={handleShopDoneChange}
             shoppingList={shoppingList}
             onShoppingListChange={handleShoppingListChange}
           />
@@ -211,6 +221,10 @@ export default function FamilyPlateApp() {
             mealsData={mealsData}
             shoppingList={shoppingList}
             onShoppingListChange={handleShoppingListChange}
+            currentUser={currentUser}
+            wochenchef={activeWochenchef}
+            shopDone={shopDone}
+            onShopDoneChange={handleShopDoneChange}
           />
         )}
         {activeTab === 'rezepte' && (
@@ -231,7 +245,7 @@ export default function FamilyPlateApp() {
           <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" /></svg>
           <span style={{ position: 'relative' }}>
             Woche
-            {proposals.length > 0 && activeWochenchef === currentUser && (
+            {activeWochenchef === currentUser && (proposals.length > 0 || wishes.some(w => w.postConfirm)) && (
               <span style={{ position: 'absolute', top: -1, right: -8, width: 6, height: 6, borderRadius: '50%', background: '#F59E0B', display: 'inline-block' }} />
             )}
           </span>

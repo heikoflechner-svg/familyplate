@@ -1,16 +1,16 @@
 import { supabase, FAMILY_ID } from './supabase'
 import type { WeekPlanEntry, Rezept, Wish, RemyVorschlag, WochenSlot, DayAttendance, Chef, ShoppingItem, ChangeProposal } from './state'
 
-export async function loadWeekPlan(): Promise<{ plan: WeekPlanEntry[]; mealsData: Record<string, Rezept>; wishes: Wish[]; attendance: DayAttendance[]; shoppingList: ShoppingItem[]; proposals: ChangeProposal[]; wochenchef: Chef; planConfirmed: boolean }> {
+export async function loadWeekPlan(): Promise<{ plan: WeekPlanEntry[]; mealsData: Record<string, Rezept>; wishes: Wish[]; attendance: DayAttendance[]; shoppingList: ShoppingItem[]; proposals: ChangeProposal[]; wochenchef: Chef; planConfirmed: boolean; shopDone: boolean }> {
   const { data, error } = await supabase
     .from('week_plans')
-    .select('plan_data, meals_data, wishes, attendance, shopping_list, proposals, wochenchef, plan_confirmed')
+    .select('plan_data, meals_data, wishes, attendance, shopping_list, proposals, wochenchef, plan_confirmed, shopping_done')
     .eq('family_id', FAMILY_ID)
     .order('updated_at', { ascending: false })
     .limit(1)
     .single()
 
-  if (error || !data) return { plan: [], mealsData: {}, wishes: [], attendance: [], shoppingList: [], proposals: [], wochenchef: 'PA', planConfirmed: false }
+  if (error || !data) return { plan: [], mealsData: {}, wishes: [], attendance: [], shoppingList: [], proposals: [], wochenchef: 'PA', planConfirmed: false, shopDone: false }
   return {
     plan: (data.plan_data as WeekPlanEntry[]) ?? [],
     mealsData: (data.meals_data as Record<string, Rezept>) ?? {},
@@ -20,6 +20,20 @@ export async function loadWeekPlan(): Promise<{ plan: WeekPlanEntry[]; mealsData
     proposals: (data.proposals as ChangeProposal[]) ?? [],
     wochenchef: ((data.wochenchef as Chef | null) ?? 'PA'),
     planConfirmed: (data.plan_confirmed as boolean | null) ?? false,
+    shopDone: (data.shopping_done as boolean | null) ?? false,
+  }
+}
+
+export async function saveShopDone(done: boolean): Promise<void> {
+  const { data: existing } = await supabase
+    .from('week_plans')
+    .select('id')
+    .eq('family_id', FAMILY_ID)
+    .limit(1)
+    .single()
+
+  if (existing?.id) {
+    await supabase.from('week_plans').update({ shopping_done: done }).eq('id', existing.id)
   }
 }
 
