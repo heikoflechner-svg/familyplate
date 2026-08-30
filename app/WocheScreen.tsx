@@ -82,6 +82,16 @@ export default function WocheScreen({
   function closeWishForm() { setWishFormKey(null) }
 
   async function handleWishSubmit(wish: Wish) {
+    if (planConfirmed && currentUser === wochenchef && wish.type === 'ergaenzung') {
+      const meal = weekPlan.find(e => e.tag === wish.tag && e.slot === wish.slot)
+      const newItems: ShoppingItem[] = wish.text.split(/[,;]/).map(s => s.trim()).filter(Boolean).map(part => ({
+        id: crypto.randomUUID(), name: part, menge: '', kategorie: 'Sonstiges',
+        erledigt: false, tag: wish.tag, slot: wish.slot, gericht: meal?.gericht,
+      }))
+      if (newItems.length > 0) await onShoppingListChange([...shoppingList, ...newItems])
+      closeWishForm()
+      return
+    }
     const tagged = planConfirmed ? { ...wish, postConfirm: true } : wish
     const filtered = wishes.filter(w => !(
       w.person === wish.person && w.tag === wish.tag && w.slot === wish.slot && w.type === wish.type
