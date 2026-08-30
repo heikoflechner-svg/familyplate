@@ -73,6 +73,7 @@ export interface Rezept {
   schritte: string[]
   minuten: number
   schwierigkeit: string
+  ersetzteZutaten?: string[]
 }
 
 export interface ShoppingItem {

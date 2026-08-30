@@ -763,8 +763,11 @@ export default function WocheScreen({
                         >
                           <span style={{ fontSize: 18 }}>{e.emoji}</span>
                           <div style={{ flex: 1 }}>
-                            <div style={{ fontSize: 13, fontWeight: 700, color: '#111' }}>
-                              {e.gericht}{mealsData[e.gericht] ? <span style={{ fontSize: 10, color: '#bbb', marginLeft: 4 }}>›</span> : null}
+                            <div style={{ fontSize: 13, fontWeight: 700, color: '#111', display: 'flex', alignItems: 'center', gap: 4 }}>
+                              {e.gericht}{mealsData[e.gericht] ? <span style={{ fontSize: 10, color: '#bbb' }}>›</span> : null}
+                              {(mealsData[e.gericht]?.ersetzteZutaten?.length ?? 0) > 0 && (
+                                <span title={mealsData[e.gericht]!.ersetzteZutaten!.join(' · ')} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 14, height: 14, borderRadius: '50%', background: '#EF4444', color: 'white', fontSize: 9, fontWeight: 700, flexShrink: 0, cursor: 'default' }}>!</span>
+                              )}
                             </div>
                             <div style={{ fontSize: 11, color: '#aaa' }}>{e.minuten} min</div>
                           </div>
@@ -914,8 +917,11 @@ export default function WocheScreen({
         >
           <span style={{ fontSize: 18 }}>{entry.emoji}</span>
           <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: '#111' }}>
-              {entry.gericht}{hasRecipe ? <span style={{ fontSize: 10, color: '#bbb', marginLeft: 4 }}>›</span> : null}
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#111', display: 'flex', alignItems: 'center', gap: 4 }}>
+              {entry.gericht}{hasRecipe ? <span style={{ fontSize: 10, color: '#bbb' }}>›</span> : null}
+              {(mealsData[entry.gericht]?.ersetzteZutaten?.length ?? 0) > 0 && (
+                <span title={mealsData[entry.gericht]!.ersetzteZutaten!.join(' · ')} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 14, height: 14, borderRadius: '50%', background: '#EF4444', color: 'white', fontSize: 9, fontWeight: 700, flexShrink: 0, cursor: 'default' }}>!</span>
+              )}
             </div>
             <div style={{ fontSize: 11, color: '#aaa' }}>{entry.minuten} min</div>
           </div>
