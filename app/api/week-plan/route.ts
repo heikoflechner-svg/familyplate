@@ -150,7 +150,7 @@ export async function POST(req: NextRequest) {
 
   const familienProfil = familyPrompt || 'Sabine (MA) keine Nüsse mag Fisch, Heiko (PA) laktosefrei mag Pasta, Tim (TI) kein Fisch mag Nudeln'
   const rezeptBeispiel = `{"zutaten":[{"menge":"200g","name":"Zutat","typ":"frisch"}],"schritte":["Kurze Zubereitung"],"minuten":30,"schwierigkeit":"Einfach","ersetzteZutaten":["Weizenmehl → glutenfreies Mehl (für Heiko)"]}`
-  const prompt = `Du bist Rémy. Plane ${slotHinweis} für ${planTage.join(', ')} für Familie Flechner. Profil: ${familienProfil}.${wishHinweis} Gefriertruhe: ${freezerList}. Speisekammer: ${pantryList}. Nutze Gefriertruhe/Speisekammer wenn sinnvoll. Weise pro Tag+Slot Küchenchef zu (MA PA TI) nach Fairness. WICHTIG: Ersetze bei den Rezept-Zutaten alle Zutaten, die gegen eine genannte Unverträglichkeit verstoßen, durch passende Alternativen (z.B. Weizenmehl → glutenfreies Mehl, Kuhmilch → Laktosefreie Milch, normale Pasta → glutenfreie Pasta). Wähle das Gericht trotzdem – passe nur die Zutat an. Wenn Zutaten ersetzt wurden, liste sie in ersetzteZutaten als ["Original → Ersatz (für Person)"]. Wenn keine Ersetzung nötig war, setze ersetzteZutaten auf []. Antworte NUR als JSON: {"woche":[${beispiele.join(',')}],"rezepte":{"GerichtName":${rezeptBeispiel}}} — Für jedes Gericht in woche muss ein Eintrag in rezepte stehen. typ ist eines von: frisch, tiefkühl, speisekammer, gefriertruhe. Nur Zutaten die man einkaufen muss.`
+  const prompt = `Du bist Rémy. Plane ${slotHinweis} für ${planTage.join(', ')} für Familie Flechner. Profil: ${familienProfil}.${wishHinweis} Gefriertruhe: ${freezerList}. Speisekammer: ${pantryList}. Nutze Gefriertruhe/Speisekammer wenn sinnvoll. Weise pro Tag+Slot Küchenchef zu (MA PA TI) nach Fairness. WICHTIG: Ersetze bei den Rezept-Zutaten alle Zutaten, die gegen eine genannte Unverträglichkeit verstoßen, durch passende Alternativen (z.B. Weizenmehl → glutenfreies Mehl, Kuhmilch → Laktosefreie Milch, normale Pasta → glutenfreie Pasta). Wähle das Gericht trotzdem – passe nur die Zutat an. Wenn Zutaten ersetzt wurden, liste sie in ersetzteZutaten als ["Original → Ersatz (für Person)"]. Wenn keine Ersetzung nötig war, setze ersetzteZutaten auf []. Kurze Rezepte: max. 4 Zutaten, max. 3 Schritte. Antworte NUR als reines JSON ohne Markdown-Codeblock: {"woche":[${beispiele.join(',')}],"rezepte":{"GerichtName":${rezeptBeispiel}}} — Für jedes Gericht in woche muss ein Eintrag in rezepte stehen. typ ist eines von: frisch, tiefkühl, speisekammer, gefriertruhe. Nur Zutaten die man einkaufen muss.`
 
   try {
     const resp = await fetch('https://api.anthropic.com/v1/messages', {
@@ -162,7 +162,7 @@ export async function POST(req: NextRequest) {
       },
       body: JSON.stringify({
         model: 'claude-haiku-4-5',
-        max_tokens: 4000,
+        max_tokens: 8000,
         messages: [{ role: 'user', content: prompt }],
       }),
     })
@@ -172,7 +172,11 @@ export async function POST(req: NextRequest) {
       console.error('[week-plan] Unexpected API response:', JSON.stringify(data).slice(0, 300))
       throw new Error('No content in response')
     }
-    const parsed = JSON.parse(data.content[0].text)
+    const raw = data.content[0].text as string
+    const jsonStart = raw.indexOf('{')
+    const jsonEnd = raw.lastIndexOf('}')
+    if (jsonStart === -1 || jsonEnd === -1) throw new Error('No JSON object found in response')
+    const parsed = JSON.parse(raw.slice(jsonStart, jsonEnd + 1))
 
     // Build complete rezepte: add name+emoji from woche, fall back to FB_REZEPTE for missing entries
     const rezepte: Record<string, RezeptData> = {}
