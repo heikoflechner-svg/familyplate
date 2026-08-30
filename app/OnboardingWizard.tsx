@@ -38,6 +38,7 @@ export default function OnboardingWizard({ onDone, initialProfile, onCancel }: P
     ) as Record<Chef, { a: string; v: string }>
   })
   const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
 
   function updateName(id: Chef, name: string) {
     setMembers(ms => ms.map(m => m.id === id ? { ...m, name } : m))
@@ -53,6 +54,7 @@ export default function OnboardingWizard({ onDone, initialProfile, onCancel }: P
 
   async function finish() {
     setSaving(true)
+    setSaveError(null)
     const finalMembers = members.map(m => ({
       ...m,
       allergien: [
@@ -65,8 +67,13 @@ export default function OnboardingWizard({ onDone, initialProfile, onCancel }: P
       ],
     }))
     const profile: FamilyProfile = { members: finalMembers }
-    await saveFamilyProfile(profile)
-    onDone(profile)
+    try {
+      await saveFamilyProfile(profile)
+      onDone(profile)
+    } catch {
+      setSaveError('Speichern fehlgeschlagen – bitte erneut versuchen.')
+      setSaving(false)
+    }
   }
 
   const canProceed = step === 1
@@ -216,7 +223,12 @@ export default function OnboardingWizard({ onDone, initialProfile, onCancel }: P
       </div>
 
       {/* Navigation */}
-      <div style={{ display: 'flex', gap: 10, marginTop: 24, paddingTop: 16, borderTop: '1px solid #f0f0f0', flexShrink: 0 }}>
+      {saveError && (
+        <div style={{ marginTop: 12, padding: '10px 14px', background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 10, fontSize: 13, color: '#B91C1C' }}>
+          ⚠️ {saveError}
+        </div>
+      )}
+      <div style={{ display: 'flex', gap: 10, marginTop: 12, paddingTop: 16, borderTop: '1px solid #f0f0f0', flexShrink: 0 }}>
         {step > 1 && (
           <button
             onClick={() => setStep(s => s - 1)}

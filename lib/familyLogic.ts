@@ -21,23 +21,13 @@ export async function loadFamilyProfile(): Promise<FamilyProfile | null> {
 }
 
 export async function saveFamilyProfile(profile: FamilyProfile): Promise<void> {
-  const { data: existing } = await supabase
+  const { error } = await supabase
     .from('family_profiles')
-    .select('id')
-    .eq('family_id', FAMILY_ID)
-    .single()
-
-  const payload = {
-    members: profile.members,
-    onboarding_done: true,
-    updated_at: new Date().toISOString(),
-  }
-
-  if (existing?.id) {
-    await supabase.from('family_profiles').update(payload).eq('id', existing.id)
-  } else {
-    await supabase.from('family_profiles').insert({ family_id: FAMILY_ID, ...payload })
-  }
+    .upsert(
+      { family_id: FAMILY_ID, members: profile.members, onboarding_done: true, updated_at: new Date().toISOString() },
+      { onConflict: 'family_id' }
+    )
+  if (error) throw new Error(error.message)
 }
 
 export function applyChefStats(members: FamilyMember[], confirmedEntries: WeekPlanEntry[], today: string): FamilyMember[] {
