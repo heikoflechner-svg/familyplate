@@ -89,6 +89,10 @@ export default function WocheScreen({
         erledigt: false, tag: wish.tag, slot: wish.slot, gericht: meal?.gericht,
       }))
       if (newItems.length > 0) await onShoppingListChange([...shoppingList, ...newItems])
+      const filtered = wishes.filter(w => !(
+        w.person === wish.person && w.tag === wish.tag && w.slot === wish.slot && w.type === wish.type
+      ))
+      await onWishesChange([...filtered, wish])
       closeWishForm()
       return
     }
