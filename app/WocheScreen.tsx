@@ -361,6 +361,7 @@ export default function WocheScreen({
     for (const wishId of chefErgaenzungIds) {
       const wish = wishes.find(w => w.id === wishId)
       if (!wish || wish.type !== 'ergaenzung') continue
+      const meal = weekPlan.find(e => e.tag === wish.tag && e.slot === wish.slot)
       for (const part of wish.text.split(/[,;]/).map(s => s.trim()).filter(Boolean)) {
         newItems.push({
           id: crypto.randomUUID(),
@@ -370,6 +371,7 @@ export default function WocheScreen({
           erledigt: false,
           tag: wish.tag,
           slot: wish.slot,
+          gericht: meal?.gericht,
         })
       }
     }
