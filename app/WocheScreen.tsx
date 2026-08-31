@@ -1,6 +1,6 @@
 'use client'
 import { useState } from 'react'
-import { generateWeekPlan, getRemySuggestions } from '../lib/mealLogic'
+import { generateWeekPlan, getRemySuggestions, generateRecipe } from '../lib/mealLogic'
 import { getFreezerListString, getPantryListString } from '../lib/freezerLogic'
 import { buildFamilyPrompt, DEFAULT_MEMBERS } from '../lib/familyLogic'
 import type { WeekPlanEntry, Rezept, FreezerItem, PantryItem, Wish, Chef, WochenSlot, FamilyMember, DayAttendance, ChangeProposal, ShoppingItem, RemyVorschlag } from '../lib/state'
@@ -360,6 +360,7 @@ export default function WocheScreen({
 
     // Gewählte Alternativen in weekPlan übernehmen
     let finalPlan = [...weekPlan]
+    const confirmedAlts: { gericht: string; emoji: string }[] = []
     for (const [key, selectedId] of Object.entries(chefAltSelection)) {
       if (selectedId === 'original') continue
       const wish = wishes.find(w => w.id === selectedId)
@@ -372,7 +373,16 @@ export default function WocheScreen({
           ? { ...e, gericht: wish.dishName, emoji: wish.emoji }
           : e
       )
+      if (!mealsData[wish.dishName]) confirmedAlts.push({ gericht: wish.dishName, emoji: wish.emoji })
     }
+
+    // Rezepte (inkl. ersetzteZutaten) für neu bestätigte Alternativ-Gerichte laden
+    const newMeals: Record<string, Rezept> = {}
+    await Promise.all(confirmedAlts.map(async ({ gericht, emoji }) => {
+      const rezept = await generateRecipe(gericht, emoji, getFreezerListString(freezerItems), getPantryListString(pantryItems), familyPrompt)
+      if (rezept) newMeals[gericht] = rezept
+    }))
+    const updatedMealsData = { ...mealsData, ...newMeals }
 
     // Aktivierte Ergänzungen an Einkaufsliste übergeben
     const newItems: ShoppingItem[] = []
@@ -394,7 +404,7 @@ export default function WocheScreen({
       }
     }
 
-    await onWeekPlanChange(finalPlan, mealsData)
+    await onWeekPlanChange(finalPlan, updatedMealsData)
     if (newItems.length > 0) {
       await onShoppingListChange([...shoppingList, ...newItems])
     }

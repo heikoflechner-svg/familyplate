@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
   }
 
   const familienProfil = familyPrompt || 'Sabine (keine Nüsse), Heiko (laktosefrei), Tim (kein Fisch)'
-  const prompt = `Du bist Rémy. Erstelle ein einfaches Familienrezept für "${gericht}". Verfügbar: Gefriertruhe: ${freezerList || 'variiert'}. Speisekammer: ${pantryList || 'variiert'}. Familie: ${familienProfil}. WICHTIG: Ersetze alle Zutaten, die gegen eine genannte Unverträglichkeit verstoßen, durch passende Alternativen (z.B. Weizenmehl → glutenfreies Mehl, Kuhmilch → Laktosefreie Milch, normale Pasta → glutenfreie Pasta). Behalte das Gericht bei – passe nur die betroffene Zutat an. Wenn Zutaten ersetzt wurden, liste sie in ersetzteZutaten als ["Original → Ersatz (für Person)"]. Wenn keine Ersetzung nötig war, setze ersetzteZutaten auf []. Antworte NUR als JSON ohne Markdown: {"name":"${gericht}","emoji":"${emoji || '🍽'}","zutaten":[{"menge":"200g","name":"...","typ":"frisch"}],"schritte":["Schritt 1...","Schritt 2..."],"minuten":30,"schwierigkeit":"Einfach","ersetzteZutaten":["Original → Ersatz (für Person)"]}`
+  const prompt = `Du bist Rémy. Erstelle ein einfaches Familienrezept für "${gericht}". Verfügbar: Gefriertruhe: ${freezerList || 'variiert'}. Speisekammer: ${pantryList || 'variiert'}. Familie: ${familienProfil}. WICHTIG: Wähle das normale Gericht – ändere den Namen nie. Wenn eine Zutat gegen eine Unverträglichkeit verstößt (z.B. normaler Teig enthält Gluten für Heiko), trag die benötigte Ersatz-Zutat in ersetzteZutaten ein als "Menge Zutat (für Person)", z.B. "1 Packung glutenfreier Teig (für Heiko)". Wenn keine Unverträglichkeit betroffen ist, setze ersetzteZutaten auf []. Kurzes Rezept: max. 4 Zutaten, max. 3 Schritte. Antworte NUR als reines JSON ohne Markdown-Codeblock: {"name":"${gericht}","emoji":"${emoji || '🍽'}","zutaten":[{"menge":"200g","name":"...","typ":"frisch"}],"schritte":["Schritt 1..."],"minuten":30,"schwierigkeit":"Einfach","ersetzteZutaten":["1 Packung glutenfreier Teig (für Heiko)"]}`
 
   try {
     const resp = await fetch('https://api.anthropic.com/v1/messages', {
@@ -41,12 +41,17 @@ export async function POST(req: NextRequest) {
       },
       body: JSON.stringify({
         model: 'claude-haiku-4-5',
-        max_tokens: 600,
+        max_tokens: 1000,
         messages: [{ role: 'user', content: prompt }],
       }),
     })
     const data = await resp.json()
-    const parsed = JSON.parse(data.content[0].text)
+    if (!data?.content?.[0]?.text) throw new Error('No content in response')
+    const raw = data.content[0].text as string
+    const jsonStart = raw.indexOf('{')
+    const jsonEnd = raw.lastIndexOf('}')
+    if (jsonStart === -1 || jsonEnd === -1) throw new Error('No JSON found')
+    const parsed = JSON.parse(raw.slice(jsonStart, jsonEnd + 1))
     return NextResponse.json({ rezept: parsed })
   } catch {
     return NextResponse.json({ rezept: { ...FALLBACK, name: gericht || FALLBACK.name, emoji: emoji || '🍗' } })
