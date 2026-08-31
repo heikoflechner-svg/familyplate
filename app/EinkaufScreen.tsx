@@ -71,8 +71,7 @@ export default function EinkaufScreen({ weekPlan, mealsData, shoppingList, onSho
     setNewMenge('')
   }
 
-  const recipeItems = shoppingList.filter(i => i.gericht && i.kategorie !== 'Ersatz-Zutat')
-  const ersatzItems = shoppingList.filter(i => i.kategorie === 'Ersatz-Zutat')
+  const recipeItems = shoppingList.filter(i => i.gericht)
   const manualItems = shoppingList.filter(i => !i.gericht)
   const groups = groupShoppingByMeal(recipeItems, weekPlan)
   const consolidated = consolidateShoppingList(recipeItems)
@@ -221,17 +220,6 @@ export default function EinkaufScreen({ weekPlan, mealsData, shoppingList, onSho
               </>
             )}
 
-            {ersatzItems.length > 0 && (
-              <div style={{ marginBottom: 16 }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: '#D97706', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 4 }}>
-                  Unverträglichkeit · Ersatz-Zutaten
-                </div>
-                {ersatzItems.map(item => (
-                  <ItemRow key={item.id} item={item} onToggle={() => toggle(item.id)} onRemove={() => remove(item.id)} />
-                ))}
-              </div>
-            )}
-
             {manualItems.length > 0 && (
               <div style={{ marginBottom: 16 }}>
                 <div className="lbl">Weitere Artikel</div>
@@ -295,20 +283,13 @@ export default function EinkaufScreen({ weekPlan, mealsData, shoppingList, onSho
 
 function ItemRow({ item, onToggle, onRemove }: { item: ShoppingItem; onToggle: () => void; onRemove: () => void }) {
   const isErsatz = item.kategorie === 'Ersatz-Zutat'
+  const textColor = item.erledigt ? '#bbb' : isErsatz ? '#2563EB' : '#111'
   return (
-    <div style={{
-      display: 'flex', alignItems: 'center', gap: 10,
-      padding: '8px 0 8px 12px', borderBottom: '1px solid #f5f5f5',
-      borderLeft: isErsatz ? '3px solid #F59E0B' : 'none',
-      paddingLeft: isErsatz ? 9 : 12,
-    }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0 8px 12px', borderBottom: '1px solid #f5f5f5' }}>
       <Checkbox checked={item.erledigt} onToggle={onToggle} />
-      <div style={{ flex: 1, textDecoration: item.erledigt ? 'line-through' : 'none', color: item.erledigt ? '#bbb' : '#111', fontSize: 13 }}>
+      <div style={{ flex: 1, textDecoration: item.erledigt ? 'line-through' : 'none', color: textColor, fontSize: 13 }}>
         {item.name}
         {item.menge && <span style={{ fontSize: 11, color: '#aaa', marginLeft: 5 }}>({item.menge})</span>}
-        {isErsatz && item.gericht && (
-          <div style={{ fontSize: 10, color: '#D97706', marginTop: 1 }}>für {item.gericht}</div>
-        )}
       </div>
       <button
         onClick={onRemove}
@@ -319,18 +300,20 @@ function ItemRow({ item, onToggle, onRemove }: { item: ShoppingItem; onToggle: (
 }
 
 function ConsolidatedRow({ item, onToggle }: { item: ConsolidatedItem; onToggle: () => void }) {
+  const isErsatz = item.kategorie === 'Ersatz-Zutat'
+  const textColor = item.erledigt ? '#bbb' : isErsatz ? '#2563EB' : '#111'
   return (
     <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '9px 0 9px 12px', borderBottom: '1px solid #f5f5f5' }}>
       <Checkbox checked={item.erledigt} onToggle={onToggle} />
       <div style={{ flex: 1 }}>
-        <div style={{ textDecoration: item.erledigt ? 'line-through' : 'none', color: item.erledigt ? '#bbb' : '#111', fontSize: 13 }}>
+        <div style={{ textDecoration: item.erledigt ? 'line-through' : 'none', color: textColor, fontSize: 13 }}>
           {item.name}
-          {item.menge && <span style={{ fontSize: 11, color: item.erledigt ? '#ccc' : '#aaa', marginLeft: 5 }}>({item.menge})</span>}
+          {item.menge && <span style={{ fontSize: 11, color: '#aaa', marginLeft: 5 }}>({item.menge})</span>}
         </div>
         {item.sources.length > 0 && (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 4 }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 3 }}>
             {item.sources.map((s, i) => (
-              <span key={i} style={{ fontSize: 10, background: '#f0f0f0', color: '#888', borderRadius: 5, padding: '1px 6px' }}>
+              <span key={i} style={{ fontSize: 10, color: '#bbb' }}>
                 {s.tag.slice(0, 2)} {s.slot === 'Mittag' ? '🌞' : '🌙'} {s.gericht}
               </span>
             ))}
