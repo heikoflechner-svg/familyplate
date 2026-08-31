@@ -52,6 +52,19 @@ export function generateShoppingList(
         gericht: entry.gericht,
       })
     }
+
+    for (const ersatz of (rezept.ersetzteZutaten ?? [])) {
+      items.push({
+        id: randomId(),
+        name: ersatz,
+        menge: '',
+        kategorie: 'Ersatz-Zutat',
+        erledigt: false,
+        tag: entry.tag,
+        slot: entry.slot,
+        gericht: entry.gericht,
+      })
+    }
   }
 
   return items

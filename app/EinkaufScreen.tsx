@@ -71,7 +71,8 @@ export default function EinkaufScreen({ weekPlan, mealsData, shoppingList, onSho
     setNewMenge('')
   }
 
-  const recipeItems = shoppingList.filter(i => i.gericht)
+  const recipeItems = shoppingList.filter(i => i.gericht && i.kategorie !== 'Ersatz-Zutat')
+  const ersatzItems = shoppingList.filter(i => i.kategorie === 'Ersatz-Zutat')
   const manualItems = shoppingList.filter(i => !i.gericht)
   const groups = groupShoppingByMeal(recipeItems, weekPlan)
   const consolidated = consolidateShoppingList(recipeItems)
@@ -220,6 +221,17 @@ export default function EinkaufScreen({ weekPlan, mealsData, shoppingList, onSho
               </>
             )}
 
+            {ersatzItems.length > 0 && (
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: '#D97706', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 4 }}>
+                  Unverträglichkeit · Ersatz-Zutaten
+                </div>
+                {ersatzItems.map(item => (
+                  <ItemRow key={item.id} item={item} onToggle={() => toggle(item.id)} onRemove={() => remove(item.id)} />
+                ))}
+              </div>
+            )}
+
             {manualItems.length > 0 && (
               <div style={{ marginBottom: 16 }}>
                 <div className="lbl">Weitere Artikel</div>
@@ -282,12 +294,21 @@ export default function EinkaufScreen({ weekPlan, mealsData, shoppingList, onSho
 }
 
 function ItemRow({ item, onToggle, onRemove }: { item: ShoppingItem; onToggle: () => void; onRemove: () => void }) {
+  const isErsatz = item.kategorie === 'Ersatz-Zutat'
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0 8px 12px', borderBottom: '1px solid #f5f5f5' }}>
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 10,
+      padding: '8px 0 8px 12px', borderBottom: '1px solid #f5f5f5',
+      borderLeft: isErsatz ? '3px solid #F59E0B' : 'none',
+      paddingLeft: isErsatz ? 9 : 12,
+    }}>
       <Checkbox checked={item.erledigt} onToggle={onToggle} />
       <div style={{ flex: 1, textDecoration: item.erledigt ? 'line-through' : 'none', color: item.erledigt ? '#bbb' : '#111', fontSize: 13 }}>
         {item.name}
         {item.menge && <span style={{ fontSize: 11, color: '#aaa', marginLeft: 5 }}>({item.menge})</span>}
+        {isErsatz && item.gericht && (
+          <div style={{ fontSize: 10, color: '#D97706', marginTop: 1 }}>für {item.gericht}</div>
+        )}
       </div>
       <button
         onClick={onRemove}
