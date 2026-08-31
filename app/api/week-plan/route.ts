@@ -149,6 +149,7 @@ export async function POST(req: NextRequest) {
     : ''
 
   const familienProfil = familyPrompt || 'Sabine (MA) keine Nüsse mag Fisch, Heiko (PA) laktosefrei mag Pasta, Tim (TI) kein Fisch mag Nudeln'
+  console.log('[week-plan] familyPrompt:', familienProfil)
   const rezeptBeispiel = `{"zutaten":[{"menge":"200g","name":"Zutat","typ":"frisch"}],"schritte":["Kurze Zubereitung"],"minuten":30,"schwierigkeit":"Einfach","ersetzteZutaten":["Weizenmehl → glutenfreies Mehl (für Heiko)"]}`
   const prompt = `Du bist Rémy. Plane ${slotHinweis} für ${planTage.join(', ')} für Familie Flechner. Profil: ${familienProfil}.${wishHinweis} Gefriertruhe: ${freezerList}. Speisekammer: ${pantryList}. Nutze Gefriertruhe/Speisekammer wenn sinnvoll. Weise pro Tag+Slot Küchenchef zu (MA PA TI) nach Fairness. WICHTIG: Ersetze bei den Rezept-Zutaten alle Zutaten, die gegen eine genannte Unverträglichkeit verstoßen, durch passende Alternativen (z.B. Weizenmehl → glutenfreies Mehl, Kuhmilch → Laktosefreie Milch, normale Pasta → glutenfreie Pasta). Wähle das Gericht trotzdem – passe nur die Zutat an. Wenn Zutaten ersetzt wurden, liste sie in ersetzteZutaten als ["Original → Ersatz (für Person)"]. Wenn keine Ersetzung nötig war, setze ersetzteZutaten auf []. Kurze Rezepte: max. 4 Zutaten, max. 3 Schritte. Antworte NUR als reines JSON ohne Markdown-Codeblock: {"woche":[${beispiele.join(',')}],"rezepte":{"GerichtName":${rezeptBeispiel}}} — Für jedes Gericht in woche muss ein Eintrag in rezepte stehen. typ ist eines von: frisch, tiefkühl, speisekammer, gefriertruhe. Nur Zutaten die man einkaufen muss.`
 
@@ -173,6 +174,7 @@ export async function POST(req: NextRequest) {
       throw new Error('No content in response')
     }
     const raw = data.content[0].text as string
+    console.log('[week-plan] raw response (first 600):', raw.slice(0, 600))
     const jsonStart = raw.indexOf('{')
     const jsonEnd = raw.lastIndexOf('}')
     if (jsonStart === -1 || jsonEnd === -1) throw new Error('No JSON object found in response')
