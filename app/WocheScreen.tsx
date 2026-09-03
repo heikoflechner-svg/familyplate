@@ -75,6 +75,7 @@ export default function WocheScreen({
   const [chefAltSelection, setChefAltSelection] = useState<Record<string, string>>({})
   const [chefErgaenzungIds, setChefErgaenzungIds] = useState<string[]>([])
   const [nachtragsIds, setNachtragsIds] = useState<string[]>([])
+  const [nachtragsAltIds, setNachtragsAltIds] = useState<string[]>([])
 
   const [wishFormKey, setWishFormKey] = useState<string | null>(null)
 
@@ -441,6 +442,31 @@ export default function WocheScreen({
     const processedIds = new Set(nachtragsIds)
     await onWishesChange(wishes.filter(w => !processedIds.has(w.id)))
     setNachtragsIds([])
+    setSaving(false)
+  }
+
+  async function confirmNachtragsAlternativen() {
+    setSaving(true)
+    const nachtragsAltWishes = wishes.filter(w => w.postConfirm && w.type === 'alternative')
+    let finalPlan = [...weekPlan]
+    const newMeals: Record<string, Rezept> = {}
+    await Promise.all(nachtragsAltIds.map(async (wishId) => {
+      const wish = wishes.find(w => w.id === wishId)
+      if (!wish || wish.type !== 'alternative') return
+      finalPlan = finalPlan.map(e =>
+        e.tag === wish.tag && e.slot === wish.slot
+          ? { ...e, gericht: wish.dishName, emoji: wish.emoji }
+          : e
+      )
+      if (!mealsData[wish.dishName]) {
+        const rezept = await generateRecipe(wish.dishName, wish.emoji, getFreezerListString(freezerItems), getPantryListString(pantryItems), familyPrompt)
+        if (rezept) newMeals[wish.dishName] = rezept
+      }
+    }))
+    await onWeekPlanChange(finalPlan, { ...mealsData, ...newMeals })
+    const processedIds = new Set(nachtragsAltWishes.map(w => w.id))
+    await onWishesChange(wishes.filter(w => !processedIds.has(w.id)))
+    setNachtragsAltIds([])
     setSaving(false)
   }
 
@@ -861,6 +887,51 @@ export default function WocheScreen({
                 >
                   {saving ? '⏳…' : `🛒 ${nachtragsIds.length} Ergänzung(en) zur Einkaufsliste`}
                 </button>
+              </div>
+            )
+          })()}
+
+          {(() => {
+            const nachtragsAltWishes = wishes.filter(w => w.postConfirm && w.type === 'alternative')
+            if (!planConfirmed || !nachtragsAltWishes.length || currentUser !== wochenchef) return null
+            return (
+              <div style={{ margin: '16px 0 0', padding: '14px 16px', background: '#EFF6FF', borderRadius: 12, border: '1px solid #BFDBFE' }}>
+                <div style={{ fontSize: 12, color: '#1E40AF', fontWeight: 600, marginBottom: 6 }}>
+                  🔄 Nachträgliche Alternativen ({nachtragsAltWishes.length})
+                </div>
+                <div style={{ fontSize: 11, color: '#555', marginBottom: 10 }}>
+                  Gerichtswünsche nach der Bestätigung — ankreuzen was du übernehmen möchtest:
+                </div>
+                {nachtragsAltWishes.map(w => {
+                  const checked = nachtragsAltIds.includes(w.id)
+                  const c = CFG[w.person] ?? CFG.MA
+                  const original = weekPlan.find(e => e.tag === w.tag && e.slot === w.slot)
+                  return (
+                    <div key={w.id} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                      <button
+                        onClick={() => setNachtragsAltIds(prev => prev.includes(w.id) ? prev.filter(id => id !== w.id) : [...prev, w.id])}
+                        style={{ width: 18, height: 18, borderRadius: 4, flexShrink: 0, cursor: 'pointer', border: `1px solid ${checked ? '#1D9E75' : '#ddd'}`, background: checked ? '#1D9E75' : 'white', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                      >
+                        {checked && <span style={{ color: 'white', fontSize: 11, lineHeight: 1, fontWeight: 700 }}>✓</span>}
+                      </button>
+                      <span style={{ fontSize: 12, flex: 1 }}>
+                        <span style={{ color: '#888', marginRight: 4 }}>{w.tag.slice(0, 2)} {w.slot === 'Mittag' ? '🌞' : '🌙'}</span>
+                        <span style={{ fontWeight: 600 }}>{w.emoji} {w.dishName}</span>
+                        {original && <span style={{ color: '#aaa' }}> statt {original.emoji} {original.gericht}</span>}
+                      </span>
+                      <span style={{ fontSize: 10, fontWeight: 700, background: c.bg, color: c.c, padding: '1px 7px', borderRadius: 6 }}>{personNames[w.person]}</span>
+                    </div>
+                  )
+                })}
+                <button
+                  className="btn primary"
+                  onClick={confirmNachtragsAlternativen}
+                  disabled={saving}
+                  style={{ background: '#1D9E75', fontSize: 12, marginTop: 8 }}
+                >
+                  {saving ? '⏳…' : `✅ Entscheidung übernehmen`}
+                </button>
+                <div style={{ fontSize: 10, color: '#888', marginTop: 6 }}>Nicht angekreuzte Alternativen werden verworfen.</div>
               </div>
             )
           })()}
