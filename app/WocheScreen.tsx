@@ -447,7 +447,7 @@ export default function WocheScreen({
 
   async function confirmNachtragsAlternativen() {
     setSaving(true)
-    const nachtragsAltWishes = wishes.filter(w => w.postConfirm && w.type === 'alternative')
+    const nachtragsAltWishes = wishes.filter((w): w is Extract<Wish, { type: 'alternative' }> & { postConfirm: true } => !!(w.postConfirm && w.type === 'alternative'))
     let finalPlan = [...weekPlan]
     const newMeals: Record<string, Rezept> = {}
     await Promise.all(nachtragsAltIds.map(async (wishId) => {
@@ -892,7 +892,7 @@ export default function WocheScreen({
           })()}
 
           {(() => {
-            const nachtragsAltWishes = wishes.filter(w => w.postConfirm && w.type === 'alternative')
+            const nachtragsAltWishes = wishes.filter((w): w is Extract<Wish, { type: 'alternative' }> & { postConfirm: true } => !!(w.postConfirm && w.type === 'alternative'))
             if (!planConfirmed || !nachtragsAltWishes.length || currentUser !== wochenchef) return null
             return (
               <div style={{ margin: '16px 0 0', padding: '14px 16px', background: '#EFF6FF', borderRadius: 12, border: '1px solid #BFDBFE' }}>
