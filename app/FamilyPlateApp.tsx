@@ -21,6 +21,7 @@ export default function FamilyPlateApp() {
   const [familyProfile, setFamilyProfile] = useState<FamilyProfile | null>(null)
   const [editingProfile, setEditingProfile] = useState(false)
   const [attendance, setAttendance] = useState<DayAttendance[]>([])
+  const [attendanceConfirmed, setAttendanceConfirmed] = useState<Chef[]>([])
   const [weekPlan, setWeekPlan] = useState<WeekPlanEntry[]>([])
   const [mealsData, setMealsData] = useState<Record<string, Rezept>>({})
   const [planMittag, setPlanMittag] = useState(true)
@@ -66,11 +67,12 @@ export default function FamilyPlateApp() {
   useEffect(() => {
     if (!currentUser) return
     Promise.all([loadWeekPlan(), loadFreezerItems(), loadPantryItems(), loadFamilyProfile()])
-      .then(([{ plan, mealsData: md, wishes: w, attendance: att, shoppingList: sl, proposals: pr, wochenchef: wc, planConfirmed: pc, shopDone: sd }, freezer, pantry, profile]) => {
+      .then(([{ plan, mealsData: md, wishes: w, attendance: att, attendanceConfirmed: ac, shoppingList: sl, proposals: pr, wochenchef: wc, planConfirmed: pc, shopDone: sd }, freezer, pantry, profile]) => {
         setWeekPlan(plan)
         setMealsData(md)
         setWishes(w)
         setAttendance(att)
+        setAttendanceConfirmed(ac)
         setShoppingList(sl)
         setProposals(pr)
         setActiveWochenchef(wc)
@@ -100,7 +102,12 @@ export default function FamilyPlateApp() {
 
   async function handleAttendanceChange(newAttendance: DayAttendance[]) {
     setAttendance(newAttendance)
-    await saveAttendance(newAttendance)
+    await saveAttendance(newAttendance, attendanceConfirmed)
+  }
+
+  async function handleAttendanceConfirmedChange(newConfirmed: Chef[]) {
+    setAttendanceConfirmed(newConfirmed)
+    await saveAttendance(attendance, newConfirmed)
   }
 
   async function handleProposalsChange(newProposals: ChangeProposal[]) {
@@ -206,10 +213,12 @@ export default function FamilyPlateApp() {
             wochenchef={activeWochenchef}
             members={members}
             attendance={attendance}
+            attendanceConfirmed={attendanceConfirmed}
             proposals={proposals}
             onWeekPlanChange={handleWeekPlanChange}
             onWishesChange={handleWishesChange}
             onAttendanceChange={handleAttendanceChange}
+            onAttendanceConfirmedChange={handleAttendanceConfirmedChange}
             onPlanConfirm={handlePlanConfirm}
             planConfirmed={planConfirmed}
             shopDone={shopDone}

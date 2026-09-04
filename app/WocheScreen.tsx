@@ -34,12 +34,14 @@ interface Props {
   wochenchef: Chef
   members: FamilyMember[]
   attendance: DayAttendance[]
+  attendanceConfirmed: Chef[]
   proposals: ChangeProposal[]
   planConfirmed: boolean
   shopDone: boolean
   onWeekPlanChange: (plan: WeekPlanEntry[], meals: Record<string, Rezept>) => Promise<void>
   onWishesChange: (wishes: Wish[]) => Promise<void>
   onAttendanceChange: (a: DayAttendance[]) => Promise<void>
+  onAttendanceConfirmedChange: (confirmed: Chef[]) => Promise<void>
   onPlanConfirm?: (entries: WeekPlanEntry[]) => Promise<void>
   onProposalsChange: (proposals: ChangeProposal[]) => Promise<void>
   onWochenchefChange: (chef: Chef) => Promise<void>
@@ -49,13 +51,13 @@ interface Props {
   onShoppingListChange: (list: ShoppingItem[]) => Promise<void>
 }
 
-type View = 'home' | 'week' | 'plan'
+type View = 'home' | 'week' | 'plan' | 'attendance'
 type PlanState = 'options' | 'loading' | 'results'
 
 export default function WocheScreen({
   weekPlan, mealsData, planMittag, planWE, freezerItems, pantryItems,
-  wishes, currentUser, wochenchef, members, attendance, proposals, planConfirmed, shopDone, onWeekPlanChange, onWishesChange,
-  onAttendanceChange, onPlanConfirm, onProposalsChange, onWochenchefChange, onPlanConfirmedChange, onShopDoneChange,
+  wishes, currentUser, wochenchef, members, attendance, attendanceConfirmed, proposals, planConfirmed, shopDone, onWeekPlanChange, onWishesChange,
+  onAttendanceChange, onAttendanceConfirmedChange, onPlanConfirm, onProposalsChange, onWochenchefChange, onPlanConfirmedChange, onShopDoneChange,
   shoppingList, onShoppingListChange,
 }: Props) {
   const personNames: Record<Chef, string> = Object.fromEntries(
@@ -113,25 +115,31 @@ export default function WocheScreen({
   const [editMealKey, setEditMealKey] = useState<string | null>(null)
   const [mealSubMode, setMealSubMode] = useState<'manual' | 'pantry' | null>(null)
   const [manualDishInput, setManualDishInput] = useState('')
-  const [personsEditKey, setPersonsEditKey] = useState<string | null>(null)
+  const [attendanceEditKey, setAttendanceEditKey] = useState<string | null>(null)
 
-  function getSlotPersonen(tag: string, slot: WochenSlot): number {
-    const memberCount = (members.length ? members : DEFAULT_MEMBERS).length
-    const day = attendance.find(a => a.tag === tag)
-    if (!day) return memberCount
-    if (slot === 'Mittag' && day.mittagPersonen != null) return day.mittagPersonen
-    if (slot === 'Abend' && day.abendPersonen != null) return day.abendPersonen
-    return day.anwesend.length + day.gaeste
+  function getSlotAnwesend(tag: string, slot: WochenSlot): Chef[] {
+    const allChefs = (members.length ? members : DEFAULT_MEMBERS).map(m => m.id as Chef)
+    const day = attendance.find(a => a.tag === tag) as unknown as Record<string, unknown> | undefined
+    if (!day) return allChefs
+    if (slot === 'Mittag') return (day.mittagAnwesend as Chef[] | undefined) ?? (day.anwesend as Chef[] | undefined) ?? allChefs
+    return (day.abendAnwesend as Chef[] | undefined) ?? (day.anwesend as Chef[] | undefined) ?? allChefs
   }
 
-  async function handleSlotPersonenSave(tag: string, slot: WochenSlot, total: number) {
-    const chefs = (members.length ? members : DEFAULT_MEMBERS).map(m => m.id) as Chef[]
-    const current = attendance.find(a => a.tag === tag) ?? { tag, anwesend: chefs, gaeste: 0 }
-    const updated = slot === 'Mittag'
-      ? { ...current, mittagPersonen: total }
-      : { ...current, abendPersonen: total }
-    await onAttendanceChange([...attendance.filter(a => a.tag !== tag), updated])
-    setPersonsEditKey(null)
+  async function toggleSlotAttendance(tag: string, slot: WochenSlot, chef: Chef) {
+    const allChefs = (members.length ? members : DEFAULT_MEMBERS).map(m => m.id as Chef)
+    const existing = attendance.find(a => a.tag === tag) as unknown as Record<string, unknown> | undefined
+    const base: DayAttendance = existing
+      ? {
+          tag,
+          mittagAnwesend: (existing.mittagAnwesend as Chef[] | undefined) ?? (existing.anwesend as Chef[] | undefined) ?? allChefs,
+          abendAnwesend: (existing.abendAnwesend as Chef[] | undefined) ?? (existing.anwesend as Chef[] | undefined) ?? allChefs,
+          gaeste: (existing.gaeste as number | undefined) ?? 0,
+        }
+      : { tag, mittagAnwesend: allChefs, abendAnwesend: allChefs, gaeste: 0 }
+    const field = slot === 'Mittag' ? 'mittagAnwesend' : 'abendAnwesend'
+    const current = base[field]
+    const next = current.includes(chef) ? current.filter(c => c !== chef) : [...current, chef]
+    await onAttendanceChange([...attendance.filter(a => a.tag !== tag), { ...base, [field]: next }])
   }
 
   function closeMealPanel() {
@@ -301,15 +309,19 @@ export default function WocheScreen({
     setDayLoading(null)
   }
 
-  function handleAttendanceSave(updated: DayAttendance) {
-    onAttendanceChange([...attendance.filter(a => a.tag !== updated.tag), updated])
-  }
-
   const today = todayGerman()
   const activeDays = planWE ? WOCHENTAGE : WOCHENTAGE.slice(0, 5)
   const plannedDays = WOCHENTAGE.filter(t => weekPlan.some(e => e.tag === t))
   const todayIdx = activeDays.indexOf(today)
   const nextDays = activeDays.slice(todayIdx + 1, todayIdx + 3)
+  const allChefIds = (members.length ? members : DEFAULT_MEMBERS).map(m => m.id as Chef)
+
+  function slotAnwesendLabel(tag: string, slot: WochenSlot): string {
+    const anw = getSlotAnwesend(tag, slot)
+    if (anw.length === allChefIds.length) return 'Alle'
+    if (anw.length === 0) return 'Niemand'
+    return anw.map(c => personNames[c] ?? c).join(', ')
+  }
 
   function goToPlan() {
     setView('plan')
@@ -482,6 +494,90 @@ export default function WocheScreen({
     setNeuTage(s)
   }
 
+  // ── Attendance view ────────────────────────────────────────────────────────
+  if (view === 'attendance') {
+    const confirmedCount = attendanceConfirmed.filter(c => allChefIds.includes(c)).length
+    const displayDays = planWE ? WOCHENTAGE : WOCHENTAGE.slice(0, 5)
+
+    return (
+      <div className="screen active">
+        <div className="topbar">
+          <button className="back" onClick={() => setView('home')}>‹</button>
+          <h1>👥 Wer ist wann da?</h1>
+        </div>
+        <div className="content">
+          {(members.length ? members : DEFAULT_MEMBERS).map(member => {
+            const chef = member.id as Chef
+            const isMine = chef === currentUser
+            const isConfirmed = attendanceConfirmed.includes(chef)
+            const canEdit = isMine || currentUser === wochenchef
+            const cc = CFG[chef] ?? CFG.MA
+            return (
+              <div key={chef} style={{ borderRadius: 12, border: `1px solid ${isMine ? '#B2DFCC' : '#e5e7eb'}`, marginBottom: 14, overflow: 'hidden' }}>
+                <div style={{ padding: '8px 12px', background: isMine ? '#F0FAF5' : '#f9fafb', borderBottom: '1px solid #f0f0f0', display: 'flex', alignItems: 'center' }}>
+                  <span style={{ flex: 1, fontSize: 12, fontWeight: 700, color: cc.c }}>{member.name}{isMine ? ' · du' : ''}</span>
+                  {isConfirmed
+                    ? <span style={{ fontSize: 10, color: '#1D9E75', fontWeight: 700 }}>✓ bestätigt</span>
+                    : <span style={{ fontSize: 10, color: '#aaa' }}>ausstehend</span>
+                  }
+                </div>
+                <div style={{ padding: '8px 12px', overflowX: 'auto' }}>
+                  <div style={{ display: 'flex', gap: 4, minWidth: 'max-content' }}>
+                    <div style={{ width: 20, flexShrink: 0 }}>
+                      <div style={{ height: 14 }} />
+                      <div style={{ height: 26, lineHeight: '26px', fontSize: 10, color: '#aaa', textAlign: 'center' }}>☀</div>
+                      <div style={{ height: 26, lineHeight: '26px', fontSize: 10, color: '#aaa', textAlign: 'center' }}>🌙</div>
+                    </div>
+                    {displayDays.map(tag => {
+                      const mitOn = getSlotAnwesend(tag, 'Mittag').includes(chef)
+                      const abdOn = getSlotAnwesend(tag, 'Abend').includes(chef)
+                      return (
+                        <div key={tag} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+                          <span style={{ fontSize: 9, color: '#bbb', height: 14, lineHeight: '14px', textAlign: 'center' }}>{tag.slice(0, 2)}</span>
+                          <button
+                            onClick={() => canEdit && toggleSlotAttendance(tag, 'Mittag', chef)}
+                            disabled={!canEdit}
+                            style={{ width: 26, height: 26, borderRadius: 5, border: `1px solid ${mitOn ? cc.c : '#ddd'}`, background: mitOn ? cc.bg : 'white', cursor: canEdit ? 'pointer' : 'default', fontSize: 9, color: mitOn ? cc.c : 'transparent', fontWeight: 700 }}
+                          >✓</button>
+                          <button
+                            onClick={() => canEdit && toggleSlotAttendance(tag, 'Abend', chef)}
+                            disabled={!canEdit}
+                            style={{ width: 26, height: 26, borderRadius: 5, border: `1px solid ${abdOn ? cc.c : '#ddd'}`, background: abdOn ? cc.bg : 'white', cursor: canEdit ? 'pointer' : 'default', fontSize: 9, color: abdOn ? cc.c : 'transparent', fontWeight: 700 }}
+                          >✓</button>
+                        </div>
+                      )
+                    })}
+                  </div>
+                  {isMine && (
+                    <button
+                      onClick={() => {
+                        const next = attendanceConfirmed.includes(chef) ? attendanceConfirmed : [...attendanceConfirmed, chef]
+                        onAttendanceConfirmedChange(next)
+                      }}
+                      style={{ marginTop: 10, width: '100%', padding: '7px', border: 'none', borderRadius: 7, background: isConfirmed ? '#E1F5EE' : '#1D9E75', color: isConfirmed ? '#0F6E56' : 'white', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+                    >
+                      {isConfirmed ? '✓ Erneut bestätigen' : 'Meine Anwesenheit bestätigen'}
+                    </button>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+
+          <div style={{ textAlign: 'center', padding: '8px 0 4px', fontSize: 12, fontWeight: 500, color: confirmedCount < allChefIds.length ? '#92400E' : '#0F6E56' }}>
+            {confirmedCount < allChefIds.length ? '⚠️' : '✅'} {confirmedCount} von {allChefIds.length} bestätigt
+          </div>
+
+          {currentUser === wochenchef && (
+            <button className="btn primary" onClick={goToPlan} style={{ marginTop: 8, background: '#1D9E75' }}>
+              🗓 Zur Wochenplanung →
+            </button>
+          )}
+        </div>
+      </div>
+    )
+  }
+
   // ── Plan view ─────────────────────────────────────────────────────────────
   if (view === 'plan') {
     return (
@@ -503,6 +599,18 @@ export default function WocheScreen({
 
           {planState === 'options' && (
             <>
+              {(() => {
+                const confirmed = attendanceConfirmed.filter(c => allChefIds.includes(c)).length
+                const total = allChefIds.length
+                return (
+                  <div style={{ marginBottom: 14, padding: '8px 10px', borderRadius: 8, border: `1px solid ${confirmed < total ? '#FCD34D' : '#B2DFCC'}`, background: confirmed < total ? '#FFFBEB' : '#F0FAF5', fontSize: 11, color: confirmed < total ? '#92400E' : '#0F6E56', display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span>{confirmed < total ? '⚠️' : '✅'} Anwesenheit: {confirmed} von {total} bestätigt</span>
+                    <button onClick={() => setView('attendance')} style={{ marginLeft: 'auto', border: 'none', background: 'none', color: '#1D9E75', fontSize: 11, cursor: 'pointer', fontWeight: 600, padding: 0 }}>
+                      Bearbeiten →
+                    </button>
+                  </div>
+                )
+              })()}
               {weekPlan.length > 0 && (
                 <>
                   <div className="lbl">Welche Tage neu planen?</div>
@@ -763,9 +871,9 @@ export default function WocheScreen({
                     if (!e) return null
                     const key = `${tag}-${slot}`
                     const isEditing = editMealKey === key
-                    const isPersonsEdit = personsEditKey === key
+                    const isAttendanceEdit = attendanceEditKey === key
                     const canEdit = !planConfirmed || currentUser === wochenchef
-                    const slotPersonen = getSlotPersonen(tag, slot)
+                    const slotAnwesend = getSlotAnwesend(tag, slot)
                     return (
                       <div key={slot} style={{ borderTop: '1px solid #f0f0f0' }}>
                         <div style={{ padding: '8px 12px 3px', display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -776,9 +884,9 @@ export default function WocheScreen({
                           >{personNames[e.chef]}</span>
                           <span style={{ fontSize: 10, color: '#ddd' }}>·</span>
                           <span
-                            onClick={canEdit ? () => setPersonsEditKey(isPersonsEdit ? null : key) : undefined}
+                            onClick={canEdit ? () => setAttendanceEditKey(isAttendanceEdit ? null : key) : undefined}
                             style={{ fontSize: 11, color: '#555', cursor: canEdit ? 'pointer' : 'default', textDecoration: canEdit ? 'underline' : 'none', textDecorationStyle: 'dashed', textDecorationColor: '#bbb' }}
-                          >{slotPersonen} {slotPersonen === 1 ? 'Person' : 'Personen'}</span>
+                          >{slotAnwesendLabel(tag, slot)}</span>
                         </div>
                         {isEditing && canEdit && (
                           <div style={{ padding: '4px 12px 8px', background: '#f9f9f9' }}>
@@ -790,8 +898,20 @@ export default function WocheScreen({
                             )}
                           </div>
                         )}
-                        {isPersonsEdit && canEdit && (
-                          <PersonsEditor tag={tag} slot={slot} initial={slotPersonen} onSave={handleSlotPersonenSave} />
+                        {isAttendanceEdit && canEdit && (
+                          <div style={{ padding: '6px 12px 8px', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6, background: '#f9f9f9', borderTop: '1px solid #f0f0f0' }}>
+                            <span style={{ fontSize: 11, color: '#888', width: '100%' }}>Wer ist dabei?</span>
+                            {allChefIds.map(c => {
+                              const on = slotAnwesend.includes(c)
+                              const cc = CFG[c] ?? CFG.MA
+                              return (
+                                <button key={c} onClick={() => toggleSlotAttendance(tag, slot, c)}
+                                  style={{ padding: '4px 10px', borderRadius: 8, border: `1px solid ${on ? cc.c : '#ddd'}`, background: on ? cc.bg : 'white', color: on ? cc.c : '#aaa', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
+                                >{personNames[c] ?? c}</button>
+                              )
+                            })}
+                            <button onClick={() => setAttendanceEditKey(null)} style={{ marginLeft: 'auto', padding: '4px 10px', border: '1px solid #ddd', borderRadius: 8, background: 'white', color: '#888', fontSize: 11, cursor: 'pointer' }}>Fertig</button>
+                          </div>
                         )}
                         <div
                           onClick={() => mealsData[e.gericht] ? setSelectedMealName(e.gericht) : undefined}
@@ -961,10 +1081,10 @@ export default function WocheScreen({
     }
     const key = `${tag}-${slot}`
     const isEditing = editMealKey === key
-    const isPersonsEdit = personsEditKey === key
+    const isAttendanceEdit = attendanceEditKey === key
     const hasRecipe = !!mealsData[entry.gericht]
     const canEdit = !planConfirmed || currentUser === wochenchef
-    const slotPersonen = getSlotPersonen(tag, slot)
+    const slotAnwesend = getSlotAnwesend(tag, slot)
     return (
       <div key={slot} style={{ borderTop: '1px solid #f0f0f0' }}>
         <div style={{ padding: '8px 12px 3px', display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -975,9 +1095,9 @@ export default function WocheScreen({
           >{personNames[entry.chef]}</span>
           <span style={{ fontSize: 10, color: '#ddd' }}>·</span>
           <span
-            onClick={canEdit ? () => setPersonsEditKey(isPersonsEdit ? null : key) : undefined}
+            onClick={canEdit ? () => setAttendanceEditKey(isAttendanceEdit ? null : key) : undefined}
             style={{ fontSize: 11, color: '#555', cursor: canEdit ? 'pointer' : 'default', textDecoration: canEdit ? 'underline' : 'none', textDecorationStyle: 'dashed', textDecorationColor: '#bbb' }}
-          >{slotPersonen} {slotPersonen === 1 ? 'Person' : 'Personen'}</span>
+          >{slotAnwesendLabel(tag, slot)}</span>
         </div>
         {isEditing && canEdit && (
           <div style={{ padding: '4px 12px 8px', background: '#f9f9f9' }}>
@@ -989,8 +1109,20 @@ export default function WocheScreen({
             )}
           </div>
         )}
-        {isPersonsEdit && canEdit && (
-          <PersonsEditor tag={tag} slot={slot} initial={slotPersonen} onSave={handleSlotPersonenSave} />
+        {isAttendanceEdit && canEdit && (
+          <div style={{ padding: '6px 12px 8px', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6, background: '#f9f9f9', borderTop: '1px solid #f0f0f0' }}>
+            <span style={{ fontSize: 11, color: '#888', width: '100%' }}>Wer ist dabei?</span>
+            {allChefIds.map(c => {
+              const on = slotAnwesend.includes(c)
+              const cc = CFG[c] ?? CFG.MA
+              return (
+                <button key={c} onClick={() => toggleSlotAttendance(tag, slot, c)}
+                  style={{ padding: '4px 10px', borderRadius: 8, border: `1px solid ${on ? cc.c : '#ddd'}`, background: on ? cc.bg : 'white', color: on ? cc.c : '#aaa', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
+                >{personNames[c] ?? c}</button>
+              )
+            })}
+            <button onClick={() => setAttendanceEditKey(null)} style={{ marginLeft: 'auto', padding: '4px 10px', border: '1px solid #ddd', borderRadius: 8, background: 'white', color: '#888', fontSize: 11, cursor: 'pointer' }}>Fertig</button>
+          </div>
         )}
         <div
           onClick={hasRecipe ? () => setSelectedMealName(entry.gericht) : undefined}
@@ -1036,6 +1168,12 @@ export default function WocheScreen({
               {personNames[wochenchef]} ist diese Woche Wochenchef
             </div>
           )}
+          <button
+            onClick={() => setView('attendance')}
+            style={{ marginTop: 14, border: '1px solid #e5e7eb', background: 'white', color: '#555', fontSize: 12, cursor: 'pointer', padding: '8px 20px', borderRadius: 8 }}
+          >
+            👥 Anwesenheit eintragen
+          </button>
         </div>
       </div>
     )
@@ -1080,6 +1218,14 @@ export default function WocheScreen({
             📋 Ganze Woche ansehen →
           </button>
         </div>
+        <div style={{ textAlign: 'center', marginTop: 8 }}>
+          <button
+            onClick={() => setView('attendance')}
+            style={{ border: 'none', background: 'none', color: '#888', fontSize: 12, cursor: 'pointer' }}
+          >
+            👥 Anwesenheit
+          </button>
+        </div>
       </div>
       {currentUser === wochenchef && (
         <div style={{ padding: '0 20px 16px' }}>
@@ -1101,25 +1247,6 @@ function SlotPill({ slot }: { slot: WochenSlot }) {
     </span>
   )
 }
-
-function PersonsEditor({ tag, slot, initial, onSave }: {
-  tag: string; slot: WochenSlot; initial: number; onSave: (tag: string, slot: WochenSlot, total: number) => void
-}) {
-  const [local, setLocal] = useState(initial)
-  return (
-    <div style={{ padding: '6px 12px 8px', display: 'flex', alignItems: 'center', gap: 10, background: '#f9f9f9', borderTop: '1px solid #f0f0f0' }}>
-      <span style={{ fontSize: 11, color: '#888', flex: 1 }}>Personen</span>
-      <button onClick={() => setLocal(t => Math.max(1, t - 1))}
-        style={{ width: 28, height: 28, borderRadius: 7, border: '1px solid #eee', background: 'white', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>−</button>
-      <span style={{ fontSize: 14, fontWeight: 600, minWidth: 22, textAlign: 'center' }}>{local}</span>
-      <button onClick={() => setLocal(t => t + 1)}
-        style={{ width: 28, height: 28, borderRadius: 7, border: '1px solid #eee', background: 'white', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>+</button>
-      <button onClick={() => onSave(tag, slot, local)}
-        style={{ padding: '5px 12px', border: 'none', borderRadius: 7, background: '#1D9E75', color: 'white', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>✓</button>
-    </div>
-  )
-}
-
 
 function ChefPicker({ current, onSelect, personNames, members }: { current: Chef; onSelect: (c: Chef) => void; personNames: Record<Chef, string>; members: import('../lib/state').FamilyMember[] }) {
   return (

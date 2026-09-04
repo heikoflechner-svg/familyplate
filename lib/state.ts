@@ -89,10 +89,9 @@ export interface ShoppingItem {
 
 export interface DayAttendance {
   tag: string
-  anwesend: Chef[]
+  mittagAnwesend: Chef[]
+  abendAnwesend: Chef[]
   gaeste: number
-  mittagPersonen?: number
-  abendPersonen?: number
 }
 
 export interface ChefStat {

@@ -1,7 +1,7 @@
 import { supabase, FAMILY_ID } from './supabase'
 import type { WeekPlanEntry, Rezept, Wish, RemyVorschlag, WochenSlot, DayAttendance, Chef, ShoppingItem, ChangeProposal } from './state'
 
-export async function loadWeekPlan(): Promise<{ plan: WeekPlanEntry[]; mealsData: Record<string, Rezept>; wishes: Wish[]; attendance: DayAttendance[]; shoppingList: ShoppingItem[]; proposals: ChangeProposal[]; wochenchef: Chef; planConfirmed: boolean; shopDone: boolean }> {
+export async function loadWeekPlan(): Promise<{ plan: WeekPlanEntry[]; mealsData: Record<string, Rezept>; wishes: Wish[]; attendance: DayAttendance[]; attendanceConfirmed: Chef[]; shoppingList: ShoppingItem[]; proposals: ChangeProposal[]; wochenchef: Chef; planConfirmed: boolean; shopDone: boolean }> {
   const { data, error } = await supabase
     .from('week_plans')
     .select('plan_data, meals_data, wishes, attendance, shopping_list, proposals, wochenchef, plan_confirmed, shopping_done')
@@ -10,12 +10,25 @@ export async function loadWeekPlan(): Promise<{ plan: WeekPlanEntry[]; mealsData
     .limit(1)
     .single()
 
-  if (error || !data) return { plan: [], mealsData: {}, wishes: [], attendance: [], shoppingList: [], proposals: [], wochenchef: 'PA', planConfirmed: false, shopDone: false }
+  if (error || !data) return { plan: [], mealsData: {}, wishes: [], attendance: [], attendanceConfirmed: [], shoppingList: [], proposals: [], wochenchef: 'PA', planConfirmed: false, shopDone: false }
+
+  const rawAttendance = data.attendance
+  let attendance: DayAttendance[] = []
+  let attendanceConfirmed: Chef[] = []
+  if (Array.isArray(rawAttendance)) {
+    attendance = rawAttendance as DayAttendance[]
+  } else if (rawAttendance && typeof rawAttendance === 'object') {
+    const raw = rawAttendance as Record<string, unknown>
+    attendance = (raw.days as DayAttendance[]) ?? []
+    attendanceConfirmed = (raw.confirmed as Chef[]) ?? []
+  }
+
   return {
     plan: (data.plan_data as WeekPlanEntry[]) ?? [],
     mealsData: (data.meals_data as Record<string, Rezept>) ?? {},
     wishes: (data.wishes as Wish[]) ?? [],
-    attendance: (data.attendance as DayAttendance[]) ?? [],
+    attendance,
+    attendanceConfirmed,
     shoppingList: (data.shopping_list as ShoppingItem[]) ?? [],
     proposals: (data.proposals as ChangeProposal[]) ?? [],
     wochenchef: ((data.wochenchef as Chef | null) ?? 'PA'),
@@ -96,10 +109,17 @@ export async function saveShoppingList(shoppingList: ShoppingItem[]): Promise<vo
 }
 
 export function getAttendanceForDay(attendance: DayAttendance[], tag: string, chefs: Chef[]): DayAttendance {
-  return attendance.find(a => a.tag === tag) ?? { tag, anwesend: chefs, gaeste: 0 }
+  const found = attendance.find(a => a.tag === tag)
+  if (!found) return { tag, mittagAnwesend: chefs, abendAnwesend: chefs, gaeste: 0 }
+  if (!found.mittagAnwesend) {
+    const legacy = (found as unknown as { anwesend?: Chef[] }).anwesend ?? chefs
+    return { tag, mittagAnwesend: legacy, abendAnwesend: legacy, gaeste: found.gaeste ?? 0 }
+  }
+  return found
 }
 
-export async function saveAttendance(attendance: DayAttendance[]): Promise<void> {
+export async function saveAttendance(days: DayAttendance[], confirmed: Chef[]): Promise<void> {
+  const payload = { v: 2, days, confirmed }
   const { data: existing } = await supabase
     .from('week_plans')
     .select('id')
@@ -108,9 +128,9 @@ export async function saveAttendance(attendance: DayAttendance[]): Promise<void>
     .single()
 
   if (existing?.id) {
-    await supabase.from('week_plans').update({ attendance }).eq('id', existing.id)
+    await supabase.from('week_plans').update({ attendance: payload }).eq('id', existing.id)
   } else {
-    await supabase.from('week_plans').insert({ family_id: FAMILY_ID, plan_data: [], meals_data: {}, wishes: [], attendance })
+    await supabase.from('week_plans').insert({ family_id: FAMILY_ID, plan_data: [], meals_data: {}, wishes: [], attendance: payload })
   }
 }
 
