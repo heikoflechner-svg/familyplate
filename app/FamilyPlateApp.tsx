@@ -34,6 +34,7 @@ export default function FamilyPlateApp() {
   const [planConfirmed, setPlanConfirmed] = useState(false)
   const [shopDone, setShopDone] = useState(false)
   const [activeTab, setActiveTab] = useState<Tab>('woche')
+  const [profileSaveError, setProfileSaveError] = useState<string | null>(null)
 
   useEffect(() => {
     return onAuthChange(chef => {
@@ -133,7 +134,12 @@ export default function FamilyPlateApp() {
     const updatedMembers = applyChefStats(familyProfile.members, confirmedEntries, today)
     const updated: FamilyProfile = { ...familyProfile, members: updatedMembers }
     setFamilyProfile(updated)
-    await saveFamilyProfile(updated)
+    try {
+      await saveFamilyProfile(updated)
+    } catch (err) {
+      setProfileSaveError('Profil-Speichern fehlgeschlagen – Chef-Statistik nicht aktualisiert.')
+      console.error('saveFamilyProfile:', err)
+    }
   }
 
   function handleTabChange(tab: Tab) {
@@ -173,6 +179,14 @@ export default function FamilyPlateApp() {
 
   return (
     <div className="phone">
+      {profileSaveError && (
+        <div
+          onClick={() => setProfileSaveError(null)}
+          style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 999, background: '#FEE2E2', borderBottom: '1px solid #FCA5A5', padding: '10px 14px', fontSize: 12, color: '#991B1B', cursor: 'pointer' }}
+        >
+          ⚠️ {profileSaveError}
+        </div>
+      )}
       <div className="statusbar">
         <span>9:41</span>
         <span>🍽 FamilyPlate</span>
