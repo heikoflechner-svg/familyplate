@@ -1,7 +1,16 @@
 import { chromium } from 'playwright'
 
-const BASE = 'http://localhost:3000'
-const PW_BY_NAME = { Heiko: 'Heiko1', Tim: 'Tim1', Sabine: 'Sabine1' }
+const BASE = process.env.TEST_BASE_URL || 'http://localhost:3000'
+const PW_BY_NAME = {
+  Heiko:  process.env.TEST_HEIKO_PW,
+  Tim:    process.env.TEST_TIM_PW,
+  Sabine: process.env.TEST_SABINE_PW,
+}
+
+if (!PW_BY_NAME.Heiko || !PW_BY_NAME.Tim || !PW_BY_NAME.Sabine) {
+  console.error('Fehlend: TEST_HEIKO_PW / TEST_TIM_PW / TEST_SABINE_PW')
+  process.exit(1)
+}
 
 async function login(page, name) {
   await page.goto(BASE)
@@ -10,7 +19,7 @@ async function login(page, name) {
   await page.locator(`text=${name}`).click().catch(() => {})
   await page.waitForTimeout(400)
   const pw = page.locator('input[type="password"]')
-  if (await pw.count() > 0) await pw.fill(PW_BY_NAME[name] ?? name + '1')
+  if (await pw.count() > 0) await pw.fill(PW_BY_NAME[name])
   await page.waitForTimeout(200)
   await page.locator('button').filter({ hasText: /anmeld/i }).click().catch(() => {})
   await page.waitForSelector('input[type="password"]', { state: 'hidden', timeout: 15000 }).catch(() => {})
@@ -55,14 +64,12 @@ await login(page, 'Heiko')
 await goToWoche(page)
 await page.screenshot({ path: 'wf-01-heiko-home.png' })
 
-// "Woche planen" klicken
 const wochePlanenBtn = page.locator('button').filter({ hasText: /Woche planen/i }).first()
 if (await wochePlanenBtn.count() > 0) {
   await wochePlanenBtn.click()
   await page.waitForTimeout(800)
   await page.screenshot({ path: 'wf-02-plan-optionen.png' })
 
-  // "Rémy schlägt vor" klicken
   const remyVorBtn = page.locator('button').filter({ hasText: /rémy schlägt vor|schlägt vor/i }).first()
   if (await remyVorBtn.count() > 0) {
     await remyVorBtn.click()
@@ -83,7 +90,6 @@ if (await wochePlanenBtn.count() > 0) {
 // ──────────────────────────────────────────────────────────────
 console.log('\n=== SCHRITT 2: Heiko — Plan bestätigen (2 Stufen) ===')
 
-// Stufe A: "Plan übernehmen" finden (scrollt nach unten falls nötig)
 let planUebernehmenClicked = false
 for (let i = 0; i < 8; i++) {
   const btn = page.locator('button').filter({ hasText: /plan übernehmen|übernehmen/i }).first()
@@ -104,7 +110,6 @@ if (!planUebernehmenClicked) {
   await page.screenshot({ path: 'wf-04-kein-uebernehmen.png' })
 }
 
-// Stufe B: "Ganze Woche ansehen →" klicken, dann "Als Wochenchef bestätigen"
 const ganzeWocheBtn = page.locator('button, a').filter({ hasText: /ganze woche/i }).first()
 if (await ganzeWocheBtn.count() > 0) {
   await ganzeWocheBtn.click()
@@ -145,12 +150,10 @@ await login(page, 'Tim')
 await goToWoche(page)
 await page.screenshot({ path: 'wf-06-tim-nach-bestaetigung.png' })
 
-// Plan sollte jetzt für Tim sichtbar sein — nach unten scrollen
 await page.evaluate(() => window.scrollTo(0, 300))
 await page.waitForTimeout(500)
 await page.screenshot({ path: 'wf-07-tim-plan-gescrollt.png' })
 
-// Wunsch-Button suchen ("+Änderungswunsch" oder ähnlich)
 const wunschBtns = page.locator('button').filter({ hasText: /wunsch|änderung/i })
 const wunschCount = await wunschBtns.count()
 console.log(`  Wunsch-Buttons gefunden: ${wunschCount}`)
@@ -160,14 +163,12 @@ if (wunschCount > 0) {
   await page.waitForTimeout(600)
   await page.screenshot({ path: 'wf-08-wunsch-form.png' })
 
-  // "Eigenes Gericht" / Alternative-Modus wählen
   const altBtn = page.locator('button').filter({ hasText: /eigenes.gericht|alternative|✏️/i }).first()
   if (await altBtn.count() > 0) {
     await altBtn.click()
     await page.waitForTimeout(400)
   }
 
-  // "Pizza" eingeben
   const textInput = page.locator('input[type="text"]').first()
   if (await textInput.count() > 0) {
     await textInput.fill('Pizza')
@@ -175,7 +176,6 @@ if (wunschCount > 0) {
   }
   await page.screenshot({ path: 'wf-09-pizza-eingegeben.png' })
 
-  // Speichern
   const saveBtn = page.locator('button').filter({ hasText: /speicher|einreich|wunsch schick|ok/i }).first()
   if (await saveBtn.count() > 0) {
     await saveBtn.click()
@@ -187,7 +187,6 @@ if (wunschCount > 0) {
   }
 } else {
   console.log('  KEIN Wunsch-Button für Tim sichtbar — Plan für Tim noch nicht sichtbar?')
-  // Alle sichtbaren Buttons ausgeben
   const allBtns = page.locator('button')
   const btns = await allBtns.allTextContents()
   console.log('  Alle Buttons auf der Seite:', btns.slice(0, 10))
@@ -203,7 +202,6 @@ await login(page, 'Heiko')
 await goToWoche(page)
 await page.screenshot({ path: 'wf-11-heiko-bugcheck-home.png' })
 
-// In die volle Wochenansicht wechseln (dort sind die SlotWunschPanels)
 const ganzeWoche2 = page.locator('button, a').filter({ hasText: /ganze woche/i }).first()
 if (await ganzeWoche2.count() > 0) {
   await ganzeWoche2.click()
@@ -212,35 +210,31 @@ if (await ganzeWoche2.count() > 0) {
 }
 await page.screenshot({ path: 'wf-12-heiko-volle-woche.png' })
 
-// Durch den Plan scrollen um Wunsch-Panel zu finden
 await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight))
 await page.waitForTimeout(600)
 await page.screenshot({ path: 'wf-12b-heiko-scroll-unten.png' })
 
-// Prüfungen
-const radioButtons   = page.locator('button').filter({ hasText: /◉|○/ })
-const chefBtnNach    = page.locator('button').filter({ hasText: /wochenchef bestätig|als wochenchef/i })
-const nachtragsBox   = page.locator('text=/Nachtrags/i')
+const radioButtons    = page.locator('button').filter({ hasText: /◉|○/ })
+const chefBtnNach     = page.locator('button').filter({ hasText: /wochenchef bestätig|als wochenchef/i })
+const nachtragsBox    = page.locator('text=/Nachtrags/i')
 const alternativenBox = page.locator('text=Alternativen')
 
-const radioCount2  = await radioButtons.count()
-const chefBtn2     = await chefBtnNach.count()
-const nachtrag2    = await nachtragsBox.count()
-const altBox2      = await alternativenBox.count()
+const radioCount2 = await radioButtons.count()
+const chefBtn2    = await chefBtnNach.count()
+const nachtrag2   = await nachtragsBox.count()
+const altBox2     = await alternativenBox.count()
 
 console.log(`  Radio-Buttons (◉/○): ${radioCount2}`)
 console.log(`  Chef-Bestätigen-Button: ${chefBtn2}`)
 console.log(`  Nachtrags-Sektion: ${nachtrag2}`)
 console.log(`  "Alternativen"-Abschnitt: ${altBox2}`)
 
-// Alle sichtbaren Buttons
 const allBtns2 = page.locator('button')
 const btnTexts2 = await allBtns2.allTextContents()
 console.log('  Alle Buttons:', btnTexts2.filter(t => t.trim()).slice(0, 15))
 
 await page.screenshot({ path: 'wf-13-bug-check-final.png' })
 
-// Wenn Alternativen sichtbar: Mitteln-Screenshot des betroffenen Bereichs
 if (altBox2 > 0) {
   const altEl = page.locator('text=Alternativen').first()
   await altEl.scrollIntoViewIfNeeded()

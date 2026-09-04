@@ -1,14 +1,25 @@
 import { createClient } from '@supabase/supabase-js'
 
-const supabase = createClient(
-  'https://kzvsmlrnoojucahoysmf.supabase.co',
-  'sb_publishable_h1f5rKewTw8auG94MvcesQ_EqQ5DYMP'
-)
+const SUPABASE_URL = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL
+const SUPABASE_KEY = process.env.SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+const HEIKO_EMAIL = process.env.TEST_HEIKO_EMAIL
+const HEIKO_PW    = process.env.TEST_HEIKO_PW
+
+if (!SUPABASE_URL || !SUPABASE_KEY) {
+  console.error('Fehlend: SUPABASE_URL / SUPABASE_ANON_KEY (oder NEXT_PUBLIC_-Varianten)')
+  process.exit(1)
+}
+if (!HEIKO_EMAIL || !HEIKO_PW) {
+  console.error('Fehlend: TEST_HEIKO_EMAIL / TEST_HEIKO_PW')
+  process.exit(1)
+}
+
+const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
 
 // Als Heiko einloggen um RLS zu umgehen
 const { error: loginErr } = await supabase.auth.signInWithPassword({
-  email: 'heiko@flechner-family.de',
-  password: 'Heiko1',
+  email: HEIKO_EMAIL,
+  password: HEIKO_PW,
 })
 if (loginErr) { console.error('Login fehlgeschlagen:', loginErr.message); process.exit(1) }
 console.log('Eingeloggt als Heiko')

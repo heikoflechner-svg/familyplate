@@ -1,7 +1,15 @@
 import { chromium } from 'playwright'
 
-const BASE = 'https://familyplate-app.vercel.app'
-const PW = { Heiko: 'Heiko1', Tim: 'Tim1' }
+const BASE = process.env.TEST_BASE_URL || 'https://familyplate-app.vercel.app'
+const PW = {
+  Heiko: process.env.TEST_HEIKO_PW,
+  Tim:   process.env.TEST_TIM_PW,
+}
+
+if (!PW.Heiko || !PW.Tim) {
+  console.error('Fehlend: TEST_HEIKO_PW / TEST_TIM_PW')
+  process.exit(1)
+}
 
 async function login(page, name) {
   await page.goto(BASE)
@@ -65,7 +73,6 @@ if (await wochePlanenBtn.count() > 0) {
   if (await remyBtn.count() > 0) {
     await remyBtn.click()
     console.log('  Rémy schlägt vor — warte bis zu 90s auf "Plan übernehmen"...')
-    // Warte direkt auf "Plan übernehmen"-Button (erscheint sobald Plan fertig)
     await page.waitForSelector('button', { timeout: 90000 }).catch(() => {})
     await page.waitForFunction(
       () => [...document.querySelectorAll('button')].some(b => /übernehmen/i.test(b.textContent)),
@@ -129,7 +136,6 @@ if (await wunschBtns.count() > 0) {
   await page.waitForTimeout(700)
   await page.screenshot({ path: 'live-09-wunsch-form.png' })
 
-  // Eigenes Gericht wählen
   const altBtn = page.locator('button').filter({ hasText: /eigenes.gericht|✏️/i }).first()
   if (await altBtn.count() > 0) { await altBtn.click(); await page.waitForTimeout(400) }
 
@@ -159,12 +165,10 @@ await goToWoche(page)
 await openFullWeekView(page)
 await page.screenshot({ path: 'live-12-heiko-woche.png' })
 
-// Bis ganz unten scrollen
 await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight))
 await page.waitForTimeout(800)
 await page.screenshot({ path: 'live-13-scroll-unten.png' })
 
-// Kasten-Check
 const nachtragsKasten = page.locator('text=Nachträgliche Alternativen')
 const entscheidungBtn = page.locator('button').filter({ hasText: /entscheidung übernehmen/i })
 const alternativenAbschnitt = page.locator('text=Alternativen')
@@ -189,15 +193,8 @@ if (kastenCount > 0) {
 if (btnCount > 0) {
   console.log('\n=== SCHRITT 4: Heiko — Pizza übernehmen + Rezept generieren ===')
 
-  // Checkbox für Tim's Pizza ankreuzen
-  const checkboxes = page.locator('button').filter({ hasText: /^✓$|^$/ }).or(
-    page.locator('button[style*="border-radius: 4px"]')
-  )
-  // Einfacher: ersten kleinen Checkbox-Button im Kasten klicken
   if (kastenCount > 0) {
-    const kastenEl = page.locator('text=Nachträgliche Alternativen').first()
-    await kastenEl.scrollIntoViewIfNeeded()
-    // Kleinen Checkbox-Button finden (18×18px Button ohne Text neben dem Eintrag)
+    await page.locator('text=Nachträgliche Alternativen').first().scrollIntoViewIfNeeded()
     const allBtnsInKasten = page.locator('button').filter({ hasText: /^$|^✓$/ })
     if (await allBtnsInKasten.count() > 0) {
       await allBtnsInKasten.first().click()
@@ -206,14 +203,12 @@ if (btnCount > 0) {
     }
   }
 
-  // Entscheidung übernehmen
   await entscheidungBtn.first().scrollIntoViewIfNeeded()
   await entscheidungBtn.first().click()
   console.log('  Entscheidung geklickt — warte auf Rezept-Abruf (Live-API, bis zu 30s)...')
   await page.waitForTimeout(25000)
   await page.screenshot({ path: 'live-16-nach-entscheidung.png' })
 
-  // Prüfen ob Plan-Eintrag aktualisiert wurde
   await page.evaluate(() => window.scrollTo(0, 0))
   await page.waitForTimeout(500)
   await page.screenshot({ path: 'live-17-plan-nach-uebernahme.png' })
