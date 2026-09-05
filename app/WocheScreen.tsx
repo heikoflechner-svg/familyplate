@@ -707,7 +707,13 @@ export default function WocheScreen({
               <div style={{ fontSize: 13, fontWeight: 600, color: '#085041', marginBottom: 4 }}>
                 ✅ Rémy hat geplant
               </div>
-              <div style={{ fontSize: 11, color: '#bbb', marginBottom: 14 }}>Koch antippen zum Ändern</div>
+              {slotLoading ? (
+                <div style={{ fontSize: 11, color: '#085041', background: '#F0FAF5', border: '1px solid #B2DFCC', borderRadius: 8, padding: '7px 12px', marginBottom: 14 }}>
+                  🐀 Rémy schlägt {slotLoading.replace(/-(?:Mittag|Abend)$/, '')} {slotLoading.endsWith('Mittag') ? '☀️ Mittag' : '🌙 Abend'} neu vor… andere ↺ kurz warten
+                </div>
+              ) : (
+                <div style={{ fontSize: 11, color: '#bbb', marginBottom: 14 }}>Koch antippen zum Ändern · ↺ Slot neu würfeln</div>
+              )}
               {WOCHENTAGE.filter(t => pendingPlan.some(e => e.tag === t)).map(tag => (
                 <div key={tag} style={{ borderRadius: 12, border: '1px solid #e5e7eb', marginBottom: 14, overflow: 'hidden' }}>
                   <div style={{ padding: '8px 12px', background: '#f9fafb', borderBottom: '1px solid #f0f0f0' }}>
