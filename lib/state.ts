@@ -2,7 +2,7 @@ export type Ampel = 'green' | 'yellow' | 'red'
 export type FreezerTyp = 'fertig' | 'roh'
 export type WochenSlot = 'Mittag' | 'Abend'
 export type Chef = 'PA' | 'MA' | 'TI'
-export type Tab = 'woche' | 'gefriertruhe' | 'einkauf' | 'rezepte'
+export type Tab = 'woche' | 'gefriertruhe' | 'einkauf' | 'rezepte' | 'mehr'
 
 export interface FreezerItem {
   id: string

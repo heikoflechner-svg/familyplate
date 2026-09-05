@@ -1,16 +1,16 @@
 import { supabase, FAMILY_ID } from './supabase'
 import type { WeekPlanEntry, Rezept, Wish, RemyVorschlag, WochenSlot, DayAttendance, Chef, ShoppingItem, ChangeProposal } from './state'
 
-export async function loadWeekPlan(): Promise<{ plan: WeekPlanEntry[]; mealsData: Record<string, Rezept>; wishes: Wish[]; attendance: DayAttendance[]; attendanceConfirmed: Chef[]; shoppingList: ShoppingItem[]; proposals: ChangeProposal[]; wochenchef: Chef; planConfirmed: boolean; shopDone: boolean }> {
+export async function loadWeekPlan(): Promise<{ plan: WeekPlanEntry[]; mealsData: Record<string, Rezept>; wishes: Wish[]; attendance: DayAttendance[]; attendanceConfirmed: Chef[]; shoppingList: ShoppingItem[]; proposals: ChangeProposal[]; wochenchef: Chef; planConfirmed: boolean; shopDone: boolean; shoppingDay: string | null }> {
   const { data, error } = await supabase
     .from('week_plans')
-    .select('plan_data, meals_data, wishes, attendance, shopping_list, proposals, wochenchef, plan_confirmed, shopping_done')
+    .select('plan_data, meals_data, wishes, attendance, shopping_list, proposals, wochenchef, plan_confirmed, shopping_done, shopping_day')
     .eq('family_id', FAMILY_ID)
     .order('updated_at', { ascending: false })
     .limit(1)
     .single()
 
-  if (error || !data) return { plan: [], mealsData: {}, wishes: [], attendance: [], attendanceConfirmed: [], shoppingList: [], proposals: [], wochenchef: 'PA', planConfirmed: false, shopDone: false }
+  if (error || !data) return { plan: [], mealsData: {}, wishes: [], attendance: [], attendanceConfirmed: [], shoppingList: [], proposals: [], wochenchef: 'PA', planConfirmed: false, shopDone: false, shoppingDay: null }
 
   const rawAttendance = data.attendance
   let attendance: DayAttendance[] = []
@@ -34,6 +34,7 @@ export async function loadWeekPlan(): Promise<{ plan: WeekPlanEntry[]; mealsData
     wochenchef: ((data.wochenchef as Chef | null) ?? 'PA'),
     planConfirmed: (data.plan_confirmed as boolean | null) ?? false,
     shopDone: (data.shopping_done as boolean | null) ?? false,
+    shoppingDay: (data.shopping_day as string | null) ?? null,
   }
 }
 
@@ -47,6 +48,21 @@ export async function saveShopDone(done: boolean): Promise<void> {
 
   if (existing?.id) {
     await supabase.from('week_plans').update({ shopping_done: done }).eq('id', existing.id)
+  }
+}
+
+export async function saveShoppingDay(day: string | null): Promise<void> {
+  const { data: existing } = await supabase
+    .from('week_plans')
+    .select('id')
+    .eq('family_id', FAMILY_ID)
+    .limit(1)
+    .single()
+
+  if (existing?.id) {
+    await supabase.from('week_plans').update({ shopping_day: day }).eq('id', existing.id)
+  } else {
+    await supabase.from('week_plans').insert({ family_id: FAMILY_ID, plan_data: [], meals_data: {}, wishes: [], shopping_day: day })
   }
 }
 

@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { generateWeekPlan, getRemySuggestions, generateRecipe } from '../lib/mealLogic'
 import { getFreezerListString, getPantryListString, addFreezerItem } from '../lib/freezerLogic'
 import { buildFamilyPrompt, DEFAULT_MEMBERS } from '../lib/familyLogic'
@@ -50,6 +50,7 @@ interface Props {
   shoppingList: ShoppingItem[]
   onShoppingListChange: (list: ShoppingItem[]) => Promise<void>
   onFreezerChange: (items: FreezerItem[]) => void
+  attendanceSignal?: number
 }
 
 type View = 'home' | 'week' | 'plan' | 'attendance'
@@ -59,13 +60,14 @@ export default function WocheScreen({
   weekPlan, mealsData, planMittag, planWE, freezerItems, pantryItems,
   wishes, currentUser, wochenchef, members, attendance, attendanceConfirmed, proposals, planConfirmed, shopDone, onWeekPlanChange, onWishesChange,
   onAttendanceChange, onAttendanceConfirmedChange, onPlanConfirm, onProposalsChange, onWochenchefChange, onPlanConfirmedChange, onShopDoneChange,
-  shoppingList, onShoppingListChange, onFreezerChange,
+  shoppingList, onShoppingListChange, onFreezerChange, attendanceSignal,
 }: Props) {
   const personNames: Record<Chef, string> = Object.fromEntries(
     (members.length ? members : DEFAULT_MEMBERS).map(m => [m.id, m.name])
   ) as Record<Chef, string>
   const familyPrompt = buildFamilyPrompt(members.length ? members : DEFAULT_MEMBERS)
   const [view, setView] = useState<View>('home')
+  useEffect(() => { if (attendanceSignal && attendanceSignal > 0) setView('attendance') }, [attendanceSignal])
   const [planState, setPlanState] = useState<PlanState>('options')
   const [pendingPlan, setPendingPlan] = useState<WeekPlanEntry[]>([])
   const [pendingPlanMeals, setPendingPlanMeals] = useState<Record<string, Rezept>>({})

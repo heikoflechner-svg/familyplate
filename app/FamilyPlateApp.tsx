@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
-import { loadWeekPlan, saveWeekPlan, saveAttendance, saveShoppingList, saveProposals, saveWochenchef, savePlanConfirmed, saveShopDone } from '../lib/mealLogic'
+import { loadWeekPlan, saveWeekPlan, saveAttendance, saveShoppingList, saveProposals, saveWochenchef, savePlanConfirmed, saveShopDone, saveShoppingDay } from '../lib/mealLogic'
 import { loadFreezerItems, loadPantryItems } from '../lib/freezerLogic'
 import { loadFamilyProfile, saveFamilyProfile, applyChefStats, DEFAULT_MEMBERS } from '../lib/familyLogic'
 import { signOut, onAuthChange } from '../lib/auth'
@@ -10,6 +10,7 @@ import WocheScreen from './WocheScreen'
 import VorraeteScreen from './VorraeteScreen'
 import EinkaufScreen from './EinkaufScreen'
 import ProfilScreen from './ProfilScreen'
+import MehrScreen from './MehrScreen'
 import OnboardingWizard from './OnboardingWizard'
 
 export default function FamilyPlateApp() {
@@ -34,6 +35,8 @@ export default function FamilyPlateApp() {
   const [activeWochenchef, setActiveWochenchef] = useState<Chef>('PA')
   const [planConfirmed, setPlanConfirmed] = useState(false)
   const [shopDone, setShopDone] = useState(false)
+  const [shoppingDay, setShoppingDay] = useState<string | null>(null)
+  const [attendanceSignal, setAttendanceSignal] = useState(0)
   const [activeTab, setActiveTab] = useState<Tab>('woche')
   const [profileSaveError, setProfileSaveError] = useState<string | null>(null)
 
@@ -67,7 +70,7 @@ export default function FamilyPlateApp() {
   useEffect(() => {
     if (!currentUser) return
     Promise.all([loadWeekPlan(), loadFreezerItems(), loadPantryItems(), loadFamilyProfile()])
-      .then(([{ plan, mealsData: md, wishes: w, attendance: att, attendanceConfirmed: ac, shoppingList: sl, proposals: pr, wochenchef: wc, planConfirmed: pc, shopDone: sd }, freezer, pantry, profile]) => {
+      .then(([{ plan, mealsData: md, wishes: w, attendance: att, attendanceConfirmed: ac, shoppingList: sl, proposals: pr, wochenchef: wc, planConfirmed: pc, shopDone: sd, shoppingDay: sd2 }, freezer, pantry, profile]) => {
         setWeekPlan(plan)
         setMealsData(md)
         setWishes(w)
@@ -78,6 +81,7 @@ export default function FamilyPlateApp() {
         setActiveWochenchef(wc)
         setPlanConfirmed(pc)
         setShopDone(sd)
+        setShoppingDay(sd2)
         setFreezerItems(freezer)
         setPantryItems(pantry)
         setFamilyProfile(profile)
@@ -128,6 +132,11 @@ export default function FamilyPlateApp() {
   async function handleShopDoneChange(done: boolean) {
     setShopDone(done)
     await saveShopDone(done)
+  }
+
+  async function handleShoppingDayChange(day: string | null) {
+    setShoppingDay(day)
+    await saveShoppingDay(day)
   }
 
   async function handleShoppingListChange(list: ShoppingItem[]) {
@@ -243,6 +252,7 @@ export default function FamilyPlateApp() {
             shoppingList={shoppingList}
             onShoppingListChange={handleShoppingListChange}
             onFreezerChange={setFreezerItems}
+            attendanceSignal={attendanceSignal}
           />
         )}
         {activeTab === 'gefriertruhe' && (
@@ -282,6 +292,18 @@ export default function FamilyPlateApp() {
             onLaedenChange={handleLaedenChange}
           />
         )}
+        {activeTab === 'mehr' && (
+          <MehrScreen
+            currentUser={currentUser}
+            wochenchef={activeWochenchef}
+            shoppingDay={shoppingDay}
+            onShoppingDayChange={handleShoppingDayChange}
+            onGoToAttendance={() => {
+              setAttendanceSignal(prev => prev + 1)
+              setActiveTab('woche')
+            }}
+          />
+        )}
       </div>
       <nav className="nav">
         <button className={`nav-tab${activeTab === 'woche' ? ' active' : ''}`} onClick={() => handleTabChange('woche')}>
@@ -304,6 +326,10 @@ export default function FamilyPlateApp() {
         <button className={`nav-tab${activeTab === 'rezepte' ? ' active' : ''}`} onClick={() => handleTabChange('rezepte')}>
           <svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
           <span>Profil</span>
+        </button>
+        <button className={`nav-tab${activeTab === 'mehr' ? ' active' : ''}`} onClick={() => handleTabChange('mehr')}>
+          <svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.5" /><circle cx="12" cy="12" r="1.5" /><circle cx="19" cy="12" r="1.5" /></svg>
+          <span>Mehr</span>
         </button>
       </nav>
     </div>
