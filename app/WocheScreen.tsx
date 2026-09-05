@@ -736,7 +736,12 @@ export default function WocheScreen({
                         <div style={{ padding: '3px 12px 10px', display: 'flex', alignItems: 'center', gap: 8 }}>
                           <span style={{ fontSize: 18 }}>{e.emoji}</span>
                           <div style={{ flex: 1 }}>
-                            <div style={{ fontSize: 13, fontWeight: 700, color: '#111' }}>{e.gericht}</div>
+                            <div style={{ fontSize: 13, fontWeight: 700, color: '#111', display: 'flex', alignItems: 'center', gap: 4 }}>
+                              {e.gericht}
+                              {(pendingPlanMeals[e.gericht]?.ersetzteZutaten?.length ?? 0) > 0 && (
+                                <span title={pendingPlanMeals[e.gericht]!.ersetzteZutaten!.join(' · ')} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 14, height: 14, borderRadius: '50%', background: '#EF4444', color: 'white', fontSize: 9, fontWeight: 700, flexShrink: 0, cursor: 'default' }}>!</span>
+                              )}
+                            </div>
                             <div style={{ fontSize: 11, color: '#aaa' }}>{e.minuten} min</div>
                           </div>
                           <button
