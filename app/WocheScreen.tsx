@@ -361,6 +361,7 @@ export default function WocheScreen({
     setSaving(true)
     await onWeekPlanChange(pendingPlan, { ...mealsData, ...pendingPlanMeals })
     await onPlanConfirm?.(pendingPlan)
+    await onPlanConfirmedChange(false)
     setSaving(false)
     setPlanState('options')
     setPendingPlanMeals({})
