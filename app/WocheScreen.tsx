@@ -229,6 +229,7 @@ export default function WocheScreen({
   }
 
   const [dayLoading, setDayLoading] = useState<string | null>(null)
+  const [slotLoading, setSlotLoading] = useState<string | null>(null)
   const [pendingDay, setPendingDay] = useState<{ tag: string; entries: WeekPlanEntry[] } | null>(null)
 
   function changePendingDayChef(slot: WochenSlot, chef: Chef) {
@@ -260,6 +261,32 @@ export default function WocheScreen({
       e.tag === tag && e.slot === slot ? { ...e, gericht: name, emoji } : e
     ))
     closeMealPanel()
+  }
+
+  async function replanPendingSlot(tag: string, slot: 'Mittag' | 'Abend') {
+    closeMealPanel()
+    const key = `${tag}-${slot}`
+    setSlotLoading(key)
+    try {
+      const { plan: result, mealsData: newMeals } = await generateWeekPlan({
+        planMittag,
+        planWE,
+        freezerList: getFreezerListString(freezerItems),
+        pantryList: getPantryListString(pantryItems),
+        behaltene: pendingPlan.filter(e => e.tag !== tag),
+        neuTage: [tag],
+        wishes: wishes.filter(w => w.tag === tag && w.slot === slot),
+        familyPrompt,
+      })
+      const newEntry = result.find(e => e.tag === tag && e.slot === slot)
+      if (newEntry) {
+        setPendingPlan(prev => prev.map(e => e.tag === tag && e.slot === slot ? newEntry : e))
+        setPendingPlanMeals(prev => ({ ...prev, ...newMeals }))
+      }
+    } catch {
+      // silently fail
+    }
+    setSlotLoading(null)
   }
 
   async function replanPendingDay(tag: string) {
@@ -712,6 +739,22 @@ export default function WocheScreen({
                             <div style={{ fontSize: 13, fontWeight: 700, color: '#111' }}>{e.gericht}</div>
                             <div style={{ fontSize: 11, color: '#aaa' }}>{e.minuten} min</div>
                           </div>
+                          <button
+                            onClick={() => replanPendingSlot(tag, slot)}
+                            disabled={slotLoading !== null || dayLoading !== null}
+                            style={{
+                              width: 44, height: 44, flexShrink: 0,
+                              border: 'none', borderRadius: 10,
+                              background: 'transparent',
+                              cursor: (slotLoading !== null || dayLoading !== null) ? 'default' : 'pointer',
+                              fontSize: 20,
+                              color: slotLoading === key ? '#1D9E75' : '#ccc',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              opacity: (slotLoading !== null && slotLoading !== key) || dayLoading !== null ? 0.3 : 1,
+                            }}
+                          >
+                            {slotLoading === key ? '⏳' : '↺'}
+                          </button>
                         </div>
                         {isEditing && (
                           <div style={{ background: '#f9f9f9', borderTop: '1px solid #eee', padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
