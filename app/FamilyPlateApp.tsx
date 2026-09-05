@@ -242,6 +242,7 @@ export default function FamilyPlateApp() {
             onShopDoneChange={handleShopDoneChange}
             shoppingList={shoppingList}
             onShoppingListChange={handleShoppingListChange}
+            onFreezerChange={setFreezerItems}
           />
         )}
         {activeTab === 'gefriertruhe' && (

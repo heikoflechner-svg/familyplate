@@ -1,7 +1,7 @@
 'use client'
 import { useState } from 'react'
 import { generateWeekPlan, getRemySuggestions, generateRecipe } from '../lib/mealLogic'
-import { getFreezerListString, getPantryListString } from '../lib/freezerLogic'
+import { getFreezerListString, getPantryListString, addFreezerItem } from '../lib/freezerLogic'
 import { buildFamilyPrompt, DEFAULT_MEMBERS } from '../lib/familyLogic'
 import type { WeekPlanEntry, Rezept, FreezerItem, PantryItem, Wish, Chef, WochenSlot, FamilyMember, DayAttendance, ChangeProposal, ShoppingItem, RemyVorschlag } from '../lib/state'
 import SlotWunschPanel from './SlotWunschPanel'
@@ -49,6 +49,7 @@ interface Props {
   onShopDoneChange: (done: boolean) => Promise<void>
   shoppingList: ShoppingItem[]
   onShoppingListChange: (list: ShoppingItem[]) => Promise<void>
+  onFreezerChange: (items: FreezerItem[]) => void
 }
 
 type View = 'home' | 'week' | 'plan' | 'attendance'
@@ -58,7 +59,7 @@ export default function WocheScreen({
   weekPlan, mealsData, planMittag, planWE, freezerItems, pantryItems,
   wishes, currentUser, wochenchef, members, attendance, attendanceConfirmed, proposals, planConfirmed, shopDone, onWeekPlanChange, onWishesChange,
   onAttendanceChange, onAttendanceConfirmedChange, onPlanConfirm, onProposalsChange, onWochenchefChange, onPlanConfirmedChange, onShopDoneChange,
-  shoppingList, onShoppingListChange,
+  shoppingList, onShoppingListChange, onFreezerChange,
 }: Props) {
   const personNames: Record<Chef, string> = Object.fromEntries(
     (members.length ? members : DEFAULT_MEMBERS).map(m => [m.id, m.name])
@@ -78,6 +79,9 @@ export default function WocheScreen({
   const [chefErgaenzungIds, setChefErgaenzungIds] = useState<string[]>([])
   const [nachtragsIds, setNachtragsIds] = useState<string[]>([])
   const [nachtragsAltIds, setNachtragsAltIds] = useState<string[]>([])
+
+  const [kochPanelKey, setKochPanelKey] = useState<string | null>(null)
+  const [restPortionen, setRestPortionen] = useState<Record<string, number>>({})
 
   const [wishFormKey, setWishFormKey] = useState<string | null>(null)
 
@@ -508,6 +512,43 @@ export default function WocheScreen({
     await onWishesChange(wishes.filter(w => !processedIds.has(w.id)))
     setNachtragsAltIds([])
     setSaving(false)
+  }
+
+  async function handleEinfrieren(tag: string, slot: WochenSlot, entry: WeekPlanEntry) {
+    const key = `${tag}-${slot}`
+    const portionen = restPortionen[key] ?? 1
+    const datum = new Date().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })
+    const item = await addFreezerItem({
+      typ: 'fertig',
+      emoji: entry.emoji,
+      name: entry.gericht,
+      menge: `${portionen} Portion${portionen !== 1 ? 'en' : ''}`,
+      datum,
+      ampel: 'green',
+    })
+    if (item) onFreezerChange([...freezerItems, item])
+    setKochPanelKey(null)
+  }
+
+  async function handleMorgenEinplanen(tag: string, slot: WochenSlot, entry: WeekPlanEntry) {
+    const key = `${tag}-${slot}`
+    const tagIdx = WOCHENTAGE.indexOf(tag)
+    const nextTag = WOCHENTAGE[tagIdx + 1]
+    if (nextTag) {
+      const neuerSlot: WochenSlot = planMittag ? 'Mittag' : 'Abend'
+      const resteEntry: WeekPlanEntry = {
+        tag: nextTag, slot: neuerSlot, emoji: entry.emoji,
+        gericht: `Reste: ${entry.gericht}`, minuten: 10, quelle: 'kuehlschrank', chef: entry.chef,
+      }
+      const ohneAlten = weekPlan.filter(e => !(e.tag === nextTag && e.slot === neuerSlot))
+      await onWeekPlanChange([...ohneAlten, resteEntry], mealsData)
+    }
+    setKochPanelKey(null)
+    setRestPortionen(prev => { const n = { ...prev }; delete n[key]; return n })
+  }
+
+  function toggleKochPanel(key: string) {
+    setKochPanelKey(prev => prev === key ? null : key)
   }
 
   function toggleNeuTag(tag: string) {
@@ -996,6 +1037,52 @@ export default function WocheScreen({
                           isOpen={wishFormKey === `${tag}-${slot}`} initialPerson={currentUser} familyPrompt={familyPrompt}
                           onOpen={() => openWishForm(tag, slot)} onClose={closeWishForm} onSubmitWish={handleWishSubmit} onRemove={removeWish}
                         />
+                        {(() => {
+                          const pKey = `${tag}-${slot}`
+                          const isKochOpen = kochPanelKey === pKey
+                          const portionen = restPortionen[pKey] ?? 1
+                          return (
+                            <div style={{ borderTop: '1px solid #f5f5f5' }}>
+                              <button
+                                onClick={() => toggleKochPanel(pKey)}
+                                style={{ width: '100%', padding: '8px 12px', background: 'none', border: 'none', textAlign: 'left', fontSize: 11, color: isKochOpen ? '#1D9E75' : '#bbb', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}
+                              >
+                                🍳 Fertig gekocht?
+                              </button>
+                              {isKochOpen && (
+                                <div style={{ padding: '0 12px 12px', background: '#fafafa' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+                                    <span style={{ fontSize: 11, color: '#888' }}>Übrig geblieben?</span>
+                                    <button
+                                      onClick={() => setRestPortionen(prev => ({ ...prev, [pKey]: Math.max(1, (prev[pKey] ?? 1) - 1) }))}
+                                      style={{ width: 36, height: 36, borderRadius: 8, border: '1px solid #ddd', background: 'white', fontSize: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                                    >−</button>
+                                    <span style={{ fontSize: 14, fontWeight: 600, minWidth: 20, textAlign: 'center' }}>{portionen}</span>
+                                    <button
+                                      onClick={() => setRestPortionen(prev => ({ ...prev, [pKey]: (prev[pKey] ?? 1) + 1 }))}
+                                      style={{ width: 36, height: 36, borderRadius: 8, border: '1px solid #ddd', background: 'white', fontSize: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                                    >+</button>
+                                    <span style={{ fontSize: 11, color: '#aaa' }}>Portion{portionen !== 1 ? 'en' : ''}</span>
+                                  </div>
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                    <button
+                                      onClick={() => handleMorgenEinplanen(tag, slot, e)}
+                                      style={{ padding: '11px 12px', border: '1px solid #e5e7eb', borderRadius: 8, background: 'white', fontSize: 12, color: '#333', cursor: 'pointer', textAlign: 'left' }}
+                                    >🍱 Morgen einplanen</button>
+                                    <button
+                                      onClick={() => handleEinfrieren(tag, slot, e)}
+                                      style={{ padding: '11px 12px', border: '1px solid #e5e7eb', borderRadius: 8, background: 'white', fontSize: 12, color: '#333', cursor: 'pointer', textAlign: 'left' }}
+                                    >❄️ Einfrieren</button>
+                                    <button
+                                      onClick={() => setKochPanelKey(null)}
+                                      style={{ padding: '11px 12px', border: '1px solid #e5e7eb', borderRadius: 8, background: 'white', fontSize: 12, color: '#888', cursor: 'pointer', textAlign: 'left' }}
+                                    >✕ Kein Rest</button>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          )
+                        })()}
                       </div>
                     )
                   })}
