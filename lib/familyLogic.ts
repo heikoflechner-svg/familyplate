@@ -1,5 +1,6 @@
 import { supabase, FAMILY_ID } from './supabase'
 import type { Chef, FamilyMember, FamilyProfile, WeekPlanEntry } from './state'
+import { DEFAULT_LAEDEN } from './state'
 
 export const DEFAULT_MEMBERS: FamilyMember[] = [
   { id: 'PA', name: 'Heiko', allergien: [], vorlieben: [] },
@@ -12,19 +13,30 @@ export const CHEF_ORDER: Chef[] = ['PA', 'MA', 'TI']
 export async function loadFamilyProfile(): Promise<FamilyProfile | null> {
   const { data } = await supabase
     .from('family_profiles')
-    .select('members, onboarding_done')
+    .select('members, onboarding_done, laeden, zutaten_laden')
     .eq('family_id', FAMILY_ID)
     .single()
 
   if (!data || !data.onboarding_done) return null
-  return { members: data.members as FamilyMember[] }
+  return {
+    members: data.members as FamilyMember[],
+    laeden: (data.laeden as string[] | null) ?? DEFAULT_LAEDEN,
+    zutatenLaden: (data.zutaten_laden as Record<string, string> | null) ?? {},
+  }
 }
 
 export async function saveFamilyProfile(profile: FamilyProfile): Promise<void> {
   const { error } = await supabase
     .from('family_profiles')
     .upsert(
-      { family_id: FAMILY_ID, members: profile.members, onboarding_done: true, updated_at: new Date().toISOString() },
+      {
+        family_id: FAMILY_ID,
+        members: profile.members,
+        laeden: profile.laeden,
+        zutaten_laden: profile.zutatenLaden,
+        onboarding_done: true,
+        updated_at: new Date().toISOString(),
+      },
       { onConflict: 'family_id' }
     )
   if (error) throw new Error(error.message)

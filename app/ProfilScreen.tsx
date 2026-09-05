@@ -1,4 +1,5 @@
 'use client'
+import { useState } from 'react'
 import type { Chef, FamilyProfile } from '../lib/state'
 
 const CHEF_COLORS: Record<Chef, { bg: string; c: string }> = {
@@ -32,12 +33,16 @@ interface Props {
   onPlanWEChange: (val: boolean) => void
   onSignOut: () => Promise<void>
   onEditProfile: () => void
+  laeden: string[]
+  onLaedenChange: (laeden: string[]) => Promise<void>
 }
 
 export default function ProfilScreen({
   planMittag, planWE, currentUser, familyProfile,
   onPlanMittagChange, onPlanWEChange, onSignOut, onEditProfile,
+  laeden, onLaedenChange,
 }: Props) {
+  const [newLaden, setNewLaden] = useState('')
   const maxCount = Math.max(...familyProfile.members.map(m => m.chefStat?.count ?? 0), 1)
 
   return (
@@ -123,6 +128,48 @@ export default function ProfilScreen({
             </div>
           )
         })}
+
+        <div className="lbl" style={{ marginTop: 24 }}>Einkaufsläden</div>
+        <div className="card" style={{ marginBottom: 20 }}>
+          {laeden.map((l, i) => (
+            <div
+              key={l}
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                padding: '9px 0', borderBottom: i < laeden.length - 1 ? '1px solid #f5f5f5' : 'none',
+              }}
+            >
+              <span style={{ fontSize: 13, color: '#111' }}>{l}</span>
+              <button
+                onClick={() => onLaedenChange(laeden.filter(x => x !== l))}
+                style={{ border: 'none', background: 'none', color: '#ccc', fontSize: 18, cursor: 'pointer', lineHeight: 1 }}
+              >×</button>
+            </div>
+          ))}
+          <div style={{ display: 'flex', gap: 8, marginTop: laeden.length > 0 ? 10 : 0 }}>
+            <input
+              value={newLaden}
+              onChange={e => setNewLaden(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Enter' && newLaden.trim() && !laeden.includes(newLaden.trim())) {
+                  onLaedenChange([...laeden, newLaden.trim()])
+                  setNewLaden('')
+                }
+              }}
+              placeholder="Laden hinzufügen"
+              style={{ flex: 1, border: '1px solid #ddd', borderRadius: 10, padding: '8px 12px', fontSize: 13, outline: 'none' }}
+            />
+            <button
+              onClick={() => {
+                if (newLaden.trim() && !laeden.includes(newLaden.trim())) {
+                  onLaedenChange([...laeden, newLaden.trim()])
+                  setNewLaden('')
+                }
+              }}
+              style={{ border: 'none', background: '#1D9E75', color: '#fff', borderRadius: 10, padding: '8px 14px', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}
+            >+</button>
+          </div>
+        </div>
 
         <button
           onClick={onSignOut}

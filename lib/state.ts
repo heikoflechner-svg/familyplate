@@ -107,8 +107,12 @@ export interface FamilyMember {
   chefStat?: ChefStat
 }
 
+export const DEFAULT_LAEDEN = ['Aldi', 'Edeka', 'Kaufland', 'Netto', 'Sonstiges']
+
 export interface FamilyProfile {
   members: FamilyMember[]
+  laeden: string[]
+  zutatenLaden: Record<string, string>
 }
 
 export interface AppState {

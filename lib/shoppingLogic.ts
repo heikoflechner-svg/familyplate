@@ -188,3 +188,38 @@ export function toggleConsolidatedItem(list: ShoppingItem[], ids: string[]): Sho
   const allDone = ids.every(id => list.find(i => i.id === id)?.erledigt)
   return list.map(item => idSet.has(item.id) ? { ...item, erledigt: !allDone } : item)
 }
+
+export interface LadenGroup {
+  laden: string
+  items: ConsolidatedItem[]
+  unassigned: boolean
+}
+
+export function groupByLaden(
+  items: ShoppingItem[],
+  zutatenLaden: Record<string, string>,
+  laeden: string[],
+): LadenGroup[] {
+  const consolidated = consolidateShoppingList(items)
+  const byLaden = new Map<string, ConsolidatedItem[]>(laeden.map(l => [l, []]))
+  const unassigned: ConsolidatedItem[] = []
+
+  for (const item of consolidated) {
+    const laden = zutatenLaden[item.name.toLowerCase()]
+    if (laden && byLaden.has(laden)) {
+      byLaden.get(laden)!.push(item)
+    } else {
+      unassigned.push(item)
+    }
+  }
+
+  const result: LadenGroup[] = laeden
+    .filter(l => byLaden.get(l)!.length > 0)
+    .map(l => ({ laden: l, items: byLaden.get(l)!, unassigned: false }))
+
+  if (unassigned.length > 0) {
+    result.push({ laden: '__unassigned__', items: unassigned, unassigned: true })
+  }
+
+  return result
+}

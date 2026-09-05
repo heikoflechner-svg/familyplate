@@ -4,6 +4,7 @@ import {
   generateShoppingList,
   groupShoppingByMeal,
   consolidateShoppingList,
+  groupByLaden,
   toggleConsolidatedItem,
   addShoppingItem,
   toggleShoppingItem,
@@ -24,11 +25,14 @@ interface Props {
   wochenchef: Chef
   shopDone: boolean
   onShopDoneChange: (done: boolean) => void
+  laeden: string[]
+  zutatenLaden: Record<string, string>
+  onZutatenLadenChange: (mapping: Record<string, string>) => Promise<void>
 }
 
-type ViewMode = 'tag' | 'zusammen'
+type ViewMode = 'tag' | 'zusammen' | 'laden'
 
-export default function EinkaufScreen({ weekPlan, mealsData, shoppingList, onShoppingListChange, currentUser, wochenchef, shopDone, onShopDoneChange }: Props) {
+export default function EinkaufScreen({ weekPlan, mealsData, shoppingList, onShoppingListChange, currentUser, wochenchef, shopDone, onShopDoneChange, laeden, zutatenLaden, onZutatenLadenChange }: Props) {
   const [newName, setNewName] = useState('')
   const [newMenge, setNewMenge] = useState('')
   const [dayPickerOpen, setDayPickerOpen] = useState(false)
@@ -174,7 +178,7 @@ export default function EinkaufScreen({ weekPlan, mealsData, shoppingList, onSho
               )}
               {recipeItems.length > 0 && (
                 <div style={{ display: 'flex', border: '1px solid #e0e0e0', borderRadius: 8, overflow: 'hidden', flexShrink: 0 }}>
-                  {([['tag', 'Nach Tag'], ['zusammen', 'Zusammengefasst']] as [ViewMode, string][]).map(([mode, label]) => (
+                  {([['tag', 'Nach Tag'], ['zusammen', 'Zusammengefasst'], ['laden', 'Nach Laden']] as [ViewMode, string][]).map(([mode, label]) => (
                     <button
                       key={mode}
                       onClick={() => setViewMode(mode)}
@@ -216,6 +220,49 @@ export default function EinkaufScreen({ weekPlan, mealsData, shoppingList, onSho
               <>
                 {consolidated.map(item => (
                   <ConsolidatedRow key={item.name} item={item} onToggle={() => toggleConsolidated(item.ids)} />
+                ))}
+              </>
+            )}
+
+            {viewMode === 'laden' && (
+              <>
+                {groupByLaden(recipeItems, zutatenLaden, laeden).map(group => (
+                  <div key={group.laden} style={{ marginBottom: 18 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: '#888', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 6, paddingBottom: 4, borderBottom: '1.5px solid #eee' }}>
+                      {group.unassigned ? 'Noch nicht zugeordnet' : group.laden}
+                    </div>
+                    {group.items.map(item => (
+                      <div key={item.name}>
+                        <ConsolidatedRow item={item} onToggle={() => toggleConsolidated(item.ids)} />
+                        {group.unassigned ? (
+                          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', paddingLeft: 42, paddingBottom: 10, marginTop: -4 }}>
+                            {laeden.map(l => (
+                              <button
+                                key={l}
+                                onClick={() => onZutatenLadenChange({ ...zutatenLaden, [item.name.toLowerCase()]: l })}
+                                style={{ fontSize: 10, padding: '3px 10px', border: '1px solid #ddd', borderRadius: 12, background: '#f5f5f5', cursor: 'pointer', color: '#555' }}
+                              >
+                                {l}
+                              </button>
+                            ))}
+                          </div>
+                        ) : (
+                          <div style={{ paddingLeft: 42, paddingBottom: 8, marginTop: -4 }}>
+                            <button
+                              onClick={() => {
+                                const next = { ...zutatenLaden }
+                                delete next[item.name.toLowerCase()]
+                                onZutatenLadenChange(next)
+                              }}
+                              style={{ fontSize: 10, padding: '2px 8px', border: '1px solid #ddd', borderRadius: 12, background: '#f0f8f5', cursor: 'pointer', color: '#1D9E75' }}
+                            >
+                              {group.laden} ×
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
                 ))}
               </>
             )}

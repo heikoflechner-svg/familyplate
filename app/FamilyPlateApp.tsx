@@ -135,6 +135,20 @@ export default function FamilyPlateApp() {
     await saveShoppingList(list)
   }
 
+  async function handleZutatenLadenChange(mapping: Record<string, string>) {
+    if (!familyProfile) return
+    const updated: FamilyProfile = { ...familyProfile, zutatenLaden: mapping }
+    setFamilyProfile(updated)
+    await saveFamilyProfile(updated)
+  }
+
+  async function handleLaedenChange(newLaeden: string[]) {
+    if (!familyProfile) return
+    const updated: FamilyProfile = { ...familyProfile, laeden: newLaeden }
+    setFamilyProfile(updated)
+    await saveFamilyProfile(updated)
+  }
+
   async function handlePlanConfirm(confirmedEntries: WeekPlanEntry[]) {
     if (!familyProfile) return
     const today = new Date().toISOString().slice(0, 10)
@@ -248,6 +262,9 @@ export default function FamilyPlateApp() {
             wochenchef={activeWochenchef}
             shopDone={shopDone}
             onShopDoneChange={handleShopDoneChange}
+            laeden={familyProfile.laeden}
+            zutatenLaden={familyProfile.zutatenLaden}
+            onZutatenLadenChange={handleZutatenLadenChange}
           />
         )}
         {activeTab === 'rezepte' && (
@@ -260,6 +277,8 @@ export default function FamilyPlateApp() {
             onPlanWEChange={setPlanWE}
             onSignOut={signOut}
             onEditProfile={() => setEditingProfile(true)}
+            laeden={familyProfile.laeden}
+            onLaedenChange={handleLaedenChange}
           />
         )}
       </div>

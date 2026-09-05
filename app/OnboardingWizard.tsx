@@ -2,6 +2,7 @@
 import { useState } from 'react'
 import { saveFamilyProfile, DEFAULT_MEMBERS, CHEF_ORDER } from '../lib/familyLogic'
 import type { Chef, FamilyMember, FamilyProfile } from '../lib/state'
+import { DEFAULT_LAEDEN } from '../lib/state'
 
 const CHEF_COLORS: Record<Chef, { bg: string; c: string }> = {
   PA: { bg: '#E6F1FB', c: '#0C447C' },
@@ -66,7 +67,7 @@ export default function OnboardingWizard({ onDone, initialProfile, onCancel }: P
         ...freitext[m.id].v.split(',').map(s => s.trim()).filter(Boolean),
       ],
     }))
-    const profile: FamilyProfile = { members: finalMembers }
+    const profile: FamilyProfile = { members: finalMembers, laeden: DEFAULT_LAEDEN, zutatenLaden: {} }
     try {
       await saveFamilyProfile(profile)
       onDone(profile)
