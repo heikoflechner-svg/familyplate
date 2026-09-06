@@ -204,50 +204,105 @@ export default function WocheScreen({
     await onProposalsChange(proposals.filter(p => p.id !== id))
   }
 
-  function renderAllProposals() {
-    if (currentUser !== wochenchef || proposals.length === 0) return null
+  function renderWochenchefDecisions() {
+    if (currentUser !== wochenchef) return null
+    const nachtragsAltWishes = wishes.filter((w): w is Extract<Wish, { type: 'alternative' }> & { postConfirm: true } => !!(w.postConfirm && w.type === 'alternative'))
+    const nachtragsErgWishes = wishes.filter(w => w.postConfirm && w.type === 'ergaenzung')
+    const total = proposals.length + nachtragsAltWishes.length + nachtragsErgWishes.length
+    if (total === 0) return null
     return (
-      <div style={{ marginBottom: 12 }}>
-        <div style={{ fontSize: 11, fontWeight: 700, color: '#92400E', marginBottom: 6 }}>
-          👨‍🍳 Koch-Änderungsvorschläge ({proposals.length})
+      <div style={{ marginBottom: 14, border: '1px solid #FCD34D', borderRadius: 12, overflow: 'hidden' }}>
+        <div style={{ background: '#FFFBEB', padding: '10px 14px 8px', borderBottom: total > 0 ? '1px solid #FDE68A' : 'none' }}>
+          <span style={{ fontSize: 12, fontWeight: 700, color: '#92400E' }}>📋 Offene Entscheidungen ({total})</span>
         </div>
-        {proposals.map(p => {
-          const slotLabel = p.slot === 'Mittag' ? '🌞 Mittag' : '🌙 Abend'
-          const currentEntry = weekPlan.find(e => e.tag === p.tag && e.slot === p.slot)
-          // Fallback für alte DB-Proposals mit `entry` statt `newChef`
-          const toChef = p.newChef ?? (p as unknown as Record<string, WeekPlanEntry>).entry?.chef
-          if (!toChef) return null
-          const fromChef = currentEntry?.chef
-          return (
-            <div key={p.id} style={{ background: '#FFFBEB', border: '1px solid #FCD34D', borderRadius: 8, padding: '8px 10px', marginBottom: 6 }}>
-              <div style={{ fontSize: 10, color: '#92400E', fontWeight: 700, marginBottom: 4 }}>
-                {p.tag} · {slotLabel}
-              </div>
-              <div style={{ fontSize: 12, color: '#111', marginBottom: 2 }}>
-                <span style={{ color: '#888' }}>{personNames[p.vonChef]} schlägt vor: Koch</span>
-                {fromChef && fromChef !== toChef && (
-                  <span style={{ color: '#aaa' }}> {personNames[fromChef]} →</span>
-                )}
-                <span style={{ fontWeight: 700 }}> {personNames[toChef]}</span>
-              </div>
-              {currentEntry && (
-                <div style={{ fontSize: 10, color: '#bbb', marginBottom: 6 }}>
-                  {currentEntry.emoji} {currentEntry.gericht} bleibt unverändert
+
+        {/* Koch-Änderungsvorschläge */}
+        {proposals.length > 0 && (
+          <div style={{ padding: '10px 14px', borderBottom: (nachtragsAltWishes.length + nachtragsErgWishes.length) > 0 ? '1px solid #FDE68A' : 'none', background: '#FFFBEB' }}>
+            <div style={{ fontSize: 11, fontWeight: 600, color: '#92400E', marginBottom: 8 }}>👨‍🍳 Koch-Änderungen ({proposals.length})</div>
+            {proposals.map(p => {
+              const slotLabel = p.slot === 'Mittag' ? '🌞' : '🌙'
+              const currentEntry = weekPlan.find(e => e.tag === p.tag && e.slot === p.slot)
+              const toChef = p.newChef ?? (p as unknown as Record<string, WeekPlanEntry>).entry?.chef
+              if (!toChef) return null
+              const fromChef = currentEntry?.chef
+              return (
+                <div key={p.id} style={{ background: 'white', border: '1px solid #FCD34D', borderRadius: 8, padding: '8px 10px', marginBottom: 6 }}>
+                  <div style={{ fontSize: 10, color: '#92400E', fontWeight: 700, marginBottom: 3 }}>{p.tag} · {slotLabel} {p.slot}</div>
+                  <div style={{ fontSize: 12, color: '#111', marginBottom: 2 }}>
+                    <span style={{ color: '#888' }}>{personNames[p.vonChef]} schlägt vor: Koch</span>
+                    {fromChef && fromChef !== toChef && <span style={{ color: '#aaa' }}> {personNames[fromChef]} →</span>}
+                    <span style={{ fontWeight: 700 }}> {personNames[toChef]}</span>
+                  </div>
+                  {currentEntry && <div style={{ fontSize: 10, color: '#bbb', marginBottom: 6 }}>{currentEntry.emoji} {currentEntry.gericht} bleibt unverändert</div>}
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button onClick={() => acceptProposal(p)} style={{ flex: 1, padding: '5px', background: '#1D9E75', color: 'white', border: 'none', borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>✅ Übernehmen</button>
+                    <button onClick={() => rejectProposal(p.id)} style={{ padding: '5px 10px', background: 'white', border: '1px solid #ddd', borderRadius: 6, fontSize: 11, cursor: 'pointer', color: '#888' }}>✕ Ablehnen</button>
+                  </div>
                 </div>
-              )}
-              <div style={{ display: 'flex', gap: 6 }}>
-                <button
-                  onClick={() => acceptProposal(p)}
-                  style={{ flex: 1, padding: '5px', background: '#1D9E75', color: 'white', border: 'none', borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer' }}
-                >✅ Übernehmen</button>
-                <button
-                  onClick={() => rejectProposal(p.id)}
-                  style={{ padding: '5px 10px', background: 'white', border: '1px solid #ddd', borderRadius: 6, fontSize: 11, cursor: 'pointer', color: '#888' }}
-                >✕ Ablehnen</button>
-              </div>
-            </div>
-          )
-        })}
+              )
+            })}
+          </div>
+        )}
+
+        {/* Nachträgliche Alternativen (Gerichtswünsche) */}
+        {nachtragsAltWishes.length > 0 && (
+          <div style={{ padding: '10px 14px', borderBottom: nachtragsErgWishes.length > 0 ? '1px solid #BFDBFE' : 'none', background: '#EFF6FF' }}>
+            <div style={{ fontSize: 11, fontWeight: 600, color: '#1E40AF', marginBottom: 4 }}>🔄 Alternative Gerichte ({nachtragsAltWishes.length})</div>
+            <div style={{ fontSize: 11, color: '#555', marginBottom: 8 }}>Ankreuzen was du übernehmen möchtest:</div>
+            {nachtragsAltWishes.map(w => {
+              const checked = nachtragsAltIds.includes(w.id)
+              const c = CFG[w.person] ?? CFG.MA
+              const original = weekPlan.find(e => e.tag === w.tag && e.slot === w.slot)
+              return (
+                <div key={w.id} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                  <button onClick={() => setNachtragsAltIds(prev => prev.includes(w.id) ? prev.filter(id => id !== w.id) : [...prev, w.id])}
+                    style={{ width: 18, height: 18, borderRadius: 4, flexShrink: 0, cursor: 'pointer', border: `1px solid ${checked ? '#1D9E75' : '#ddd'}`, background: checked ? '#1D9E75' : 'white', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    {checked && <span style={{ color: 'white', fontSize: 11, lineHeight: 1, fontWeight: 700 }}>✓</span>}
+                  </button>
+                  <span style={{ fontSize: 12, flex: 1 }}>
+                    <span style={{ color: '#888', marginRight: 4 }}>{w.tag.slice(0, 2)} {w.slot === 'Mittag' ? '🌞' : '🌙'}</span>
+                    <span style={{ fontWeight: 600 }}>{w.emoji} {w.dishName}</span>
+                    {original && <span style={{ color: '#aaa' }}> statt {original.emoji} {original.gericht}</span>}
+                  </span>
+                  <span style={{ fontSize: 10, fontWeight: 700, background: c.bg, color: c.c, padding: '1px 7px', borderRadius: 6 }}>{personNames[w.person]}</span>
+                </div>
+              )
+            })}
+            <button className="btn primary" onClick={confirmNachtragsAlternativen} disabled={saving}
+              style={{ background: '#1D9E75', fontSize: 12, marginTop: 6 }}>
+              {saving ? '⏳…' : '✅ Entscheidung übernehmen'}
+            </button>
+            <div style={{ fontSize: 10, color: '#888', marginTop: 4 }}>Nicht angekreuzte Alternativen werden verworfen.</div>
+          </div>
+        )}
+
+        {/* Nachtrags-Ergänzungen (Zutaten) */}
+        {nachtragsErgWishes.length > 0 && (
+          <div style={{ padding: '10px 14px', background: '#FFFBEB' }}>
+            <div style={{ fontSize: 11, fontWeight: 600, color: '#92400E', marginBottom: 4 }}>📬 Zutat-Ergänzungen ({nachtragsErgWishes.length})</div>
+            <div style={{ fontSize: 11, color: '#555', marginBottom: 8 }}>Ankreuzen, was auf die Einkaufsliste soll:</div>
+            {nachtragsErgWishes.map(w => {
+              const checked = nachtragsIds.includes(w.id)
+              const c = CFG[w.person] ?? CFG.MA
+              return (
+                <div key={w.id} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                  <button onClick={() => setNachtragsIds(prev => prev.includes(w.id) ? prev.filter(id => id !== w.id) : [...prev, w.id])}
+                    style={{ width: 18, height: 18, borderRadius: 4, flexShrink: 0, cursor: 'pointer', border: `1px solid ${checked ? '#1D9E75' : '#ddd'}`, background: checked ? '#1D9E75' : 'white', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    {checked && <span style={{ color: 'white', fontSize: 11, lineHeight: 1, fontWeight: 700 }}>✓</span>}
+                  </button>
+                  <span style={{ fontSize: 12, flex: 1, color: '#555', fontStyle: 'italic' }}>„{w.type === 'ergaenzung' ? w.text : ''}"</span>
+                  <span style={{ fontSize: 10, color: '#888' }}>{w.tag.slice(0, 2)} {w.slot === 'Mittag' ? '🌞' : '🌙'}</span>
+                  <span style={{ fontSize: 10, fontWeight: 700, background: c.bg, color: c.c, padding: '1px 7px', borderRadius: 6 }}>{personNames[w.person]}</span>
+                </div>
+              )
+            })}
+            <button className="btn primary" onClick={confirmNachtraege} disabled={saving || nachtragsIds.length === 0}
+              style={{ background: '#1D9E75', fontSize: 12, marginTop: 6, opacity: nachtragsIds.length === 0 ? 0.4 : 1 }}>
+              {saving ? '⏳…' : `🛒 ${nachtragsIds.length} Ergänzung(en) zur Einkaufsliste`}
+            </button>
+          </div>
+        )}
       </div>
     )
   }
@@ -954,7 +1009,7 @@ export default function WocheScreen({
           <h1>📋 Wochenplan</h1>
         </div>
         <div className="content">
-          {renderAllProposals()}
+          {renderWochenchefDecisions()}
           {plannedDays.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '40px 0' }}>
               <div style={{ fontSize: 36, marginBottom: 10 }}>🐀</div>
@@ -1175,91 +1230,6 @@ export default function WocheScreen({
             </div>
           )}
 
-          {(() => {
-            const nachtragsWishes = wishes.filter(w => w.postConfirm && w.type === 'ergaenzung')
-            if (!planConfirmed || !nachtragsWishes.length || currentUser !== wochenchef) return null
-            return (
-              <div style={{ margin: '16px 0 0', padding: '14px 16px', background: '#FFFBEB', borderRadius: 12, border: '1px solid #FCD34D' }}>
-                <div style={{ fontSize: 12, color: '#92400E', fontWeight: 600, marginBottom: 6 }}>
-                  📬 Nachtrags-Ergänzungen ({nachtragsWishes.length})
-                </div>
-                <div style={{ fontSize: 11, color: '#555', marginBottom: 10 }}>
-                  Neue Wünsche nach der Bestätigung — ankreuzen, was auf die Einkaufsliste soll:
-                </div>
-                {nachtragsWishes.map(w => {
-                  const checked = nachtragsIds.includes(w.id)
-                  const c = CFG[w.person] ?? CFG.MA
-                  return (
-                    <div key={w.id} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                      <button
-                        onClick={() => setNachtragsIds(prev => prev.includes(w.id) ? prev.filter(id => id !== w.id) : [...prev, w.id])}
-                        style={{ width: 18, height: 18, borderRadius: 4, flexShrink: 0, cursor: 'pointer', border: `1px solid ${checked ? '#1D9E75' : '#ddd'}`, background: checked ? '#1D9E75' : 'white', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                      >
-                        {checked && <span style={{ color: 'white', fontSize: 11, lineHeight: 1, fontWeight: 700 }}>✓</span>}
-                      </button>
-                      <span style={{ fontSize: 12, flex: 1, color: '#555', fontStyle: 'italic' }}>„{w.type === 'ergaenzung' ? w.text : ''}"</span>
-                      <span style={{ fontSize: 10, color: '#888' }}>{w.tag.slice(0, 2)} {w.slot === 'Mittag' ? '🌞' : '🌙'}</span>
-                      <span style={{ fontSize: 10, fontWeight: 700, background: c.bg, color: c.c, padding: '1px 7px', borderRadius: 6 }}>{personNames[w.person]}</span>
-                    </div>
-                  )
-                })}
-                <button
-                  className="btn primary"
-                  onClick={confirmNachtraege}
-                  disabled={saving || nachtragsIds.length === 0}
-                  style={{ background: '#1D9E75', fontSize: 12, marginTop: 8, opacity: nachtragsIds.length === 0 ? 0.4 : 1 }}
-                >
-                  {saving ? '⏳…' : `🛒 ${nachtragsIds.length} Ergänzung(en) zur Einkaufsliste`}
-                </button>
-              </div>
-            )
-          })()}
-
-          {(() => {
-            const nachtragsAltWishes = wishes.filter((w): w is Extract<Wish, { type: 'alternative' }> & { postConfirm: true } => !!(w.postConfirm && w.type === 'alternative'))
-            if (!planConfirmed || !nachtragsAltWishes.length || currentUser !== wochenchef) return null
-            return (
-              <div style={{ margin: '16px 0 0', padding: '14px 16px', background: '#EFF6FF', borderRadius: 12, border: '1px solid #BFDBFE' }}>
-                <div style={{ fontSize: 12, color: '#1E40AF', fontWeight: 600, marginBottom: 6 }}>
-                  🔄 Nachträgliche Alternativen ({nachtragsAltWishes.length})
-                </div>
-                <div style={{ fontSize: 11, color: '#555', marginBottom: 10 }}>
-                  Gerichtswünsche nach der Bestätigung — ankreuzen was du übernehmen möchtest:
-                </div>
-                {nachtragsAltWishes.map(w => {
-                  const checked = nachtragsAltIds.includes(w.id)
-                  const c = CFG[w.person] ?? CFG.MA
-                  const original = weekPlan.find(e => e.tag === w.tag && e.slot === w.slot)
-                  return (
-                    <div key={w.id} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                      <button
-                        onClick={() => setNachtragsAltIds(prev => prev.includes(w.id) ? prev.filter(id => id !== w.id) : [...prev, w.id])}
-                        style={{ width: 18, height: 18, borderRadius: 4, flexShrink: 0, cursor: 'pointer', border: `1px solid ${checked ? '#1D9E75' : '#ddd'}`, background: checked ? '#1D9E75' : 'white', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                      >
-                        {checked && <span style={{ color: 'white', fontSize: 11, lineHeight: 1, fontWeight: 700 }}>✓</span>}
-                      </button>
-                      <span style={{ fontSize: 12, flex: 1 }}>
-                        <span style={{ color: '#888', marginRight: 4 }}>{w.tag.slice(0, 2)} {w.slot === 'Mittag' ? '🌞' : '🌙'}</span>
-                        <span style={{ fontWeight: 600 }}>{w.emoji} {w.dishName}</span>
-                        {original && <span style={{ color: '#aaa' }}> statt {original.emoji} {original.gericht}</span>}
-                      </span>
-                      <span style={{ fontSize: 10, fontWeight: 700, background: c.bg, color: c.c, padding: '1px 7px', borderRadius: 6 }}>{personNames[w.person]}</span>
-                    </div>
-                  )
-                })}
-                <button
-                  className="btn primary"
-                  onClick={confirmNachtragsAlternativen}
-                  disabled={saving}
-                  style={{ background: '#1D9E75', fontSize: 12, marginTop: 8 }}
-                >
-                  {saving ? '⏳…' : `✅ Entscheidung übernehmen`}
-                </button>
-                <div style={{ fontSize: 10, color: '#888', marginTop: 6 }}>Nicht angekreuzte Alternativen werden verworfen.</div>
-              </div>
-            )
-          })()}
-
           {currentUser === wochenchef && !planConfirmed && (
             <button className="btn soft" style={{ marginTop: 8 }} onClick={goToPlan}>
               🔄 {weekPlan.length > 0 ? 'Neu planen' : 'Woche planen'}
@@ -1424,7 +1394,7 @@ export default function WocheScreen({
       )}
       <div className="topbar"><h1>🍽 FamilyPlate</h1></div>
       <div className="content">
-        {renderAllProposals()}
+        {renderWochenchefDecisions()}
         {planConfirmed && (
           <div style={{ background: '#F0FAF5', border: '1px solid #B2DFCC', borderRadius: 10, padding: '10px 14px', marginBottom: 14 }}>
             {currentUser !== wochenchef ? (
