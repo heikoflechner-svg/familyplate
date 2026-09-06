@@ -1021,14 +1021,15 @@ export default function WocheScreen({
                     const isEditing = editMealKey === key
                     const isAttendanceEdit = attendanceEditKey === key
                     const canEdit = !planConfirmed || currentUser === wochenchef
+                    const canProposeChef = !shopDone
                     const slotAnwesend = getSlotAnwesend(tag, slot)
                     return (
                       <div key={slot} style={{ borderTop: '1px solid #f0f0f0' }}>
                         <div style={{ padding: '8px 12px 3px', display: 'flex', alignItems: 'center', gap: 6 }}>
                           <SlotPill slot={slot} />
                           <span
-                            onClick={canEdit ? () => toggleEditMeal(key) : undefined}
-                            style={{ fontSize: 11, color: '#555', cursor: canEdit ? 'pointer' : 'default', textDecoration: canEdit ? 'underline' : 'none', textDecorationStyle: 'dashed', textDecorationColor: '#bbb' }}
+                            onClick={canProposeChef ? () => toggleEditMeal(key) : undefined}
+                            style={{ fontSize: 11, color: '#555', cursor: canProposeChef ? 'pointer' : 'default', textDecoration: canProposeChef ? 'underline' : 'none', textDecorationStyle: 'dashed', textDecorationColor: '#bbb' }}
                           >Koch: {personNames[e.chef]}</span>
                           <span style={{ fontSize: 10, color: '#ddd' }}>·</span>
                           <span
@@ -1039,8 +1040,11 @@ export default function WocheScreen({
                             <span style={{ marginLeft: 'auto', fontSize: 10, color: '#92400E', background: '#FFFBEB', border: '1px solid #FCD34D', borderRadius: 5, padding: '1px 6px' }}>⏳ Koch-Vorschlag eingereicht</span>
                           )}
                         </div>
-                        {isEditing && canEdit && (
+                        {isEditing && canProposeChef && (
                           <div style={{ padding: '4px 12px 8px', background: '#f9f9f9' }}>
+                            {planConfirmed && currentUser !== wochenchef && (
+                              <div style={{ fontSize: 10, color: '#92400E', padding: '2px 0 6px' }}>⏳ Vorschlag an {personNames[wochenchef]}</div>
+                            )}
                             <ChefPicker current={e.chef} onSelect={chef => changeActiveChef(tag, slot, chef)} personNames={personNames} members={members} />
                             {planConfirmed && currentUser === wochenchef && (
                               <button onClick={() => replanDay(tag)} disabled={dayLoading === tag} style={{ padding: '6px 12px', border: '1px solid #ddd', borderRadius: 8, background: 'white', cursor: 'pointer', fontSize: 12, color: '#555', textAlign: 'left', width: '100%', marginTop: 4 }}>
@@ -1284,14 +1288,15 @@ export default function WocheScreen({
     const isAttendanceEdit = attendanceEditKey === key
     const hasRecipe = !!mealsData[entry.gericht]
     const canEdit = !planConfirmed || currentUser === wochenchef
+    const canProposeChef = !shopDone
     const slotAnwesend = getSlotAnwesend(tag, slot)
     return (
       <div key={slot} style={{ borderTop: '1px solid #f0f0f0' }}>
         <div style={{ padding: '8px 12px 3px', display: 'flex', alignItems: 'center', gap: 6 }}>
           <SlotPill slot={slot} />
           <span
-            onClick={canEdit ? () => toggleEditMeal(key) : undefined}
-            style={{ fontSize: 11, color: '#555', cursor: canEdit ? 'pointer' : 'default', textDecoration: canEdit ? 'underline' : 'none', textDecorationStyle: 'dashed', textDecorationColor: '#bbb' }}
+            onClick={canProposeChef ? () => toggleEditMeal(key) : undefined}
+            style={{ fontSize: 11, color: '#555', cursor: canProposeChef ? 'pointer' : 'default', textDecoration: canProposeChef ? 'underline' : 'none', textDecorationStyle: 'dashed', textDecorationColor: '#bbb' }}
           >Koch: {personNames[entry.chef]}</span>
           <span style={{ fontSize: 10, color: '#ddd' }}>·</span>
           <span
@@ -1302,8 +1307,11 @@ export default function WocheScreen({
             <span style={{ marginLeft: 'auto', fontSize: 10, color: '#92400E', background: '#FFFBEB', border: '1px solid #FCD34D', borderRadius: 5, padding: '1px 6px' }}>⏳ Koch-Vorschlag eingereicht</span>
           )}
         </div>
-        {isEditing && canEdit && (
+        {isEditing && canProposeChef && (
           <div style={{ padding: '4px 12px 8px', background: '#f9f9f9' }}>
+            {planConfirmed && currentUser !== wochenchef && (
+              <div style={{ fontSize: 10, color: '#92400E', padding: '2px 0 6px' }}>⏳ Vorschlag an {personNames[wochenchef]}</div>
+            )}
             <ChefPicker current={entry.chef} onSelect={chef => changeActiveChef(tag, slot, chef)} personNames={personNames} members={members} />
             {planConfirmed && currentUser === wochenchef && (
               <button onClick={() => replanDay(tag)} disabled={dayLoading === tag} style={{ padding: '6px 12px', border: '1px solid #ddd', borderRadius: 8, background: 'white', cursor: 'pointer', fontSize: 12, color: '#555', textAlign: 'left', width: '100%', marginTop: 4 }}>
