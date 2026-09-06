@@ -10,13 +10,20 @@ const TAG_SHORT: Record<string, string> = {
 interface Props {
   currentUser: Chef
   wochenchef: Chef
-  shoppingDay: string | null
-  onShoppingDayChange: (day: string | null) => Promise<void>
+  shoppingDays: string[]
+  onShoppingDaysChange: (days: string[]) => Promise<void>
   onGoToAttendance: () => void
 }
 
-export default function MehrScreen({ currentUser, wochenchef, shoppingDay, onShoppingDayChange, onGoToAttendance }: Props) {
+export default function MehrScreen({ currentUser, wochenchef, shoppingDays, onShoppingDaysChange, onGoToAttendance }: Props) {
   const isChef = currentUser === wochenchef
+
+  function toggleDay(tag: string) {
+    const next = shoppingDays.includes(tag)
+      ? shoppingDays.filter(d => d !== tag)
+      : [...shoppingDays, tag]
+    onShoppingDaysChange(next)
+  }
 
   return (
     <div className="screen active" style={{ overflowY: 'auto' }}>
@@ -47,15 +54,15 @@ export default function MehrScreen({ currentUser, wochenchef, shoppingDay, onSho
           {isChef ? (
             <>
               <div style={{ fontSize: 12, color: '#666', marginBottom: 14 }}>
-                An welchem Tag wird diese Woche eingekauft?
+                An welchen Tagen wird diese Woche eingekauft? (Mehrfachauswahl)
               </div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                 {WOCHENTAGE.map(tag => {
-                  const active = shoppingDay === tag
+                  const active = shoppingDays.includes(tag)
                   return (
                     <button
                       key={tag}
-                      onClick={() => onShoppingDayChange(active ? null : tag)}
+                      onClick={() => toggleDay(tag)}
                       style={{
                         padding: '8px 14px', borderRadius: 20, border: 'none', cursor: 'pointer',
                         fontSize: 13, fontWeight: active ? 700 : 400,
@@ -69,17 +76,17 @@ export default function MehrScreen({ currentUser, wochenchef, shoppingDay, onSho
                   )
                 })}
               </div>
-              {shoppingDay && (
+              {shoppingDays.length > 0 && (
                 <div style={{ marginTop: 14, fontSize: 13, color: '#0F6E56', fontWeight: 600 }}>
-                  ✅ Diese Woche: {shoppingDay}
+                  ✅ Diese Woche: {shoppingDays.join(', ')}
                 </div>
               )}
             </>
           ) : (
             <div style={{ fontSize: 13, color: '#444', background: '#F9FAFB', borderRadius: 12, padding: '14px 16px' }}>
-              {shoppingDay
-                ? <>Einkaufstag diese Woche: <strong>{shoppingDay}</strong></>
-                : <span style={{ color: '#aaa' }}>Noch kein Einkaufstag festgelegt.</span>
+              {shoppingDays.length > 0
+                ? <>Einkaufstage diese Woche: <strong>{shoppingDays.join(', ')}</strong></>
+                : <span style={{ color: '#aaa' }}>Noch keine Einkaufstage festgelegt.</span>
               }
               <div style={{ fontSize: 11, color: '#bbb', marginTop: 6 }}>Nur der Wochenchef kann das ändern.</div>
             </div>

@@ -1200,7 +1200,7 @@ export default function WocheScreen({
             )
           })()}
 
-          {currentUser === wochenchef && (
+          {currentUser === wochenchef && !planConfirmed && (
             <button className="btn soft" style={{ marginTop: 8 }} onClick={goToPlan}>
               🔄 {weekPlan.length > 0 ? 'Neu planen' : 'Woche planen'}
             </button>
@@ -1371,7 +1371,7 @@ export default function WocheScreen({
           </button>
         </div>
       </div>
-      {currentUser === wochenchef && (
+      {currentUser === wochenchef && !planConfirmed && (
         <div style={{ padding: '0 20px 16px' }}>
           <button className="btn soft" onClick={goToPlan}>🔄 Neu planen</button>
         </div>
