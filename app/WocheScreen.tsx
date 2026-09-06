@@ -57,6 +57,47 @@ interface Props {
 type View = 'home' | 'week' | 'plan' | 'attendance'
 type PlanState = 'options' | 'loading' | 'results'
 
+// Frist-Logik: 1 Tag vor dem nächsten Einkaufstag, 20:00 Uhr.
+// Gibt null zurück wenn kein Einkaufstag konfiguriert.
+function getShoppingDeadlineStatus(shoppingDays: string[], now = new Date()):
+  { passed: boolean; deadlineDayName: string; shoppingDayName: string } | null {
+  const nameToNum: Record<string, number> = {
+    Sonntag: 0, Montag: 1, Dienstag: 2, Mittwoch: 3, Donnerstag: 4, Freitag: 5, Samstag: 6,
+  }
+  const numToName = ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag']
+  if (shoppingDays.length === 0) return null
+  const todayNum = now.getDay()
+  let earliestFuture: { deadline: Date; deadlineDayNum: number; shoppingDayName: string } | null = null
+  let mostRecentPast: { deadline: Date; deadlineDayNum: number; shoppingDayName: string } | null = null
+  for (const shoppingName of shoppingDays) {
+    const shoppingNum = nameToNum[shoppingName]
+    if (shoppingNum === undefined) continue
+    if (shoppingNum < todayNum) continue  // diese Woche bereits vorbei
+    const deadlineNum = (shoppingNum - 1 + 7) % 7
+    if (shoppingNum === todayNum) {
+      // Einkaufstag = heute → Frist war gestern 20:00 = vorbei
+      const d = new Date(now); d.setDate(d.getDate() - 1); d.setHours(20, 0, 0, 0)
+      if (!mostRecentPast || d > mostRecentPast.deadline)
+        mostRecentPast = { deadline: d, deadlineDayNum: deadlineNum, shoppingDayName: shoppingName }
+      continue
+    }
+    const daysUntil = deadlineNum - todayNum
+    const deadline = new Date(now)
+    deadline.setDate(deadline.getDate() + daysUntil)
+    deadline.setHours(20, 0, 0, 0)
+    if (now < deadline) {
+      if (!earliestFuture || deadline < earliestFuture.deadline)
+        earliestFuture = { deadline, deadlineDayNum: deadlineNum, shoppingDayName: shoppingName }
+    } else {
+      if (!mostRecentPast || deadline > mostRecentPast.deadline)
+        mostRecentPast = { deadline, deadlineDayNum: deadlineNum, shoppingDayName: shoppingName }
+    }
+  }
+  if (earliestFuture) return { passed: false, deadlineDayName: numToName[earliestFuture.deadlineDayNum], shoppingDayName: earliestFuture.shoppingDayName }
+  if (mostRecentPast) return { passed: true, deadlineDayName: numToName[mostRecentPast.deadlineDayNum], shoppingDayName: mostRecentPast.shoppingDayName }
+  return null
+}
+
 export default function WocheScreen({
   weekPlan, mealsData, planMittag, planWE, freezerItems, pantryItems,
   wishes, currentUser, wochenchef, members, attendance, attendanceConfirmed, proposals, planConfirmed, shopDone, onWeekPlanChange, onWishesChange,
@@ -74,6 +115,12 @@ export default function WocheScreen({
     const bDate = b.chefStat?.lastCook ?? ''
     return aDate < bDate ? -1 : aDate > bDate ? 1 : 0
   }).find(m => m.id !== wochenchef)?.id ?? activeMembers.find(m => m.id !== wochenchef)?.id ?? 'PA') as Chef
+  const wishDeadlineStatus = getShoppingDeadlineStatus(shoppingDays)
+  const wishDeadlinePassed = planConfirmed && (wishDeadlineStatus?.passed ?? false)
+  const wishDeadlineHint = wishDeadlinePassed && wishDeadlineStatus
+    ? `Änderungen waren nur bis ${wishDeadlineStatus.deadlineDayName} 20:00 Uhr möglich – Einkauf ist am ${wishDeadlineStatus.shoppingDayName}`
+    : undefined
+
   const [view, setView] = useState<View>('home')
   useEffect(() => { if (attendanceSignal && attendanceSignal > 0) setView('attendance') }, [attendanceSignal])
   const [planState, setPlanState] = useState<PlanState>('options')
@@ -1196,7 +1243,8 @@ export default function WocheScreen({
                         />
                         <WishesSection
                           tag={tag} wishes={wishes} freezerItems={freezerItems} pantryItems={pantryItems}
-                          personNames={personNames} planMittag={planMittag} lockedSlot={slot} showExisting={false} canAdd={!shopDone}
+                          personNames={personNames} planMittag={planMittag} lockedSlot={slot} showExisting={false}
+                          canAdd={!shopDone && !wishDeadlinePassed} deadlineHint={wishDeadlineHint}
                           isOpen={wishFormKey === `${tag}-${slot}`} initialPerson={currentUser} familyPrompt={familyPrompt}
                           onOpen={() => openWishForm(tag, slot)} onClose={closeWishForm} onSubmitWish={handleWishSubmit} onRemove={removeWish}
                         />
@@ -1371,7 +1419,8 @@ export default function WocheScreen({
         </div>
         <WishesSection
           tag={tag} wishes={wishes} freezerItems={freezerItems} pantryItems={pantryItems}
-          personNames={personNames} planMittag={planMittag} lockedSlot={slot} canAdd={!shopDone}
+          personNames={personNames} planMittag={planMittag} lockedSlot={slot}
+          canAdd={!shopDone && !wishDeadlinePassed} deadlineHint={wishDeadlineHint}
           isOpen={wishFormKey === `${tag}-${slot}`} initialPerson={currentUser} familyPrompt={familyPrompt}
           onOpen={() => openWishForm(tag, slot)} onClose={closeWishForm} onSubmitWish={handleWishSubmit} onRemove={removeWish}
         />
@@ -1583,6 +1632,7 @@ interface WishesSectionProps {
   lockedSlot?: WochenSlot
   showExisting?: boolean
   canAdd?: boolean
+  deadlineHint?: string
   isOpen: boolean
   initialPerson: Chef
   familyPrompt: string
@@ -1594,7 +1644,7 @@ interface WishesSectionProps {
 
 function WishesSection({
   tag, wishes, freezerItems, pantryItems, personNames, planMittag,
-  lockedSlot, showExisting = true, canAdd = true, isOpen, initialPerson, familyPrompt,
+  lockedSlot, showExisting = true, canAdd = true, deadlineHint, isOpen, initialPerson, familyPrompt,
   onOpen, onClose, onSubmitWish, onRemove,
 }: WishesSectionProps) {
   const dayWishes = wishes.filter(w => w.tag === tag && (!lockedSlot || w.slot === lockedSlot))
@@ -1701,6 +1751,9 @@ function WishesSection({
           >
             + Änderungswunsch
           </button>
+        )}
+        {!isOpen && !canAdd && deadlineHint && (
+          <span style={{ fontSize: 10, color: '#9ca3af', fontStyle: 'italic' }}>{deadlineHint}</span>
         )}
       </div>
 
