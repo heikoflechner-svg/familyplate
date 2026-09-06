@@ -24,7 +24,7 @@ export async function loadWeekPlan(): Promise<{ plan: WeekPlanEntry[]; mealsData
   }
 
   return {
-    plan: (data.plan_data as WeekPlanEntry[]) ?? [],
+    plan: Array.isArray(data.plan_data) ? (data.plan_data as WeekPlanEntry[]) : [],
     mealsData: (data.meals_data as Record<string, Rezept>) ?? {},
     wishes: (data.wishes as Wish[]) ?? [],
     attendance,

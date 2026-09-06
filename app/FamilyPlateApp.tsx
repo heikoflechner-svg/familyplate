@@ -70,8 +70,8 @@ export default function FamilyPlateApp() {
 
   useEffect(() => {
     if (!currentUser) return
-    Promise.all([loadWeekPlan(), loadFreezerItems(), loadPantryItems(), loadFamilyProfile(), loadLastDishes()])
-      .then(([{ plan, mealsData: md, wishes: w, attendance: att, attendanceConfirmed: ac, shoppingList: sl, proposals: pr, wochenchef: wc, planConfirmed: pc, shopDone: sd, shoppingDays: sd2 }, freezer, pantry, profile, lastDishesData]) => {
+    Promise.all([loadWeekPlan(), loadFreezerItems(), loadPantryItems(), loadFamilyProfile()])
+      .then(([{ plan, mealsData: md, wishes: w, attendance: att, attendanceConfirmed: ac, shoppingList: sl, proposals: pr, wochenchef: wc, planConfirmed: pc, shopDone: sd, shoppingDays: sd2 }, freezer, pantry, profile]) => {
         setWeekPlan(plan)
         setMealsData(md)
         setWishes(w)
@@ -86,8 +86,8 @@ export default function FamilyPlateApp() {
         setFreezerItems(freezer)
         setPantryItems(pantry)
         setFamilyProfile(profile)
-        setLastDishes(lastDishesData)
         setDataLoading(false)
+        loadLastDishes().then(setLastDishes).catch(() => {})
       })
       .catch(err => {
         console.error('Ladefehler:', err)
