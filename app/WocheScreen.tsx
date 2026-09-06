@@ -1463,6 +1463,29 @@ export default function WocheScreen({
                 )}
               </div>
             )}
+            <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid #B2DFCC' }}>
+              <div style={{ fontSize: 11, color: '#085041', fontWeight: 600, marginBottom: 6 }}>👩‍🍳 Wer kocht nächste Woche?</div>
+              <div style={{ display: 'flex', gap: 6 }}>
+                {activeMembers.map(m => {
+                  const isSelected = m.id === wochenchef
+                  const isSuggested = m.id === suggestedNextChef
+                  const cc = CFG[m.id as Chef] ?? CFG.MA
+                  return (
+                    <button
+                      key={m.id}
+                      onClick={() => onWochenchefChange(m.id as Chef)}
+                      style={{ flex: 1, padding: '7px 4px', borderRadius: 8, textAlign: 'center', cursor: 'pointer', border: `2px solid ${isSelected ? cc.c : isSuggested ? '#FCD34D' : '#c6e9d8'}`, background: isSelected ? cc.bg : isSuggested ? '#FFFBEB' : 'white' }}
+                    >
+                      <div style={{ fontSize: 9, color: isSelected ? cc.c : '#9ca3af', marginBottom: 1 }}>{m.id}</div>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: isSelected ? cc.c : '#374151' }}>{m.name}</div>
+                      <div style={{ fontSize: 9, marginTop: 2, color: isSelected ? cc.c : isSuggested ? '#92400E' : 'transparent' }}>
+                        {isSelected ? '✓' : isSuggested ? '★' : '·'}
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
           </div>
         )}
         <div style={{ borderRadius: 12, border: '1px solid #e5e7eb', marginBottom: 14, overflow: 'hidden' }}>
