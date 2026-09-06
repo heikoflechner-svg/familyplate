@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { generateWeekPlan, getRemySuggestions, generateRecipe } from '../lib/mealLogic'
-import { getFreezerListString, getPantryListString, addFreezerItem } from '../lib/freezerLogic'
+import { getFreezerListString, getPantryListString, addFreezerItem, deleteFreezerItem } from '../lib/freezerLogic'
 import { buildFamilyPrompt, DEFAULT_MEMBERS } from '../lib/familyLogic'
 import type { WeekPlanEntry, Rezept, FreezerItem, PantryItem, Wish, Chef, WochenSlot, FamilyMember, DayAttendance, ChangeProposal, ShoppingItem, RemyVorschlag } from '../lib/state'
 import SlotWunschPanel from './SlotWunschPanel'
@@ -139,6 +139,7 @@ export default function WocheScreen({
 
   const [kochPanelKey, setKochPanelKey] = useState<string | null>(null)
   const [restPortionen, setRestPortionen] = useState<Record<string, number>>({})
+  const [vorratHinweis, setVorratHinweis] = useState(false)
 
   const [wishFormKey, setWishFormKey] = useState<string | null>(null)
 
@@ -537,6 +538,31 @@ export default function WocheScreen({
     await onWeekPlanChange(pendingPlan, { ...mealsData, ...pendingPlanMeals })
     await onPlanConfirm?.(pendingPlan)
     await onPlanConfirmedChange(false)
+
+    // Auto-Entfernen aus Gefriertruhe: für Reste-Gerichte exakt matchen,
+    // für gefriertruhe-Gerichte per exakter Namensübereinstimmung
+    const matchedIds = new Set<string>()
+    for (const entry of pendingPlan) {
+      if (entry.quelle !== 'reste' && entry.quelle !== 'gefriertruhe') continue
+      const searchName = entry.quelle === 'reste'
+        ? entry.gericht.replace(/^Reste:\s*/i, '').trim()
+        : entry.gericht
+      const match = freezerItems.find(
+        f => !matchedIds.has(f.id) && f.name.toLowerCase() === searchName.toLowerCase()
+      )
+      if (match) {
+        matchedIds.add(match.id)
+        await deleteFreezerItem(match.id)
+      }
+    }
+    if (matchedIds.size > 0) {
+      onFreezerChange(freezerItems.filter(f => !matchedIds.has(f.id)))
+    }
+
+    // Hinweis anzeigen wenn Speisekammer-Einträge im Plan sind
+    const hatSpeisekammer = pendingPlan.some(e => e.quelle === 'speisekammer')
+    if (hatSpeisekammer) setVorratHinweis(true)
+
     setSaving(false)
     setPlanState('options')
     setPendingPlanMeals({})
@@ -1490,6 +1516,16 @@ export default function WocheScreen({
       <div className="topbar"><h1>🍽 FamilyPlate</h1></div>
       <div className="content">
         {renderWochenchefDecisions()}
+        {vorratHinweis && currentUser === wochenchef && (
+          <div style={{ background: '#FFFBEB', border: '1px solid #FCD34D', borderRadius: 10, padding: '10px 14px', marginBottom: 14, display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+            <span style={{ fontSize: 16, flexShrink: 0 }}>📦</span>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: '#92400E', marginBottom: 2 }}>Speisekammer-Vorräte prüfen</div>
+              <div style={{ fontSize: 11, color: '#555' }}>Rémy hat Speisekammer-Artikel eingeplant. Bitte im Vorräte-Tab die verbrauchten Artikel entfernen.</div>
+            </div>
+            <button onClick={() => setVorratHinweis(false)} style={{ border: 'none', background: 'none', color: '#bbb', fontSize: 18, cursor: 'pointer', lineHeight: 1, flexShrink: 0 }}>×</button>
+          </div>
+        )}
         {planConfirmed && (
           <div style={{ background: '#F0FAF5', border: '1px solid #B2DFCC', borderRadius: 10, padding: '10px 14px', marginBottom: 14 }}>
             {currentUser !== wochenchef ? (

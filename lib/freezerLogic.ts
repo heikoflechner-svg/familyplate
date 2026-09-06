@@ -111,13 +111,17 @@ export async function deletePantryItem(id: string): Promise<boolean> {
 
 export function getFreezerListString(items: FreezerItem[]): string {
   if (!items.length) return 'leer'
-  return items.map((i) => `${i.name} (${i.menge})`).join(', ')
+  return items.map((i) => {
+    const flag = i.ampel === 'red' ? ' [DRINGEND – bald aufgebraucht]' : ''
+    return `${i.name} (${i.menge})${flag}`
+  }).join(', ')
 }
 
 export function getPantryListString(items: PantryItem[]): string {
   if (!items.length) return 'leer'
-  return items
-    .filter((i) => i.ampel !== 'red')
-    .map((i) => `${i.name} (${i.menge})`)
-    .join(', ')
+  // Alle Items inkl. roter (dringender) Artikel – früher fälschlich herausgefiltert
+  return items.map((i) => {
+    const flag = i.ampel === 'red' ? ' [DRINGEND verwenden]' : ''
+    return `${i.name} (${i.menge})${flag}`
+  }).join(', ')
 }

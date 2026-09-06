@@ -378,10 +378,10 @@ function ConsolidatedRow({ item, onToggle }: { item: ConsolidatedItem; onToggle:
           {item.menge && <span style={{ fontSize: 11, color: '#aaa', marginLeft: 5 }}>({item.menge})</span>}
         </div>
         {item.sources.length > 0 && (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 3 }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 4 }}>
             {item.sources.map((s, i) => (
-              <span key={i} style={{ fontSize: 10, color: '#bbb' }}>
-                {s.tag.slice(0, 2)} {s.slot === 'Mittag' ? '🌞' : '🌙'} {s.gericht}
+              <span key={i} style={{ fontSize: 10, background: '#f3f4f6', color: '#6b7280', borderRadius: 5, padding: '1px 6px', whiteSpace: 'nowrap' }}>
+                {s.tag.slice(0, 2)} {s.slot === 'Mittag' ? '🌞' : '🌙'} · {s.gericht}
               </span>
             ))}
           </div>
