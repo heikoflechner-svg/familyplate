@@ -229,11 +229,25 @@ export async function generateRecipe(
   pantryList: string,
   familyPrompt?: string,
 ): Promise<Rezept | null> {
-  const resp = await fetch('/api/recipe', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ gericht, emoji, freezerList, pantryList, familyPrompt }),
-  })
-  const data = await resp.json()
-  return (data.rezept as Rezept) ?? null
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const resp = await fetch('/api/recipe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gericht, emoji, freezerList, pantryList, familyPrompt }),
+      })
+      if (!resp.ok) {
+        if (attempt === 0) continue
+        return null
+      }
+      const data = await resp.json()
+      const rezept = (data.rezept as Rezept) ?? null
+      if (rezept) return rezept
+      if (attempt === 0) continue
+    } catch {
+      if (attempt === 0) continue
+      return null
+    }
+  }
+  return null
 }

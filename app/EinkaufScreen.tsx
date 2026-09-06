@@ -148,6 +148,26 @@ export default function EinkaufScreen({ weekPlan, mealsData, shoppingList, onSho
           </div>
         )}
 
+        {(() => {
+          const missing = weekPlan.filter(e => !mealsData[e.gericht])
+          if (missing.length === 0) return null
+          return (
+            <div style={{ background: '#FFFBEB', border: '1px solid #FCD34D', borderRadius: 10, padding: '10px 14px', marginBottom: 12 }}>
+              <div style={{ fontSize: 12, color: '#92400E', fontWeight: 600, marginBottom: 4 }}>
+                ⚠️ Fehlende Rezepte ({missing.length})
+              </div>
+              <div style={{ fontSize: 11, color: '#555', marginBottom: 6 }}>
+                Für diese Gerichte fehlen Zutaten in der Einkaufsliste:
+              </div>
+              {missing.map(e => (
+                <div key={`${e.tag}-${e.slot}`} style={{ fontSize: 11, color: '#92400E', marginTop: 2 }}>
+                  {e.emoji} {e.gericht} · {e.tag} {e.slot === 'Mittag' ? '🌞' : '🌙'}
+                </div>
+              ))}
+            </div>
+          )
+        })()}
+
         {shoppingList.length === 0 && !dayPickerOpen && (
           <div style={{ textAlign: 'center', padding: '40px 0' }}>
             <div style={{ fontSize: 36, marginBottom: 12 }}>🛒</div>

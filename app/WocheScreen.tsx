@@ -1022,6 +1022,9 @@ export default function WocheScreen({
                               {(mealsData[e.gericht]?.ersetzteZutaten?.length ?? 0) > 0 && (
                                 <span title={mealsData[e.gericht]!.ersetzteZutaten!.join(' · ')} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 14, height: 14, borderRadius: '50%', background: '#EF4444', color: 'white', fontSize: 9, fontWeight: 700, flexShrink: 0, cursor: 'default' }}>!</span>
                               )}
+                              {planConfirmed && !mealsData[e.gericht] && (
+                                <span title="Kein Rezept – fehlt in der Einkaufsliste" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 14, height: 14, borderRadius: '50%', background: '#F59E0B', color: 'white', fontSize: 9, fontWeight: 700, flexShrink: 0, cursor: 'default' }}>?</span>
+                              )}
                             </div>
                             <div style={{ fontSize: 11, color: '#aaa' }}>{e.minuten} min</div>
                           </div>
@@ -1278,6 +1281,9 @@ export default function WocheScreen({
               {entry.gericht}{hasRecipe ? <span style={{ fontSize: 10, color: '#bbb' }}>›</span> : null}
               {(mealsData[entry.gericht]?.ersetzteZutaten?.length ?? 0) > 0 && (
                 <span title={mealsData[entry.gericht]!.ersetzteZutaten!.join(' · ')} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 14, height: 14, borderRadius: '50%', background: '#EF4444', color: 'white', fontSize: 9, fontWeight: 700, flexShrink: 0, cursor: 'default' }}>!</span>
+              )}
+              {planConfirmed && !mealsData[entry.gericht] && (
+                <span title="Kein Rezept – fehlt in der Einkaufsliste" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 14, height: 14, borderRadius: '50%', background: '#F59E0B', color: 'white', fontSize: 9, fontWeight: 700, flexShrink: 0, cursor: 'default' }}>?</span>
               )}
             </div>
             <div style={{ fontSize: 11, color: '#aaa' }}>{entry.minuten} min</div>
