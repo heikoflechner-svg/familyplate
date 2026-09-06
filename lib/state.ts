@@ -38,7 +38,7 @@ export interface ChangeProposal {
   slot: WochenSlot
   vonChef: Chef
   fuerChef: Chef
-  entry: WeekPlanEntry
+  newChef: Chef
   createdAt: string
 }
 

@@ -171,28 +171,30 @@ export default function WocheScreen({
   }
 
   async function changeActiveChef(tag: string, slot: WochenSlot, chef: Chef) {
-    const currentEntry = weekPlan.find(e => e.tag === tag && e.slot === slot)
-    if (!currentEntry) return
     closeMealPanel()
     if (currentUser === wochenchef) {
       const newPlan = weekPlan.map(e => e.tag === tag && e.slot === slot ? { ...e, chef } : e)
       await onWeekPlanChange(newPlan, mealsData)
     } else {
+      // Nur Chef-Änderung als Proposal – kein Gericht-Snapshot, damit Gericht-Wünsche unabhängig bleiben
       await onProposalsChange([...proposals, {
         id: crypto.randomUUID(),
         tag,
         slot,
         vonChef: currentUser,
         fuerChef: wochenchef,
-        entry: { ...currentEntry, chef },
+        newChef: chef,
         createdAt: new Date().toISOString(),
       }])
     }
   }
 
   async function acceptProposal(proposal: ChangeProposal) {
+    // Fallback für alte DB-Proposals die noch `entry` statt `newChef` haben
+    const chef = proposal.newChef ?? (proposal as unknown as Record<string, WeekPlanEntry>).entry?.chef
+    if (!chef) return
     const newPlan = weekPlan.map(e =>
-      e.tag === proposal.tag && e.slot === proposal.slot ? proposal.entry : e
+      e.tag === proposal.tag && e.slot === proposal.slot ? { ...e, chef } : e
     )
     await onWeekPlanChange(newPlan, mealsData)
     await onProposalsChange(proposals.filter(p => p.id !== proposal.id))
@@ -207,18 +209,32 @@ export default function WocheScreen({
     return (
       <div style={{ marginBottom: 12 }}>
         <div style={{ fontSize: 11, fontWeight: 700, color: '#92400E', marginBottom: 6 }}>
-          📬 Offene Vorschläge ({proposals.length})
+          👨‍🍳 Koch-Änderungsvorschläge ({proposals.length})
         </div>
         {proposals.map(p => {
           const slotLabel = p.slot === 'Mittag' ? '🌞 Mittag' : '🌙 Abend'
+          const currentEntry = weekPlan.find(e => e.tag === p.tag && e.slot === p.slot)
+          // Fallback für alte DB-Proposals mit `entry` statt `newChef`
+          const toChef = p.newChef ?? (p as unknown as Record<string, WeekPlanEntry>).entry?.chef
+          if (!toChef) return null
+          const fromChef = currentEntry?.chef
           return (
             <div key={p.id} style={{ background: '#FFFBEB', border: '1px solid #FCD34D', borderRadius: 8, padding: '8px 10px', marginBottom: 6 }}>
-              <div style={{ fontSize: 10, color: '#92400E', fontWeight: 700, marginBottom: 3 }}>
-                {personNames[p.vonChef]} · {p.tag} {slotLabel}
+              <div style={{ fontSize: 10, color: '#92400E', fontWeight: 700, marginBottom: 4 }}>
+                {p.tag} · {slotLabel}
               </div>
-              <div style={{ fontSize: 12, color: '#111', marginBottom: 6 }}>
-                {p.entry.emoji} {p.entry.gericht} · Koch: {personNames[p.entry.chef]}
+              <div style={{ fontSize: 12, color: '#111', marginBottom: 2 }}>
+                <span style={{ color: '#888' }}>{personNames[p.vonChef]} schlägt vor: Koch</span>
+                {fromChef && fromChef !== toChef && (
+                  <span style={{ color: '#aaa' }}> {personNames[fromChef]} →</span>
+                )}
+                <span style={{ fontWeight: 700 }}> {personNames[toChef]}</span>
               </div>
+              {currentEntry && (
+                <div style={{ fontSize: 10, color: '#bbb', marginBottom: 6 }}>
+                  {currentEntry.emoji} {currentEntry.gericht} bleibt unverändert
+                </div>
+              )}
               <div style={{ display: 'flex', gap: 6 }}>
                 <button
                   onClick={() => acceptProposal(p)}
@@ -356,6 +372,11 @@ export default function WocheScreen({
     if (anw.length === allChefIds.length) return 'Alle'
     if (anw.length === 0) return 'Niemand'
     return anw.map(c => personNames[c] ?? c).join(', ')
+  }
+
+  function hasPendingChefProposal(tag: string, slot: WochenSlot): boolean {
+    return currentUser !== wochenchef &&
+      proposals.some(p => p.vonChef === currentUser && p.tag === tag && p.slot === slot)
   }
 
   function slotEssenLabel(tag: string, slot: WochenSlot): string {
@@ -1014,6 +1035,9 @@ export default function WocheScreen({
                             onClick={canEdit ? () => setAttendanceEditKey(isAttendanceEdit ? null : key) : undefined}
                             style={{ fontSize: 11, color: '#555', cursor: canEdit ? 'pointer' : 'default', textDecoration: canEdit ? 'underline' : 'none', textDecorationStyle: 'dashed', textDecorationColor: '#bbb' }}
                           >Essen: {slotEssenLabel(tag, slot)}</span>
+                          {hasPendingChefProposal(tag, slot) && (
+                            <span style={{ marginLeft: 'auto', fontSize: 10, color: '#92400E', background: '#FFFBEB', border: '1px solid #FCD34D', borderRadius: 5, padding: '1px 6px' }}>⏳ Koch-Vorschlag eingereicht</span>
+                          )}
                         </div>
                         {isEditing && canEdit && (
                           <div style={{ padding: '4px 12px 8px', background: '#f9f9f9' }}>
@@ -1274,6 +1298,9 @@ export default function WocheScreen({
             onClick={canEdit ? () => setAttendanceEditKey(isAttendanceEdit ? null : key) : undefined}
             style={{ fontSize: 11, color: '#555', cursor: canEdit ? 'pointer' : 'default', textDecoration: canEdit ? 'underline' : 'none', textDecorationStyle: 'dashed', textDecorationColor: '#bbb' }}
           >Essen: {slotEssenLabel(tag, slot)}</span>
+          {hasPendingChefProposal(tag, slot) && (
+            <span style={{ marginLeft: 'auto', fontSize: 10, color: '#92400E', background: '#FFFBEB', border: '1px solid #FCD34D', borderRadius: 5, padding: '1px 6px' }}>⏳ Koch-Vorschlag eingereicht</span>
+          )}
         </div>
         {isEditing && canEdit && (
           <div style={{ padding: '4px 12px 8px', background: '#f9f9f9' }}>
