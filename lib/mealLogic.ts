@@ -175,6 +175,37 @@ export async function saveWeekPlan(
   }
 }
 
+export async function loadLastDishes(): Promise<string[]> {
+  try {
+    const { data, error } = await supabase
+      .from('week_plans')
+      .select('last_dishes')
+      .eq('family_id', FAMILY_ID)
+      .limit(1)
+      .single()
+    if (error || !data) return []
+    return (data.last_dishes as string[] | null) ?? []
+  } catch {
+    return []
+  }
+}
+
+export async function saveLastDishes(dishes: string[]): Promise<void> {
+  try {
+    const { data: existing } = await supabase
+      .from('week_plans')
+      .select('id')
+      .eq('family_id', FAMILY_ID)
+      .limit(1)
+      .single()
+    if (existing?.id) {
+      await supabase.from('week_plans').update({ last_dishes: dishes }).eq('id', existing.id)
+    }
+  } catch {
+    // History ist nice-to-have – Fehler still ignorieren
+  }
+}
+
 export async function generateWeekPlan(params: {
   planMittag: boolean
   planWE: boolean
@@ -184,6 +215,7 @@ export async function generateWeekPlan(params: {
   neuTage?: string[]
   wishes?: Wish[]
   familyPrompt?: string
+  lastDishes?: string[]
 }): Promise<{ plan: WeekPlanEntry[]; mealsData: Record<string, Rezept> }> {
   const resp = await fetch('/api/week-plan', {
     method: 'POST',

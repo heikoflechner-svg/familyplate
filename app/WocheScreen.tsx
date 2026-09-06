@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect } from 'react'
-import { generateWeekPlan, getRemySuggestions, generateRecipe } from '../lib/mealLogic'
+import { generateWeekPlan, getRemySuggestions, generateRecipe, saveLastDishes } from '../lib/mealLogic'
 import { getFreezerListString, getPantryListString, addFreezerItem, deleteFreezerItem } from '../lib/freezerLogic'
 import { buildFamilyPrompt, DEFAULT_MEMBERS } from '../lib/familyLogic'
 import type { WeekPlanEntry, Rezept, FreezerItem, PantryItem, Wish, Chef, WochenSlot, FamilyMember, DayAttendance, ChangeProposal, ShoppingItem, RemyVorschlag } from '../lib/state'
@@ -52,6 +52,7 @@ interface Props {
   onFreezerChange: (items: FreezerItem[]) => void
   attendanceSignal?: number
   shoppingDays?: string[]
+  lastDishes?: string[]
 }
 
 type View = 'home' | 'week' | 'plan' | 'attendance'
@@ -104,6 +105,7 @@ export default function WocheScreen({
   onAttendanceChange, onAttendanceConfirmedChange, onPlanConfirm, onProposalsChange, onWochenchefChange, onPlanConfirmedChange, onShopDoneChange,
   shoppingList, onShoppingListChange, onFreezerChange, attendanceSignal,
   shoppingDays = [],
+  lastDishes = [],
 }: Props) {
   const personNames: Record<Chef, string> = Object.fromEntries(
     (members.length ? members : DEFAULT_MEMBERS).map(m => [m.id, m.name])
@@ -522,6 +524,7 @@ export default function WocheScreen({
         neuTage: tage,
         wishes: wishes.filter(w => tage.includes(w.tag)),
         familyPrompt,
+        lastDishes,
       })
       setPendingPlan(newPlan)
       setPendingPlanMeals(newMeals)
@@ -562,6 +565,15 @@ export default function WocheScreen({
     // Hinweis anzeigen wenn Speisekammer-Einträge im Plan sind
     const hatSpeisekammer = pendingPlan.some(e => e.quelle === 'speisekammer')
     if (hatSpeisekammer) setVorratHinweis(true)
+
+    // Gerichte-History aktualisieren (Abend-Gerichte, keine Reste)
+    const neueAbendGerichte = [...new Set(
+      pendingPlan
+        .filter(e => e.slot === 'Abend' && !e.gericht.startsWith('Reste:'))
+        .map(e => e.gericht)
+    )]
+    const aktualisierteHistory = [...new Set([...neueAbendGerichte, ...lastDishes])].slice(0, 24)
+    await saveLastDishes(aktualisierteHistory)
 
     setSaving(false)
     setPlanState('options')

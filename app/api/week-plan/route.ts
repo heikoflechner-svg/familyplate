@@ -111,7 +111,7 @@ function buildFallbackRezepte(entries: { gericht: string; emoji: string }[]): Re
 type WishJSON = { person: string; tag: string; slot: string; type: string; text?: string; dishName?: string; emoji?: string }
 
 export async function POST(req: NextRequest) {
-  const { planMittag, planWE, freezerList, pantryList, behaltene, neuTage, wishes, familyPrompt } = await req.json()
+  const { planMittag, planWE, freezerList, pantryList, behaltene, neuTage, wishes, familyPrompt, lastDishes } = await req.json()
 
   const apiKey = process.env.ANTHROPIC_API_KEY
   console.log('[week-plan] apiKey present:', !!apiKey, '| length:', apiKey?.length ?? 0)
@@ -147,11 +147,16 @@ export async function POST(req: NextRequest) {
   const wishHinweis = wishList.length
     ? ` Familienwünsche (bitte berücksichtigen): ${wishList.map(w => `${w.person} (${w.tag} ${w.slot === 'Mittag' ? '🌞' : '🌙'}): ${w.type === 'ergaenzung' ? `Notiz: ${w.text}` : `Alternative: ${w.emoji ?? ''} ${w.dishName ?? ''}`}`).join(', ')}.`
     : ''
+  const lastDishesList = (lastDishes as string[] | undefined | null) ?? []
+  const historyHinweis = lastDishesList.length > 0
+    ? ` Bitte diese Gerichte diese Woche NICHT wiederholen (letzte Wochen): ${lastDishesList.join(', ')}.`
+    : ''
 
   const familienProfil = familyPrompt || 'Sabine (MA) keine Nüsse mag Fisch, Heiko (PA) laktosefrei mag Pasta, Tim (TI) kein Fisch mag Nudeln'
   console.log('[week-plan] familyPrompt:', familienProfil)
-  const rezeptBeispiel = `{"zutaten":[{"menge":"200g","name":"Zutat","typ":"frisch"}],"schritte":["Kurze Zubereitung"],"minuten":30,"schwierigkeit":"Einfach","ersetzteZutaten":["1 Packung glutenfreier Pizzateig (für Heiko)"]}`
-  const prompt = `Du bist Rémy. Plane ${slotHinweis} für ${planTage.join(', ')} für Familie Flechner. Profil: ${familienProfil}.${wishHinweis} Gefriertruhe: ${freezerList}. Speisekammer: ${pantryList}. Nutze Gefriertruhe/Speisekammer wenn sinnvoll – Artikel mit [DRINGEND] müssen diese Woche eingeplant werden. Weise pro Tag+Slot Küchenchef zu (MA PA TI) nach Fairness. WICHTIG: Wähle immer normale, typische Familiengerichte – nie vorsorglich glutenfreie oder laktosefreie Varianten. Ändere Gerichtsnamen nie. Wenn eine Zutat eines gewählten Gerichts gegen eine Unverträglichkeit verstößt (z.B. normaler Pizzateig enthält Gluten, normale Pasta enthält Gluten, Käse enthält Laktose), trag die zusätzlich benötigte Ersatz-Zutat für die betroffene Person in ersetzteZutaten ein als "Menge Zutat (für Person)", z.B. "1 Packung glutenfreier Pizzateig (für Heiko)". Die anderen Familienmitglieder essen das normale Gericht. Wenn kein Gericht eine Unverträglichkeit betrifft, setze ersetzteZutaten auf []. Kurze Rezepte: max. 4 Zutaten, max. 3 Schritte. Antworte NUR als reines JSON ohne Markdown-Codeblock: {"woche":[${beispiele.join(',')}],"rezepte":{"GerichtName":${rezeptBeispiel}}} — Für jedes Gericht in woche muss ein Eintrag in rezepte stehen. typ ist eines von: frisch, tiefkühl, speisekammer, gefriertruhe. Nur Zutaten die man einkaufen muss.`
+  console.log('[week-plan] lastDishes:', lastDishesList.length, 'Einträge')
+  const rezeptBeispiel = `{"zutaten":[{"menge":"200g","name":"Zutat A","typ":"frisch"},{"menge":"1 EL","name":"Zutat B","typ":"speisekammer"}],"schritte":["Schritt mit Menge und Technik.","Weiterer Schritt."],"minuten":30,"schwierigkeit":"Einfach","ersetzteZutaten":["1 Packung glutenfreier Pizzateig (für Heiko)"]}`
+  const prompt = `Du bist Rémy. Plane ${slotHinweis} für ${planTage.join(', ')} für Familie Flechner. Profil: ${familienProfil}.${wishHinweis}${historyHinweis} Gefriertruhe: ${freezerList}. Speisekammer: ${pantryList}. Nutze Gefriertruhe/Speisekammer wenn sinnvoll – Artikel mit [DRINGEND] müssen diese Woche eingeplant werden. Weise pro Tag+Slot Küchenchef zu (MA PA TI) nach Fairness. WICHTIG: Wähle immer normale, typische Familiengerichte – nie vorsorglich glutenfreie oder laktosefreie Varianten. Ändere Gerichtsnamen nie. Wenn eine Zutat eines gewählten Gerichts gegen eine Unverträglichkeit verstößt (z.B. normaler Pizzateig enthält Gluten, normale Pasta enthält Gluten, Käse enthält Laktose), trag die zusätzlich benötigte Ersatz-Zutat für die betroffene Person in ersetzteZutaten ein als "Menge Zutat (für Person)", z.B. "1 Packung glutenfreier Pizzateig (für Heiko)". Die anderen Familienmitglieder essen das normale Gericht. Wenn kein Gericht eine Unverträglichkeit betrifft, setze ersetzteZutaten auf []. Rezepte: 5–8 Zutaten (alle die man einkaufen oder aus Vorräten nehmen muss), 4–6 knappe Schritte mit konkreten Mengenangaben. Antworte NUR als reines JSON ohne Markdown-Codeblock: {"woche":[${beispiele.join(',')}],"rezepte":{"GerichtName":${rezeptBeispiel}}} — Für jedes Gericht in woche muss ein Eintrag in rezepte stehen. typ ist eines von: frisch, tiefkühl, speisekammer, gefriertruhe. Nur Zutaten die man einkaufen muss.`
 
   try {
     const resp = await fetch('https://api.anthropic.com/v1/messages', {
@@ -162,7 +167,7 @@ export async function POST(req: NextRequest) {
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: 'claude-haiku-4-5',
+        model: 'claude-sonnet-4-6',
         max_tokens: 8000,
         messages: [{ role: 'user', content: prompt }],
       }),

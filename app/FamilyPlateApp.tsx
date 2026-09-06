@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
-import { loadWeekPlan, saveWeekPlan, saveAttendance, saveShoppingList, saveProposals, saveWochenchef, savePlanConfirmed, saveShopDone, saveShoppingDays } from '../lib/mealLogic'
+import { loadWeekPlan, saveWeekPlan, saveAttendance, saveShoppingList, saveProposals, saveWochenchef, savePlanConfirmed, saveShopDone, saveShoppingDays, loadLastDishes } from '../lib/mealLogic'
 import { loadFreezerItems, loadPantryItems } from '../lib/freezerLogic'
 import { loadFamilyProfile, saveFamilyProfile, applyChefStats, DEFAULT_MEMBERS } from '../lib/familyLogic'
 import { signOut, onAuthChange } from '../lib/auth'
@@ -36,6 +36,7 @@ export default function FamilyPlateApp() {
   const [planConfirmed, setPlanConfirmed] = useState(false)
   const [shopDone, setShopDone] = useState(false)
   const [shoppingDays, setShoppingDays] = useState<string[]>([])
+  const [lastDishes, setLastDishes] = useState<string[]>([])
   const [attendanceSignal, setAttendanceSignal] = useState(0)
   const [activeTab, setActiveTab] = useState<Tab>('woche')
   const [profileSaveError, setProfileSaveError] = useState<string | null>(null)
@@ -69,8 +70,8 @@ export default function FamilyPlateApp() {
 
   useEffect(() => {
     if (!currentUser) return
-    Promise.all([loadWeekPlan(), loadFreezerItems(), loadPantryItems(), loadFamilyProfile()])
-      .then(([{ plan, mealsData: md, wishes: w, attendance: att, attendanceConfirmed: ac, shoppingList: sl, proposals: pr, wochenchef: wc, planConfirmed: pc, shopDone: sd, shoppingDays: sd2 }, freezer, pantry, profile]) => {
+    Promise.all([loadWeekPlan(), loadFreezerItems(), loadPantryItems(), loadFamilyProfile(), loadLastDishes()])
+      .then(([{ plan, mealsData: md, wishes: w, attendance: att, attendanceConfirmed: ac, shoppingList: sl, proposals: pr, wochenchef: wc, planConfirmed: pc, shopDone: sd, shoppingDays: sd2 }, freezer, pantry, profile, lastDishesData]) => {
         setWeekPlan(plan)
         setMealsData(md)
         setWishes(w)
@@ -85,6 +86,7 @@ export default function FamilyPlateApp() {
         setFreezerItems(freezer)
         setPantryItems(pantry)
         setFamilyProfile(profile)
+        setLastDishes(lastDishesData)
         setDataLoading(false)
       })
       .catch(err => {
@@ -254,6 +256,7 @@ export default function FamilyPlateApp() {
             onFreezerChange={setFreezerItems}
             attendanceSignal={attendanceSignal}
             shoppingDays={shoppingDays}
+            lastDishes={lastDishes}
           />
         )}
         {activeTab === 'gefriertruhe' && (
