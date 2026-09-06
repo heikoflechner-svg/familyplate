@@ -69,11 +69,11 @@ export default function WocheScreen({
   ) as Record<Chef, string>
   const familyPrompt = buildFamilyPrompt(members.length ? members : DEFAULT_MEMBERS)
   const activeMembers = members.length ? members : DEFAULT_MEMBERS
-  const suggestedNextChef: Chef = [...activeMembers].sort((a, b) => {
+  const suggestedNextChef: Chef = ([...activeMembers].sort((a, b) => {
     const aDate = a.chefStat?.lastCook ?? ''
     const bDate = b.chefStat?.lastCook ?? ''
     return aDate < bDate ? -1 : aDate > bDate ? 1 : 0
-  })[0]?.id ?? 'PA'
+  }).find(m => m.id !== wochenchef)?.id ?? activeMembers.find(m => m.id !== wochenchef)?.id ?? 'PA') as Chef
   const [view, setView] = useState<View>('home')
   useEffect(() => { if (attendanceSignal && attendanceSignal > 0) setView('attendance') }, [attendanceSignal])
   const [planState, setPlanState] = useState<PlanState>('options')
