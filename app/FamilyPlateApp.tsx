@@ -101,6 +101,13 @@ export default function FamilyPlateApp() {
     await saveWeekPlan(plan, meals, wishes)
   }
 
+  async function handleWeekPlanAndWishesChange(plan: WeekPlanEntry[], meals: Record<string, Rezept>, newWishes: Wish[]) {
+    setWeekPlan(plan)
+    setMealsData(meals)
+    setWishes(newWishes)
+    await saveWeekPlan(plan, meals, newWishes)
+  }
+
   async function handleWishesChange(newWishes: Wish[]) {
     setWishes(newWishes)
     await saveWeekPlan(weekPlan, mealsData, newWishes)
@@ -241,6 +248,7 @@ export default function FamilyPlateApp() {
             attendanceConfirmed={attendanceConfirmed}
             proposals={proposals}
             onWeekPlanChange={handleWeekPlanChange}
+            onWeekPlanAndWishesChange={handleWeekPlanAndWishesChange}
             onWishesChange={handleWishesChange}
             onAttendanceChange={handleAttendanceChange}
             onAttendanceConfirmedChange={handleAttendanceConfirmedChange}

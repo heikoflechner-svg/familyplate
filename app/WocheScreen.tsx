@@ -39,6 +39,7 @@ interface Props {
   planConfirmed: boolean
   shopDone: boolean
   onWeekPlanChange: (plan: WeekPlanEntry[], meals: Record<string, Rezept>) => Promise<void>
+  onWeekPlanAndWishesChange: (plan: WeekPlanEntry[], meals: Record<string, Rezept>, wishes: Wish[]) => Promise<void>
   onWishesChange: (wishes: Wish[]) => Promise<void>
   onAttendanceChange: (a: DayAttendance[]) => Promise<void>
   onAttendanceConfirmedChange: (confirmed: Chef[]) => Promise<void>
@@ -101,7 +102,7 @@ function getShoppingDeadlineStatus(shoppingDays: string[], now = new Date()):
 
 export default function WocheScreen({
   weekPlan, mealsData, planMittag, planWE, freezerItems, pantryItems,
-  wishes, currentUser, wochenchef, members, attendance, attendanceConfirmed, proposals, planConfirmed, shopDone, onWeekPlanChange, onWishesChange,
+  wishes, currentUser, wochenchef, members, attendance, attendanceConfirmed, proposals, planConfirmed, shopDone, onWeekPlanChange, onWeekPlanAndWishesChange, onWishesChange,
   onAttendanceChange, onAttendanceConfirmedChange, onPlanConfirm, onProposalsChange, onWochenchefChange, onPlanConfirmedChange, onShopDoneChange,
   shoppingList, onShoppingListChange, onFreezerChange, attendanceSignal,
   shoppingDays = [],
@@ -404,11 +405,11 @@ export default function WocheScreen({
     setSlotLoading(key)
     try {
       const { plan: result, mealsData: newMeals } = await generateWeekPlan({
-        planMittag,
+        planMittag: slot === 'Abend' ? false : planMittag,
         planWE,
         freezerList: getFreezerListString(freezerItems),
         pantryList: getPantryListString(pantryItems),
-        behaltene: pendingPlan.filter(e => e.tag !== tag),
+        behaltene: pendingPlan.filter(e => !(e.tag === tag && e.slot === slot)),
         neuTage: [tag],
         wishes: wishes.filter(w => w.tag === tag && w.slot === slot),
         familyPrompt,
@@ -631,7 +632,8 @@ export default function WocheScreen({
       }
     }
 
-    await onWeekPlanChange(finalPlan, updatedMealsData)
+    const newWishes = wishes.filter(w => w.postConfirm)
+    await onWeekPlanAndWishesChange(finalPlan, updatedMealsData, newWishes)
     if (newItems.length > 0) {
       await onShoppingListChange([...shoppingList, ...newItems])
     }
@@ -689,9 +691,9 @@ export default function WocheScreen({
         if (rezept) newMeals[wish.dishName] = rezept
       }
     }))
-    await onWeekPlanChange(finalPlan, { ...mealsData, ...newMeals })
     const processedIds = new Set(nachtragsAltWishes.map(w => w.id))
-    await onWishesChange(wishes.filter(w => !processedIds.has(w.id)))
+    const newWishes = wishes.filter(w => !processedIds.has(w.id))
+    await onWeekPlanAndWishesChange(finalPlan, { ...mealsData, ...newMeals }, newWishes)
     setNachtragsAltIds([])
     setSaving(false)
   }
