@@ -68,6 +68,12 @@ export default function WocheScreen({
     (members.length ? members : DEFAULT_MEMBERS).map(m => [m.id, m.name])
   ) as Record<Chef, string>
   const familyPrompt = buildFamilyPrompt(members.length ? members : DEFAULT_MEMBERS)
+  const activeMembers = members.length ? members : DEFAULT_MEMBERS
+  const suggestedNextChef: Chef = [...activeMembers].sort((a, b) => {
+    const aDate = a.chefStat?.lastCook ?? ''
+    const bDate = b.chefStat?.lastCook ?? ''
+    return aDate < bDate ? -1 : aDate > bDate ? 1 : 0
+  })[0]?.id ?? 'PA'
   const [view, setView] = useState<View>('home')
   useEffect(() => { if (attendanceSignal && attendanceSignal > 0) setView('attendance') }, [attendanceSignal])
   const [planState, setPlanState] = useState<PlanState>('options')
@@ -761,6 +767,46 @@ export default function WocheScreen({
 
           {planState === 'options' && (
             <>
+              {/* ── Wochenchef auswählen ── */}
+              <div style={{ marginBottom: 24 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: '#111', marginBottom: 10 }}>👩‍🍳 Wer kocht diese Woche?</div>
+                <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                  {activeMembers.map(m => {
+                    const isSelected = m.id === wochenchef
+                    const isSuggested = m.id === suggestedNextChef && m.id !== wochenchef
+                    const cc = CFG[m.id as Chef] ?? CFG.MA
+                    return (
+                      <button
+                        key={m.id}
+                        onClick={() => onWochenchefChange(m.id as Chef)}
+                        style={{
+                          flex: 1, padding: '10px 6px', borderRadius: 10, textAlign: 'center', cursor: 'pointer',
+                          border: `2px solid ${isSelected ? cc.c : isSuggested ? '#FCD34D' : '#e5e7eb'}`,
+                          background: isSelected ? cc.bg : isSuggested ? '#FFFBEB' : 'white',
+                        }}
+                      >
+                        <div style={{ fontSize: 10, color: isSelected ? cc.c : '#bbb', marginBottom: 2 }}>{m.id}</div>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: isSelected ? cc.c : '#333' }}>{m.name}</div>
+                        <div style={{ fontSize: 9, marginTop: 3, color: isSelected ? cc.c : isSuggested ? '#92400E' : '#ddd' }}>
+                          {isSelected ? '✓ ausgewählt' : isSuggested ? '★ Empfehlung' : ''}
+                        </div>
+                      </button>
+                    )
+                  })}
+                </div>
+                {(() => {
+                  const sel = activeMembers.find(m => m.id === wochenchef)
+                  const last = sel?.chefStat?.lastCook
+                  if (!last) return null
+                  const d = new Date(last)
+                  const fmt = `${d.getDate().toString().padStart(2, '0')}.${(d.getMonth() + 1).toString().padStart(2, '0')}.`
+                  return (
+                    <div style={{ fontSize: 10, color: '#bbb' }}>
+                      {personNames[wochenchef]} hat zuletzt am {fmt} gekocht · {sel?.chefStat?.count ?? 0}× gesamt
+                    </div>
+                  )
+                })()}
+              </div>
               {/* ── Schritt 1: Anwesenheit ── */}
               {(() => {
                 const confirmed = attendanceConfirmed.filter(c => allChefIds.includes(c)).length
