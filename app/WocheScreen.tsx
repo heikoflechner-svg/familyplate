@@ -51,6 +51,7 @@ interface Props {
   onShoppingListChange: (list: ShoppingItem[]) => Promise<void>
   onFreezerChange: (items: FreezerItem[]) => void
   attendanceSignal?: number
+  shoppingDays?: string[]
 }
 
 type View = 'home' | 'week' | 'plan' | 'attendance'
@@ -61,6 +62,7 @@ export default function WocheScreen({
   wishes, currentUser, wochenchef, members, attendance, attendanceConfirmed, proposals, planConfirmed, shopDone, onWeekPlanChange, onWishesChange,
   onAttendanceChange, onAttendanceConfirmedChange, onPlanConfirm, onProposalsChange, onWochenchefChange, onPlanConfirmedChange, onShopDoneChange,
   shoppingList, onShoppingListChange, onFreezerChange, attendanceSignal,
+  shoppingDays = [],
 }: Props) {
   const personNames: Record<Chef, string> = Object.fromEntries(
     (members.length ? members : DEFAULT_MEMBERS).map(m => [m.id, m.name])
@@ -356,10 +358,21 @@ export default function WocheScreen({
     return anw.map(c => personNames[c] ?? c).join(', ')
   }
 
+  function slotEssenLabel(tag: string, slot: WochenSlot): string {
+    const anw = getSlotAnwesend(tag, slot)
+    const day = attendance.find(a => a.tag === tag) as unknown as Record<string, unknown> | undefined
+    const gaeste = (day?.gaeste as number | undefined) ?? 0
+    const total = anw.length + gaeste
+    if (total === 0) return '0'
+    if (anw.length === allChefIds.length && gaeste === 0) return 'alle'
+    return `${total}${gaeste > 0 ? ` (${gaeste} Gast${gaeste > 1 ? 'e' : ''})` : ''}`
+  }
+
   function goToPlan() {
     setView('plan')
     setPlanState('options')
     setError('')
+    setNeuTage(new Set(['alle']))
   }
 
   async function startPlanning() {
@@ -663,25 +676,41 @@ export default function WocheScreen({
 
           {planState === 'loading' && (
             <div style={{ textAlign: 'center', padding: '48px 0' }}>
-              <div style={{ fontSize: 48, marginBottom: 14 }}>🐀</div>
-              <div style={{ fontSize: 14, color: '#aaa' }}>Rémy plant deine Woche…</div>
+              <div style={{ fontSize: 48, marginBottom: 14 }}>🍲</div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: '#085041', marginBottom: 8 }}>Rémy plant für dich…</div>
+              <div style={{ fontSize: 13, color: '#555', marginBottom: 4 }}>Das dauert ca. 30 Sekunden – bitte warten.</div>
+              <div style={{ fontSize: 12, color: '#bbb' }}>Wünsche & Vorräte werden berücksichtigt.</div>
             </div>
           )}
 
           {planState === 'options' && (
             <>
+              {/* ── Schritt 1: Anwesenheit ── */}
               {(() => {
                 const confirmed = attendanceConfirmed.filter(c => allChefIds.includes(c)).length
                 const total = allChefIds.length
+                const done = confirmed === total
                 return (
-                  <div style={{ marginBottom: 14, padding: '8px 10px', borderRadius: 8, border: `1px solid ${confirmed < total ? '#FCD34D' : '#B2DFCC'}`, background: confirmed < total ? '#FFFBEB' : '#F0FAF5', fontSize: 11, color: confirmed < total ? '#92400E' : '#0F6E56', display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span>{confirmed < total ? '⚠️' : '✅'} Anwesenheit: {confirmed} von {total} bestätigt</span>
-                    <button onClick={() => setView('attendance')} style={{ marginLeft: 'auto', border: 'none', background: 'none', color: '#1D9E75', fontSize: 11, cursor: 'pointer', fontWeight: 600, padding: 0 }}>
-                      Bearbeiten →
-                    </button>
+                  <div style={{ marginBottom: 20 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                      <span style={{ width: 22, height: 22, borderRadius: '50%', background: done ? '#1D9E75' : '#F59E0B', color: 'white', fontSize: 11, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>1</span>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: '#111' }}>Anwesenheit eintragen</span>
+                      <span style={{ fontSize: 10, color: '#bbb', marginLeft: 'auto' }}>empfohlen</span>
+                    </div>
+                    <div style={{ padding: '8px 12px', borderRadius: 8, border: `1px solid ${done ? '#B2DFCC' : '#FCD34D'}`, background: done ? '#F0FAF5' : '#FFFBEB', fontSize: 11, color: done ? '#0F6E56' : '#92400E', display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span>{done ? '✅' : '⏳'} {confirmed} von {total} Personen eingetragen</span>
+                      <button onClick={() => setView('attendance')} style={{ marginLeft: 'auto', border: 'none', background: 'none', color: '#1D9E75', fontSize: 11, cursor: 'pointer', fontWeight: 600, padding: 0 }}>
+                        {done ? 'Bearbeiten →' : 'Eintragen →'}
+                      </button>
+                    </div>
                   </div>
                 )
               })()}
+              {/* ── Schritt 2: Wochenplan ── */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                <span style={{ width: 22, height: 22, borderRadius: '50%', background: '#1D9E75', color: 'white', fontSize: 11, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>2</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: '#111' }}>Wochenplan erstellen</span>
+              </div>
               {weekPlan.length > 0 && (
                 <>
                   <div className="lbl">Welche Tage neu planen?</div>
@@ -979,12 +1008,12 @@ export default function WocheScreen({
                           <span
                             onClick={canEdit ? () => toggleEditMeal(key) : undefined}
                             style={{ fontSize: 11, color: '#555', cursor: canEdit ? 'pointer' : 'default', textDecoration: canEdit ? 'underline' : 'none', textDecorationStyle: 'dashed', textDecorationColor: '#bbb' }}
-                          >{personNames[e.chef]}</span>
+                          >Koch: {personNames[e.chef]}</span>
                           <span style={{ fontSize: 10, color: '#ddd' }}>·</span>
                           <span
                             onClick={canEdit ? () => setAttendanceEditKey(isAttendanceEdit ? null : key) : undefined}
                             style={{ fontSize: 11, color: '#555', cursor: canEdit ? 'pointer' : 'default', textDecoration: canEdit ? 'underline' : 'none', textDecorationStyle: 'dashed', textDecorationColor: '#bbb' }}
-                          >{slotAnwesendLabel(tag, slot)}</span>
+                          >Essen: {slotEssenLabel(tag, slot)}</span>
                         </div>
                         {isEditing && canEdit && (
                           <div style={{ padding: '4px 12px 8px', background: '#f9f9f9' }}>
@@ -1239,12 +1268,12 @@ export default function WocheScreen({
           <span
             onClick={canEdit ? () => toggleEditMeal(key) : undefined}
             style={{ fontSize: 11, color: '#555', cursor: canEdit ? 'pointer' : 'default', textDecoration: canEdit ? 'underline' : 'none', textDecorationStyle: 'dashed', textDecorationColor: '#bbb' }}
-          >{personNames[entry.chef]}</span>
+          >Koch: {personNames[entry.chef]}</span>
           <span style={{ fontSize: 10, color: '#ddd' }}>·</span>
           <span
             onClick={canEdit ? () => setAttendanceEditKey(isAttendanceEdit ? null : key) : undefined}
             style={{ fontSize: 11, color: '#555', cursor: canEdit ? 'pointer' : 'default', textDecoration: canEdit ? 'underline' : 'none', textDecorationStyle: 'dashed', textDecorationColor: '#bbb' }}
-          >{slotAnwesendLabel(tag, slot)}</span>
+          >Essen: {slotEssenLabel(tag, slot)}</span>
         </div>
         {isEditing && canEdit && (
           <div style={{ padding: '4px 12px 8px', background: '#f9f9f9' }}>
@@ -1303,27 +1332,51 @@ export default function WocheScreen({
     return (
       <div className="screen active">
         <div className="topbar"><h1>🍽 FamilyPlate</h1></div>
-        <div className="content" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flex: 1 }}>
-          <div style={{ fontSize: 48, marginBottom: 14 }}>🐀</div>
-          <div style={{ fontSize: 17, fontWeight: 700, marginBottom: 8 }}>Rémy wartet</div>
-          <div style={{ fontSize: 13, color: '#aaa', marginBottom: 28, textAlign: 'center' }}>
-            Tippe hier – Rémy plant deine Woche in Sekunden.
+        <div className="content">
+          <div style={{ textAlign: 'center', padding: '24px 0 20px' }}>
+            <div style={{ fontSize: 40, marginBottom: 8 }}>🐀</div>
+            <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Rémy wartet auf den Plan</div>
+            <div style={{ fontSize: 12, color: '#aaa' }}>Rémy plant eure Woche in Sekunden.</div>
           </div>
-          {currentUser === wochenchef ? (
-            <button className="btn primary" style={{ width: 'auto', padding: '12px 32px' }} onClick={goToPlan}>
-              🐀 Woche planen
-            </button>
-          ) : (
-            <div style={{ fontSize: 12, color: '#bbb' }}>
-              {personNames[wochenchef]} ist diese Woche Wochenchef
+
+          {/* Schritt 1: Anwesenheit */}
+          <div style={{ borderRadius: 12, border: '1px solid #e5e7eb', marginBottom: 12, overflow: 'hidden' }}>
+            <div style={{ padding: '10px 14px', background: '#f9fafb', borderBottom: '1px solid #f0f0f0', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ width: 22, height: 22, borderRadius: '50%', background: '#F59E0B', color: 'white', fontSize: 11, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>1</span>
+              <span style={{ fontSize: 13, fontWeight: 700, color: '#111' }}>Anwesenheit eintragen</span>
+              <span style={{ fontSize: 10, color: '#aaa', marginLeft: 'auto' }}>empfohlen</span>
             </div>
-          )}
-          <button
-            onClick={() => setView('attendance')}
-            style={{ marginTop: 14, border: '1px solid #e5e7eb', background: 'white', color: '#555', fontSize: 12, cursor: 'pointer', padding: '8px 20px', borderRadius: 8 }}
-          >
-            👥 Anwesenheit eintragen
-          </button>
+            <div style={{ padding: '10px 14px' }}>
+              <div style={{ fontSize: 12, color: '#666', marginBottom: 10 }}>
+                Wer ist wann dabei? Rémy berücksichtigt das beim Planen.
+              </div>
+              <button
+                onClick={() => setView('attendance')}
+                style={{ width: '100%', padding: '9px', border: '1px solid #e5e7eb', borderRadius: 8, background: 'white', color: '#0F6E56', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+              >
+                👥 Anwesenheit eintragen →
+              </button>
+            </div>
+          </div>
+
+          {/* Schritt 2: Woche planen */}
+          <div style={{ borderRadius: 12, border: '1px solid #e5e7eb', marginBottom: 12, overflow: 'hidden' }}>
+            <div style={{ padding: '10px 14px', background: '#f9fafb', borderBottom: '1px solid #f0f0f0', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ width: 22, height: 22, borderRadius: '50%', background: '#1D9E75', color: 'white', fontSize: 11, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>2</span>
+              <span style={{ fontSize: 13, fontWeight: 700, color: '#111' }}>Wochenplan erstellen</span>
+            </div>
+            <div style={{ padding: '10px 14px' }}>
+              {currentUser === wochenchef ? (
+                <button className="btn primary" onClick={goToPlan}>
+                  🐀 Woche planen
+                </button>
+              ) : (
+                <div style={{ fontSize: 12, color: '#bbb', textAlign: 'center', padding: '4px 0' }}>
+                  {personNames[wochenchef]} ist diese Woche Wochenchef
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       </div>
     )
@@ -1337,6 +1390,30 @@ export default function WocheScreen({
       <div className="topbar"><h1>🍽 FamilyPlate</h1></div>
       <div className="content">
         {renderAllProposals()}
+        {planConfirmed && (
+          <div style={{ background: '#F0FAF5', border: '1px solid #B2DFCC', borderRadius: 10, padding: '10px 14px', marginBottom: 14 }}>
+            {currentUser !== wochenchef ? (
+              <>
+                <div style={{ fontSize: 13, fontWeight: 600, color: '#0F6E56', marginBottom: 3 }}>
+                  Hallo {personNames[currentUser]}! 👋
+                </div>
+                <div style={{ fontSize: 12, color: '#444' }}>
+                  {personNames[wochenchef]} hat die Woche geplant – trag gerne deine Wünsche ein.
+                  {shoppingDays.length > 0 && (
+                    <> Einkauf ist am <strong>{shoppingDays.join(' und ')}</strong>.</>
+                  )}
+                </div>
+              </>
+            ) : (
+              <div style={{ fontSize: 12, color: '#0F6E56' }}>
+                ✅ Woche bestätigt
+                {shoppingDays.length > 0 && (
+                  <> · Einkauf am <strong>{shoppingDays.join(' und ')}</strong></>
+                )}
+              </div>
+            )}
+          </div>
+        )}
         <div style={{ borderRadius: 12, border: '1px solid #e5e7eb', marginBottom: 14, overflow: 'hidden' }}>
           <div style={{ padding: '8px 12px', background: '#f0faf5', borderBottom: '1px solid #e0f0e8', display: 'flex', alignItems: 'center', gap: 6 }}>
             <span style={{ flex: 1, fontSize: 12, fontWeight: 700, color: '#085041' }}>Heute · {today}</span>
@@ -1586,8 +1663,8 @@ function WishesSection({
           {/* Modus */}
           <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
             {([
-              { mode: 'ergaenzung', label: '➕ Ergänzung' },
-              { mode: 'alternative', label: '✏️ Eigenes Gericht' },
+              { mode: 'ergaenzung', label: '➕ Zutat hinzufügen' },
+              { mode: 'alternative', label: '🔄 Anderes Gericht' },
               { mode: 'vorrat', label: '❄️ Aus Vorrat' },
               { mode: 'remy', label: '🐀 Rémy fragen' },
             ] as { mode: WishMode; label: string }[]).map(({ mode, label }) => (
@@ -1597,6 +1674,12 @@ function WishesSection({
                 {label}
               </button>
             ))}
+          </div>
+          <div style={{ fontSize: 10, color: '#888', marginTop: -2 }}>
+            {wishMode === 'ergaenzung' && 'Zutat ergänzen oder weglassen – z.B. „kein Käse", „Erbsen dazu"'}
+            {wishMode === 'alternative' && 'Ein komplett anderes Gericht vorschlagen – ersetzt das geplante Gericht'}
+            {wishMode === 'vorrat' && 'Ein Gericht aus Gefriertruhe oder Speisekammer wählen'}
+            {wishMode === 'remy' && 'Rémy macht Vorschläge passend zu euren Vorlieben'}
           </div>
 
           {/* Ergänzung */}

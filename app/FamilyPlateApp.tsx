@@ -253,6 +253,7 @@ export default function FamilyPlateApp() {
             onShoppingListChange={handleShoppingListChange}
             onFreezerChange={setFreezerItems}
             attendanceSignal={attendanceSignal}
+            shoppingDays={shoppingDays}
           />
         )}
         {activeTab === 'gefriertruhe' && (
