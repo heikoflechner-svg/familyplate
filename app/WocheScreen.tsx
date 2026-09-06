@@ -856,7 +856,7 @@ export default function WocheScreen({
             <>
               {/* ── Wochenchef auswählen ── */}
               <div style={{ marginBottom: 24 }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: '#111', marginBottom: 10 }}>👩‍🍳 Wer kocht diese Woche?</div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: '#111', marginBottom: 10 }}>👩‍🍳 Wer ist Küchenchef diese Woche?</div>
                 <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
                   {activeMembers.map(m => {
                     const isSelected = m.id === wochenchef
@@ -894,24 +894,17 @@ export default function WocheScreen({
                   )
                 })()}
               </div>
-              {/* ── Schritt 1: Anwesenheit ── */}
+              {/* ── Anwesenheit (kompakte Statuszeile) ── */}
               {(() => {
                 const confirmed = attendanceConfirmed.filter(c => allChefIds.includes(c)).length
                 const total = allChefIds.length
                 const done = confirmed === total
                 return (
-                  <div style={{ marginBottom: 20 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                      <span style={{ width: 22, height: 22, borderRadius: '50%', background: done ? '#1D9E75' : '#F59E0B', color: 'white', fontSize: 11, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>1</span>
-                      <span style={{ fontSize: 13, fontWeight: 700, color: '#111' }}>Anwesenheit eintragen</span>
-                      <span style={{ fontSize: 10, color: '#bbb', marginLeft: 'auto' }}>empfohlen</span>
-                    </div>
-                    <div style={{ padding: '8px 12px', borderRadius: 8, border: `1px solid ${done ? '#B2DFCC' : '#FCD34D'}`, background: done ? '#F0FAF5' : '#FFFBEB', fontSize: 11, color: done ? '#0F6E56' : '#92400E', display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <span>{done ? '✅' : '⏳'} {confirmed} von {total} Personen eingetragen</span>
-                      <button onClick={() => setView('attendance')} style={{ marginLeft: 'auto', border: 'none', background: 'none', color: '#1D9E75', fontSize: 11, cursor: 'pointer', fontWeight: 600, padding: 0 }}>
-                        {done ? 'Bearbeiten →' : 'Eintragen →'}
-                      </button>
-                    </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 16, padding: '7px 10px', borderRadius: 8, border: `1px solid ${done ? '#B2DFCC' : '#FCD34D'}`, background: done ? '#F0FAF5' : '#FFFBEB', fontSize: 11 }}>
+                    <span style={{ color: done ? '#0F6E56' : '#92400E' }}>{done ? '✅' : '⏳'} Anwesenheit: {confirmed}/{total}</span>
+                    <button onClick={() => setView('attendance')} style={{ marginLeft: 'auto', border: 'none', background: 'none', color: '#1D9E75', fontSize: 11, cursor: 'pointer', fontWeight: 600, padding: 0 }}>
+                      {done ? 'Bearbeiten →' : 'Eintragen →'}
+                    </button>
                   </div>
                 )
               })()}
@@ -978,7 +971,7 @@ export default function WocheScreen({
                 <div style={{ fontSize: 12, color: '#E24B4A', marginBottom: 12 }}>{error}</div>
               )}
               <button className="btn primary" onClick={startPlanning}>
-                🐀 Rémy schlägt vor
+                🐀 Rémy plant jetzt die Woche
               </button>
             </>
           )}
@@ -1475,25 +1468,21 @@ export default function WocheScreen({
         <div className="content">
           <div style={{ textAlign: 'center', padding: '24px 0 20px' }}>
             <div style={{ fontSize: 40, marginBottom: 8 }}>🐀</div>
-            <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Rémy wartet auf den Plan</div>
-            <div style={{ fontSize: 12, color: '#aaa' }}>Rémy plant eure Woche in Sekunden.</div>
+            <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Rémy plant eure Woche in Sekunden</div>
           </div>
 
           {/* Schritt 1: Anwesenheit */}
           <div style={{ borderRadius: 12, border: '1px solid #e5e7eb', marginBottom: 12, overflow: 'hidden' }}>
             <div style={{ padding: '10px 14px', background: '#f9fafb', borderBottom: '1px solid #f0f0f0', display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ width: 22, height: 22, borderRadius: '50%', background: '#F59E0B', color: 'white', fontSize: 11, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>1</span>
+              <span style={{ width: 22, height: 22, borderRadius: '50%', background: '#1D9E75', color: 'white', fontSize: 11, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>1</span>
               <span style={{ fontSize: 13, fontWeight: 700, color: '#111' }}>Anwesenheit eintragen</span>
-              <span style={{ fontSize: 10, color: '#aaa', marginLeft: 'auto' }}>empfohlen</span>
+              <span style={{ fontSize: 10, color: '#1D9E75', fontWeight: 600, marginLeft: 'auto', background: '#F0FAF5', borderRadius: 4, padding: '2px 6px' }}>empfohlen</span>
             </div>
             <div style={{ padding: '10px 14px' }}>
               <div style={{ fontSize: 12, color: '#666', marginBottom: 10 }}>
                 Wer ist wann dabei? Rémy berücksichtigt das beim Planen.
               </div>
-              <button
-                onClick={() => setView('attendance')}
-                style={{ width: '100%', padding: '9px', border: '1px solid #e5e7eb', borderRadius: 8, background: 'white', color: '#0F6E56', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
-              >
+              <button className="btn primary" onClick={() => setView('attendance')}>
                 👥 Anwesenheit eintragen →
               </button>
             </div>
