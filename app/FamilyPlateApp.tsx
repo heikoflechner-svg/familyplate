@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
-import { loadWeekPlan, saveWeekPlan, saveAttendance, saveShoppingList, saveProposals, saveWochenchef, savePlanConfirmed, saveShopDone, saveShoppingDays, loadLastDishes } from '../lib/mealLogic'
+import { loadWeekPlan, saveWeekPlan, saveAttendance, saveShoppingList, saveProposals, saveWochenchef, savePlanConfirmed, saveShopDone, saveShoppingDays, saveShoppingPersons, loadLastDishes } from '../lib/mealLogic'
 import { loadFreezerItems, loadPantryItems } from '../lib/freezerLogic'
 import { loadFamilyProfile, saveFamilyProfile, applyChefStats, DEFAULT_MEMBERS } from '../lib/familyLogic'
 import { signOut, onAuthChange } from '../lib/auth'
@@ -36,6 +36,7 @@ export default function FamilyPlateApp() {
   const [planConfirmed, setPlanConfirmed] = useState(false)
   const [shopDone, setShopDone] = useState(false)
   const [shoppingDays, setShoppingDays] = useState<string[]>([])
+  const [shoppingPersons, setShoppingPersons] = useState<Record<string, Chef>>({})
   const [lastDishes, setLastDishes] = useState<string[]>([])
   const [attendanceSignal, setAttendanceSignal] = useState(0)
   const [activeTab, setActiveTab] = useState<Tab>('woche')
@@ -71,7 +72,7 @@ export default function FamilyPlateApp() {
   useEffect(() => {
     if (!currentUser) return
     Promise.all([loadWeekPlan(), loadFreezerItems(), loadPantryItems(), loadFamilyProfile()])
-      .then(([{ plan, mealsData: md, wishes: w, attendance: att, attendanceConfirmed: ac, shoppingList: sl, proposals: pr, wochenchef: wc, planConfirmed: pc, shopDone: sd, shoppingDays: sd2 }, freezer, pantry, profile]) => {
+      .then(([{ plan, mealsData: md, wishes: w, attendance: att, attendanceConfirmed: ac, shoppingList: sl, proposals: pr, wochenchef: wc, planConfirmed: pc, shopDone: sd, shoppingDays: sd2, shoppingPersons: sp }, freezer, pantry, profile]) => {
         setWeekPlan(plan)
         setMealsData(md)
         setWishes(w)
@@ -83,6 +84,7 @@ export default function FamilyPlateApp() {
         setPlanConfirmed(pc)
         setShopDone(sd)
         setShoppingDays(sd2)
+        setShoppingPersons(sp)
         setFreezerItems(freezer)
         setPantryItems(pantry)
         setFamilyProfile(profile)
@@ -146,6 +148,17 @@ export default function FamilyPlateApp() {
   async function handleShoppingDaysChange(days: string[]) {
     setShoppingDays(days)
     await saveShoppingDays(days)
+  }
+
+  async function handleShoppingPersonsChange(persons: Record<string, Chef>) {
+    setShoppingPersons(persons)
+    await saveShoppingPersons(persons)
+  }
+
+  async function handleShoppingProposalSubmit(proposal: ChangeProposal) {
+    const updated = [...proposals, proposal]
+    setProposals(updated)
+    await saveProposals(updated)
   }
 
   async function handleShoppingListChange(list: ShoppingItem[]) {
@@ -264,6 +277,8 @@ export default function FamilyPlateApp() {
             onFreezerChange={setFreezerItems}
             attendanceSignal={attendanceSignal}
             shoppingDays={shoppingDays}
+            shoppingPersons={shoppingPersons}
+            onShoppingPersonsChange={handleShoppingPersonsChange}
             lastDishes={lastDishes}
           />
         )}
@@ -308,8 +323,13 @@ export default function FamilyPlateApp() {
           <MehrScreen
             currentUser={currentUser}
             wochenchef={activeWochenchef}
+            members={members}
             shoppingDays={shoppingDays}
+            shoppingPersons={shoppingPersons}
+            proposals={proposals}
             onShoppingDaysChange={handleShoppingDaysChange}
+            onShoppingPersonsChange={handleShoppingPersonsChange}
+            onShoppingProposalSubmit={handleShoppingProposalSubmit}
             onGoToAttendance={() => {
               setAttendanceSignal(prev => prev + 1)
               setActiveTab('woche')

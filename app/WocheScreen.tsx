@@ -53,6 +53,8 @@ interface Props {
   onFreezerChange: (items: FreezerItem[]) => void
   attendanceSignal?: number
   shoppingDays?: string[]
+  shoppingPersons?: Record<string, Chef>
+  onShoppingPersonsChange?: (persons: Record<string, Chef>) => Promise<void>
   lastDishes?: string[]
 }
 
@@ -106,6 +108,8 @@ export default function WocheScreen({
   onAttendanceChange, onAttendanceConfirmedChange, onPlanConfirm, onProposalsChange, onWochenchefChange, onPlanConfirmedChange, onShopDoneChange,
   shoppingList, onShoppingListChange, onFreezerChange, attendanceSignal,
   shoppingDays = [],
+  shoppingPersons = {},
+  onShoppingPersonsChange,
   lastDishes = [],
 }: Props) {
   const personNames: Record<Chef, string> = Object.fromEntries(
@@ -291,11 +295,19 @@ export default function WocheScreen({
     await onProposalsChange(proposals.filter(p => p.id !== id))
   }
 
+  async function acceptShoppingProposal(proposal: ChangeProposal) {
+    if (!proposal.vorgeschlagene || !onShoppingPersonsChange) return
+    await onShoppingPersonsChange({ ...shoppingPersons, [proposal.tag]: proposal.vorgeschlagene })
+    await onProposalsChange(proposals.filter(p => p.id !== proposal.id))
+  }
+
   function renderWochenchefDecisions() {
     if (currentUser !== wochenchef) return null
     const nachtragsAltWishes = wishes.filter((w): w is Extract<Wish, { type: 'alternative' }> & { postConfirm: true } => !!(w.postConfirm && w.type === 'alternative'))
     const nachtragsErgWishes = wishes.filter(w => w.postConfirm && w.type === 'ergaenzung')
-    const total = proposals.length + nachtragsAltWishes.length + nachtragsErgWishes.length
+    const chefProposals = proposals.filter(p => !p.type || p.type === 'chef')
+    const einkaufProposals = proposals.filter(p => p.type === 'einkauf')
+    const total = chefProposals.length + einkaufProposals.length + nachtragsAltWishes.length + nachtragsErgWishes.length
     const showPreConfirm = !planConfirmed && weekPlan.length > 0
     if (total === 0 && !showPreConfirm) return null
     return (
@@ -307,10 +319,10 @@ export default function WocheScreen({
         )}
 
         {/* Koch-Änderungsvorschläge */}
-        {proposals.length > 0 && (
-          <div style={{ padding: '10px 14px', borderBottom: (nachtragsAltWishes.length + nachtragsErgWishes.length) > 0 ? '1px solid #FDE68A' : 'none', background: '#FFFBEB' }}>
-            <div style={{ fontSize: 11, fontWeight: 600, color: '#92400E', marginBottom: 8 }}>👨‍🍳 Koch-Änderungen ({proposals.length})</div>
-            {proposals.map(p => {
+        {chefProposals.length > 0 && (
+          <div style={{ padding: '10px 14px', borderBottom: (einkaufProposals.length + nachtragsAltWishes.length + nachtragsErgWishes.length) > 0 ? '1px solid #FDE68A' : 'none', background: '#FFFBEB' }}>
+            <div style={{ fontSize: 11, fontWeight: 600, color: '#92400E', marginBottom: 8 }}>👨‍🍳 Koch-Änderungen ({chefProposals.length})</div>
+            {chefProposals.map(p => {
               const slotLabel = p.slot === 'Mittag' ? '🌞' : '🌙'
               const currentEntry = weekPlan.find(e => e.tag === p.tag && e.slot === p.slot)
               const toChef = p.newChef ?? (p as unknown as Record<string, WeekPlanEntry>).entry?.chef
@@ -327,6 +339,30 @@ export default function WocheScreen({
                   {currentEntry && <div style={{ fontSize: 10, color: '#bbb', marginBottom: 6 }}>{currentEntry.emoji} {currentEntry.gericht} bleibt unverändert</div>}
                   <div style={{ display: 'flex', gap: 6 }}>
                     <button onClick={() => acceptProposal(p)} style={{ flex: 1, padding: '5px', background: '#1D9E75', color: 'white', border: 'none', borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>✅ Übernehmen</button>
+                    <button onClick={() => rejectProposal(p.id)} style={{ padding: '5px 10px', background: 'white', border: '1px solid #ddd', borderRadius: 6, fontSize: 11, cursor: 'pointer', color: '#888' }}>✕ Ablehnen</button>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+
+        {/* Einkaufsperson-Vorschläge */}
+        {einkaufProposals.length > 0 && (
+          <div style={{ padding: '10px 14px', borderBottom: (nachtragsAltWishes.length + nachtragsErgWishes.length) > 0 ? '1px solid #FDE68A' : 'none', background: '#FFFBEB' }}>
+            <div style={{ fontSize: 11, fontWeight: 600, color: '#92400E', marginBottom: 8 }}>🛒 Einkaufsperson ({einkaufProposals.length})</div>
+            {einkaufProposals.map(p => {
+              const currentPerson = shoppingPersons[p.tag]
+              return (
+                <div key={p.id} style={{ background: 'white', border: '1px solid #FCD34D', borderRadius: 8, padding: '8px 10px', marginBottom: 6 }}>
+                  <div style={{ fontSize: 10, color: '#92400E', fontWeight: 700, marginBottom: 3 }}>🛒 {p.tag}</div>
+                  <div style={{ fontSize: 12, color: '#111', marginBottom: 6 }}>
+                    <span style={{ color: '#888' }}>{personNames[p.vonChef]} schlägt vor:</span>
+                    {currentPerson && currentPerson !== p.vorgeschlagene && <span style={{ color: '#aaa' }}> {personNames[currentPerson]} →</span>}
+                    <span style={{ fontWeight: 700 }}> {personNames[p.vorgeschlagene!]}</span>
+                  </div>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button onClick={() => acceptShoppingProposal(p)} style={{ flex: 1, padding: '5px', background: '#1D9E75', color: 'white', border: 'none', borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>✅ Übernehmen</button>
                     <button onClick={() => rejectProposal(p.id)} style={{ padding: '5px 10px', background: 'white', border: '1px solid #ddd', borderRadius: 6, fontSize: 11, cursor: 'pointer', color: '#888' }}>✕ Ablehnen</button>
                   </div>
                 </div>
@@ -1570,7 +1606,7 @@ export default function WocheScreen({
                 <div style={{ fontSize: 12, color: '#444' }}>
                   {personNames[wochenchef]} hat die Woche geplant – trag gerne deine Wünsche ein.
                   {shoppingDays.length > 0 && (
-                    <> Einkauf ist am <strong>{shoppingDays.join(' und ')}</strong>.</>
+                    <> Einkauf ist am <strong>{shoppingDays.map(d => shoppingPersons[d] ? `${d} (${personNames[shoppingPersons[d]]})` : d).join(' und ')}</strong>.</>
                   )}
                 </div>
               </>
@@ -1578,7 +1614,7 @@ export default function WocheScreen({
               <div style={{ fontSize: 12, color: '#0F6E56' }}>
                 ✅ Woche bestätigt
                 {shoppingDays.length > 0 && (
-                  <> · Einkauf am <strong>{shoppingDays.join(' und ')}</strong></>
+                  <> · Einkauf am <strong>{shoppingDays.map(d => shoppingPersons[d] ? `${d} (${personNames[shoppingPersons[d]]})` : d).join(' und ')}</strong></>
                 )}
               </div>
             )}
