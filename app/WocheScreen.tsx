@@ -130,6 +130,36 @@ export default function WocheScreen({
   const [pendingPlan, setPendingPlan] = useState<WeekPlanEntry[]>([])
   const [pendingPlanMeals, setPendingPlanMeals] = useState<Record<string, Rezept>>({})
   const [pendingDayMeals, setPendingDayMeals] = useState<Record<string, Rezept>>({})
+
+  // sessionStorage: Vorschlag bei Reload wiederherstellen
+  useEffect(() => {
+    try {
+      const savedPlan = sessionStorage.getItem('fp_pendingPlan')
+      const savedMeals = sessionStorage.getItem('fp_pendingPlanMeals')
+      if (savedPlan && savedMeals) {
+        const plan = JSON.parse(savedPlan) as WeekPlanEntry[]
+        if (plan.length > 0) {
+          setPendingPlan(plan)
+          setPendingPlanMeals(JSON.parse(savedMeals) as Record<string, Rezept>)
+          setPlanState('results')
+          setView('plan')
+        }
+      }
+    } catch {
+      sessionStorage.removeItem('fp_pendingPlan')
+      sessionStorage.removeItem('fp_pendingPlanMeals')
+    }
+  }, [])
+
+  useEffect(() => {
+    if (pendingPlan.length > 0) {
+      sessionStorage.setItem('fp_pendingPlan', JSON.stringify(pendingPlan))
+      sessionStorage.setItem('fp_pendingPlanMeals', JSON.stringify(pendingPlanMeals))
+    } else {
+      sessionStorage.removeItem('fp_pendingPlan')
+      sessionStorage.removeItem('fp_pendingPlanMeals')
+    }
+  }, [pendingPlan, pendingPlanMeals])
   const [neuTage, setNeuTage] = useState<Set<string>>(new Set(['alle']))
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -266,12 +296,15 @@ export default function WocheScreen({
     const nachtragsAltWishes = wishes.filter((w): w is Extract<Wish, { type: 'alternative' }> & { postConfirm: true } => !!(w.postConfirm && w.type === 'alternative'))
     const nachtragsErgWishes = wishes.filter(w => w.postConfirm && w.type === 'ergaenzung')
     const total = proposals.length + nachtragsAltWishes.length + nachtragsErgWishes.length
-    if (total === 0) return null
+    const showPreConfirm = !planConfirmed && weekPlan.length > 0
+    if (total === 0 && !showPreConfirm) return null
     return (
-      <div style={{ marginBottom: 14, border: '1px solid #FCD34D', borderRadius: 12, overflow: 'hidden' }}>
-        <div style={{ background: '#FFFBEB', padding: '10px 14px 8px', borderBottom: total > 0 ? '1px solid #FDE68A' : 'none' }}>
-          <span style={{ fontSize: 12, fontWeight: 700, color: '#92400E' }}>📋 Offene Entscheidungen ({total})</span>
-        </div>
+      <div style={{ marginBottom: 14, border: `1px solid ${total > 0 ? '#FCD34D' : '#B2DFCC'}`, borderRadius: 12, overflow: 'hidden' }}>
+        {total > 0 && (
+          <div style={{ background: '#FFFBEB', padding: '10px 14px 8px', borderBottom: '1px solid #FDE68A' }}>
+            <span style={{ fontSize: 12, fontWeight: 700, color: '#92400E' }}>📋 Offene Entscheidungen ({total})</span>
+          </div>
+        )}
 
         {/* Koch-Änderungsvorschläge */}
         {proposals.length > 0 && (
@@ -336,7 +369,7 @@ export default function WocheScreen({
 
         {/* Nachtrags-Ergänzungen (Zutaten) */}
         {nachtragsErgWishes.length > 0 && (
-          <div style={{ padding: '10px 14px', background: '#FFFBEB' }}>
+          <div style={{ padding: '10px 14px', background: '#FFFBEB', borderBottom: showPreConfirm ? '1px solid #B2DFCC' : 'none' }}>
             <div style={{ fontSize: 11, fontWeight: 600, color: '#92400E', marginBottom: 4 }}>📬 Zutat-Ergänzungen ({nachtragsErgWishes.length})</div>
             <div style={{ fontSize: 11, color: '#555', marginBottom: 8 }}>Ankreuzen, was auf die Einkaufsliste soll:</div>
             {nachtragsErgWishes.map(w => {
@@ -357,6 +390,27 @@ export default function WocheScreen({
             <button className="btn primary" onClick={confirmNachtraege} disabled={saving || nachtragsIds.length === 0}
               style={{ background: '#1D9E75', fontSize: 12, marginTop: 6, opacity: nachtragsIds.length === 0 ? 0.4 : 1 }}>
               {saving ? '⏳…' : `🛒 ${nachtragsIds.length} Ergänzung(en) zur Einkaufsliste`}
+            </button>
+          </div>
+        )}
+
+        {/* Pre-confirm: Wochenchef bestätigt den angenommenen Wochenplan */}
+        {showPreConfirm && (
+          <div style={{ padding: '12px 14px', background: '#F0FAF5' }}>
+            <div style={{ fontSize: 12, color: '#0F6E56', fontWeight: 600, marginBottom: 6 }}>
+              Wochenchef-Entscheidung abschließen
+            </div>
+            <div style={{ fontSize: 11, color: '#555', marginBottom: 10 }}>
+              {Object.keys(chefAltSelection).filter(k => chefAltSelection[k] !== 'original').length} Alternative(n) übernommen ·{' '}
+              {chefErgaenzungIds.length} Ergänzung(en) auf Einkaufsliste
+            </div>
+            <button
+              className="btn primary"
+              onClick={confirmAsChef}
+              disabled={saving}
+              style={{ background: '#1D9E75', fontSize: 13 }}
+            >
+              {saving ? '⏳ Speichern…' : `✅ Als Wochenchef bestätigen (${personNames[wochenchef]})`}
             </button>
           </div>
         )}
@@ -577,8 +631,9 @@ export default function WocheScreen({
     await saveLastDishes(aktualisierteHistory)
 
     setSaving(false)
-    setPlanState('options')
+    setPendingPlan([])
     setPendingPlanMeals({})
+    setPlanState('options')
     setNeuTage(new Set(['alle']))
     setView('home')
   }
@@ -1109,7 +1164,7 @@ export default function WocheScreen({
                 </button>
                 <button
                   className="btn"
-                  onClick={() => { setPlanState('options'); closeMealPanel() }}
+                  onClick={() => { setPendingPlan([]); setPendingPlanMeals({}); setPlanState('options'); closeMealPanel() }}
                   style={{ width: 'auto', padding: '13px 16px' }}
                 >
                   ✕
@@ -1334,29 +1389,6 @@ export default function WocheScreen({
               )
             })
           )}
-          {currentUser === wochenchef && !planConfirmed && weekPlan.length > 0 && (
-            <div style={{
-              margin: '16px 0 0', padding: '14px 16px',
-              background: '#F0FAF5', borderRadius: 12, border: '1px solid #B2DFCC',
-            }}>
-              <div style={{ fontSize: 12, color: '#0F6E56', fontWeight: 600, marginBottom: 6 }}>
-                Wochenchef-Entscheidung abschließen
-              </div>
-              <div style={{ fontSize: 11, color: '#555', marginBottom: 10 }}>
-                {Object.keys(chefAltSelection).filter(k => chefAltSelection[k] !== 'original').length} Alternative(n) übernommen ·{' '}
-                {chefErgaenzungIds.length} Ergänzung(en) auf Einkaufsliste
-              </div>
-              <button
-                className="btn primary"
-                onClick={confirmAsChef}
-                disabled={saving}
-                style={{ background: '#1D9E75', fontSize: 13 }}
-              >
-                {saving ? '⏳ Speichern…' : `✅ Als Wochenchef bestätigen (${personNames[wochenchef]})`}
-              </button>
-            </div>
-          )}
-
           {currentUser === wochenchef && !planConfirmed && (
             <button className="btn soft" style={{ marginTop: 8 }} onClick={goToPlan}>
               🔄 {weekPlan.length > 0 ? 'Neu planen' : 'Woche planen'}
