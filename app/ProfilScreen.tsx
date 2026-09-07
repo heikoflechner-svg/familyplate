@@ -43,6 +43,7 @@ export default function ProfilScreen({
   laeden, onLaedenChange,
 }: Props) {
   const [newLaden, setNewLaden] = useState('')
+  const [laedenOpen, setLaedenOpen] = useState(false)
   const maxCount = Math.max(...familyProfile.members.map(m => m.chefStat?.count ?? 0), 1)
 
   return (
@@ -129,46 +130,56 @@ export default function ProfilScreen({
           )
         })}
 
-        <div className="lbl" style={{ marginTop: 24 }}>Einkaufsläden</div>
-        <div className="card" style={{ marginBottom: 20 }}>
-          {laeden.map((l, i) => (
-            <div
-              key={l}
-              style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                padding: '9px 0', borderBottom: i < laeden.length - 1 ? '1px solid #f5f5f5' : 'none',
-              }}
-            >
-              <span style={{ fontSize: 13, color: '#111' }}>{l}</span>
-              <button
-                onClick={() => onLaedenChange(laeden.filter(x => x !== l))}
-                style={{ border: 'none', background: 'none', color: '#ccc', fontSize: 18, cursor: 'pointer', lineHeight: 1 }}
-              >×</button>
+        <div className="card" style={{ marginBottom: 20, marginTop: 24 }}>
+          <button
+            onClick={() => setLaedenOpen(o => !o)}
+            style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+          >
+            <span style={{ fontSize: 12, fontWeight: 700, color: '#888', textTransform: 'uppercase', letterSpacing: '.5px' }}>Einkaufsläden ({laeden.length})</span>
+            <span style={{ fontSize: 16, color: '#bbb', lineHeight: 1 }}>{laedenOpen ? '▲' : '▼'}</span>
+          </button>
+          {laedenOpen && (
+            <div style={{ marginTop: 12 }}>
+              {laeden.map((l, i) => (
+                <div
+                  key={l}
+                  style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    padding: '9px 0', borderBottom: i < laeden.length - 1 ? '1px solid #f5f5f5' : 'none',
+                  }}
+                >
+                  <span style={{ fontSize: 13, color: '#111' }}>{l}</span>
+                  <button
+                    onClick={() => onLaedenChange(laeden.filter(x => x !== l))}
+                    style={{ border: 'none', background: 'none', color: '#ccc', fontSize: 18, cursor: 'pointer', lineHeight: 1 }}
+                  >×</button>
+                </div>
+              ))}
+              <div style={{ display: 'flex', gap: 8, marginTop: laeden.length > 0 ? 10 : 0 }}>
+                <input
+                  value={newLaden}
+                  onChange={e => setNewLaden(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter' && newLaden.trim() && !laeden.includes(newLaden.trim())) {
+                      onLaedenChange([...laeden, newLaden.trim()])
+                      setNewLaden('')
+                    }
+                  }}
+                  placeholder="Laden hinzufügen"
+                  style={{ flex: 1, border: '1px solid #ddd', borderRadius: 10, padding: '8px 12px', fontSize: 13, outline: 'none' }}
+                />
+                <button
+                  onClick={() => {
+                    if (newLaden.trim() && !laeden.includes(newLaden.trim())) {
+                      onLaedenChange([...laeden, newLaden.trim()])
+                      setNewLaden('')
+                    }
+                  }}
+                  style={{ border: 'none', background: '#1D9E75', color: '#fff', borderRadius: 10, padding: '8px 14px', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}
+                >+</button>
+              </div>
             </div>
-          ))}
-          <div style={{ display: 'flex', gap: 8, marginTop: laeden.length > 0 ? 10 : 0 }}>
-            <input
-              value={newLaden}
-              onChange={e => setNewLaden(e.target.value)}
-              onKeyDown={e => {
-                if (e.key === 'Enter' && newLaden.trim() && !laeden.includes(newLaden.trim())) {
-                  onLaedenChange([...laeden, newLaden.trim()])
-                  setNewLaden('')
-                }
-              }}
-              placeholder="Laden hinzufügen"
-              style={{ flex: 1, border: '1px solid #ddd', borderRadius: 10, padding: '8px 12px', fontSize: 13, outline: 'none' }}
-            />
-            <button
-              onClick={() => {
-                if (newLaden.trim() && !laeden.includes(newLaden.trim())) {
-                  onLaedenChange([...laeden, newLaden.trim()])
-                  setNewLaden('')
-                }
-              }}
-              style={{ border: 'none', background: '#1D9E75', color: '#fff', borderRadius: 10, padding: '8px 14px', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}
-            >+</button>
-          </div>
+          )}
         </div>
 
         <button

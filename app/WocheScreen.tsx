@@ -911,7 +911,7 @@ export default function WocheScreen({
             <>
               {/* ── Wochenchef auswählen ── */}
               <div style={{ marginBottom: 24 }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: '#111', marginBottom: 10 }}>👩‍🍳 Wer ist Küchenchef diese Woche?</div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: '#111', marginBottom: 10 }}>👩‍🍳 Wochenchef für die kommende Woche festlegen</div>
                 <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
                   {activeMembers.map(m => {
                     const isSelected = m.id === wochenchef
@@ -1503,10 +1503,26 @@ export default function WocheScreen({
             <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Rémy plant eure Woche in Sekunden</div>
           </div>
 
-          {/* Karte 1: Wochenplan (primäre Aktion) */}
+          {/* Karte 1: Anwesenheit (vor dem Planen) */}
           <div style={{ borderRadius: 12, border: '1px solid #e5e7eb', marginBottom: 12, overflow: 'hidden' }}>
             <div style={{ padding: '10px 14px', background: '#f9fafb', borderBottom: '1px solid #f0f0f0', display: 'flex', alignItems: 'center', gap: 8 }}>
               <span style={{ width: 22, height: 22, borderRadius: '50%', background: '#1D9E75', color: 'white', fontSize: 11, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>1</span>
+              <span style={{ fontSize: 13, fontWeight: 700, color: '#111' }}>Anwesenheit eintragen</span>
+            </div>
+            <div style={{ padding: '10px 14px' }}>
+              <div style={{ fontSize: 12, color: '#666', marginBottom: 10 }}>
+                Wer ist wann dabei? Rémy berücksichtigt das beim Planen.
+              </div>
+              <button className="btn primary" onClick={() => setView('attendance')}>
+                👥 Anwesenheit eintragen →
+              </button>
+            </div>
+          </div>
+
+          {/* Karte 2: Wochenplan erstellen */}
+          <div style={{ borderRadius: 12, border: '1px solid #e5e7eb', marginBottom: 12, overflow: 'hidden' }}>
+            <div style={{ padding: '10px 14px', background: '#f9fafb', borderBottom: '1px solid #f0f0f0', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ width: 22, height: 22, borderRadius: '50%', background: '#1D9E75', color: 'white', fontSize: 11, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>2</span>
               <span style={{ fontSize: 13, fontWeight: 700, color: '#111' }}>Wochenplan erstellen</span>
             </div>
             <div style={{ padding: '10px 14px' }}>
@@ -1519,23 +1535,6 @@ export default function WocheScreen({
                   {personNames[wochenchef]} ist diese Woche Wochenchef
                 </div>
               )}
-            </div>
-          </div>
-
-          {/* Karte 2: Anwesenheit (empfohlen, vor dem Planen) */}
-          <div style={{ borderRadius: 12, border: '1px solid #e5e7eb', marginBottom: 12, overflow: 'hidden' }}>
-            <div style={{ padding: '10px 14px', background: '#f9fafb', borderBottom: '1px solid #f0f0f0', display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ width: 22, height: 22, borderRadius: '50%', background: '#1D9E75', color: 'white', fontSize: 11, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>2</span>
-              <span style={{ fontSize: 13, fontWeight: 700, color: '#111' }}>Anwesenheit eintragen</span>
-              <span style={{ fontSize: 10, color: '#1D9E75', fontWeight: 600, marginLeft: 'auto', background: '#F0FAF5', borderRadius: 4, padding: '2px 6px' }}>empfohlen</span>
-            </div>
-            <div style={{ padding: '10px 14px' }}>
-              <div style={{ fontSize: 12, color: '#666', marginBottom: 10 }}>
-                Wer ist wann dabei? Rémy berücksichtigt das beim Planen.
-              </div>
-              <button className="btn primary" onClick={() => setView('attendance')}>
-                👥 Anwesenheit eintragen →
-              </button>
             </div>
           </div>
         </div>
@@ -1584,7 +1583,7 @@ export default function WocheScreen({
               </div>
             )}
             <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid #B2DFCC' }}>
-              <div style={{ fontSize: 11, color: '#085041', fontWeight: 600, marginBottom: 6 }}>👩‍🍳 Wer kocht nächste Woche?</div>
+              <div style={{ fontSize: 11, color: '#085041', fontWeight: 600, marginBottom: 6 }}>👩‍🍳 Wochenchef für nächste Woche</div>
               <div style={{ display: 'flex', gap: 6 }}>
                 {activeMembers.map(m => {
                   const isSelected = m.id === wochenchef
