@@ -96,6 +96,17 @@ export interface DayAttendance {
   gaeste: number
 }
 
+export interface NextWeekWish {
+  id: string
+  person: Chef
+  text: string
+}
+
+export interface NextWeekData {
+  wochenchef: Chef
+  wishes: NextWeekWish[]
+}
+
 export interface ChefStat {
   count: number
   lastCook: string | null

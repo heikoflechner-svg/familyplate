@@ -1,10 +1,10 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
-import { loadWeekPlan, saveWeekPlan, saveAttendance, saveShoppingList, saveProposals, saveWochenchef, savePlanConfirmed, saveShopDone, saveShoppingDays, saveShoppingPersons, loadLastDishes } from '../lib/mealLogic'
+import { loadWeekPlan, saveWeekPlan, saveAttendance, saveShoppingList, saveProposals, saveWochenchef, savePlanConfirmed, saveShopDone, saveShoppingDays, saveShoppingPersons, loadLastDishes, getMondayIso, getNextMondayIso, saveWeekStart, loadNextWeekData, saveNextWeekData, activateNextWeek } from '../lib/mealLogic'
 import { loadFreezerItems, loadPantryItems } from '../lib/freezerLogic'
 import { loadFamilyProfile, saveFamilyProfile, applyChefStats, DEFAULT_MEMBERS } from '../lib/familyLogic'
 import { signOut, onAuthChange } from '../lib/auth'
-import type { WeekPlanEntry, Rezept, FreezerItem, PantryItem, ShoppingItem, Tab, Wish, Chef, FamilyProfile, DayAttendance, ChangeProposal } from '../lib/state'
+import type { WeekPlanEntry, Rezept, FreezerItem, PantryItem, ShoppingItem, Tab, Wish, Chef, FamilyProfile, DayAttendance, ChangeProposal, NextWeekData, NextWeekWish } from '../lib/state'
 import LoginScreen from './LoginScreen'
 import WocheScreen from './WocheScreen'
 import VorraeteScreen from './VorraeteScreen'
@@ -38,6 +38,9 @@ export default function FamilyPlateApp() {
   const [shoppingDays, setShoppingDays] = useState<string[]>([])
   const [shoppingPersons, setShoppingPersons] = useState<Record<string, Chef>>({})
   const [lastDishes, setLastDishes] = useState<string[]>([])
+  const [weekStart, setWeekStart] = useState<string | null>(null)
+  const [nextWeekStart, setNextWeekStart] = useState<string | null>(null)
+  const [nextWeekData, setNextWeekData] = useState<NextWeekData | null>(null)
   const [attendanceSignal, setAttendanceSignal] = useState(0)
   const [activeTab, setActiveTab] = useState<Tab>('woche')
   const [profileSaveError, setProfileSaveError] = useState<string | null>(null)
@@ -71,8 +74,8 @@ export default function FamilyPlateApp() {
 
   useEffect(() => {
     if (!currentUser) return
-    Promise.all([loadWeekPlan(), loadFreezerItems(), loadPantryItems(), loadFamilyProfile()])
-      .then(([{ plan, mealsData: md, wishes: w, attendance: att, attendanceConfirmed: ac, shoppingList: sl, proposals: pr, wochenchef: wc, planConfirmed: pc, shopDone: sd, shoppingDays: sd2, shoppingPersons: sp }, freezer, pantry, profile]) => {
+    Promise.all([loadWeekPlan(), loadFreezerItems(), loadPantryItems(), loadFamilyProfile(), loadNextWeekData()])
+      .then(([{ plan, mealsData: md, wishes: w, attendance: att, attendanceConfirmed: ac, shoppingList: sl, proposals: pr, wochenchef: wc, planConfirmed: pc, shopDone: sd, shoppingDays: sd2, shoppingPersons: sp, weekStart: ws }, freezer, pantry, profile, { nextWeekStart: nws, nextWeekData: nwd }]) => {
         setWeekPlan(plan)
         setMealsData(md)
         setWishes(w)
@@ -85,6 +88,9 @@ export default function FamilyPlateApp() {
         setShopDone(sd)
         setShoppingDays(sd2)
         setShoppingPersons(sp)
+        setWeekStart(ws)
+        setNextWeekStart(nws)
+        setNextWeekData(nwd)
         setFreezerItems(freezer)
         setPantryItems(pantry)
         setFamilyProfile(profile)
@@ -186,12 +192,45 @@ export default function FamilyPlateApp() {
     const updatedMembers = applyChefStats(familyProfile.members, confirmedEntries, today)
     const updated: FamilyProfile = { ...familyProfile, members: updatedMembers }
     setFamilyProfile(updated)
+    // Set week_start to current Monday when a plan is accepted
+    const monday = getMondayIso()
+    setWeekStart(monday)
+    await saveWeekStart(monday)
     try {
       await saveFamilyProfile(updated)
     } catch (err) {
       setProfileSaveError('Profil-Speichern fehlgeschlagen – Chef-Statistik nicht aktualisiert.')
       console.error('saveFamilyProfile:', err)
     }
+  }
+
+  async function handleNextWeekDataChange(data: Partial<NextWeekData>, nextMonday: string) {
+    const merged: NextWeekData = { wishes: [], ...nextWeekData, ...data, wochenchef: data.wochenchef ?? nextWeekData?.wochenchef ?? 'PA' }
+    setNextWeekData(merged)
+    setNextWeekStart(nextMonday)
+    await saveNextWeekData(nextMonday, merged)
+  }
+
+  async function handleActivateNextWeek() {
+    const { weekStart: newWs, nextWeekData: nwd } = await activateNextWeek()
+    // Reload full state from DB
+    const loaded = await loadWeekPlan()
+    setWeekPlan(loaded.plan)
+    setMealsData(loaded.mealsData)
+    setWishes(loaded.wishes)
+    setAttendance(loaded.attendance)
+    setAttendanceConfirmed(loaded.attendanceConfirmed)
+    setShoppingList(loaded.shoppingList)
+    setProposals(loaded.proposals)
+    setActiveWochenchef(loaded.wochenchef)
+    setPlanConfirmed(loaded.planConfirmed)
+    setShopDone(loaded.shopDone)
+    setShoppingDays(loaded.shoppingDays)
+    setShoppingPersons(loaded.shoppingPersons)
+    setWeekStart(newWs ?? loaded.weekStart)
+    setNextWeekStart(null)
+    setNextWeekData(null)
+    void nwd // used via DB reload
   }
 
   function handleTabChange(tab: Tab) {
@@ -280,6 +319,11 @@ export default function FamilyPlateApp() {
             shoppingPersons={shoppingPersons}
             onShoppingPersonsChange={handleShoppingPersonsChange}
             lastDishes={lastDishes}
+            weekStart={weekStart}
+            nextWeekStart={nextWeekStart}
+            nextWeekData={nextWeekData}
+            onNextWeekDataChange={handleNextWeekDataChange}
+            onActivateNextWeek={handleActivateNextWeek}
           />
         )}
         {activeTab === 'gefriertruhe' && (

@@ -3,10 +3,37 @@ import { useState, useEffect } from 'react'
 import { generateWeekPlan, getRemySuggestions, generateRecipe, saveLastDishes } from '../lib/mealLogic'
 import { getFreezerListString, getPantryListString, addFreezerItem, deleteFreezerItem } from '../lib/freezerLogic'
 import { buildFamilyPrompt, DEFAULT_MEMBERS } from '../lib/familyLogic'
-import type { WeekPlanEntry, Rezept, FreezerItem, PantryItem, Wish, Chef, WochenSlot, FamilyMember, DayAttendance, ChangeProposal, ShoppingItem, RemyVorschlag } from '../lib/state'
+import type { WeekPlanEntry, Rezept, FreezerItem, PantryItem, Wish, Chef, WochenSlot, FamilyMember, DayAttendance, ChangeProposal, ShoppingItem, RemyVorschlag, NextWeekData, NextWeekWish } from '../lib/state'
 import SlotWunschPanel from './SlotWunschPanel'
 
 const WOCHENTAGE = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag']
+
+function getMondayIso(d: Date = new Date()): string {
+  const date = new Date(d)
+  const dow = date.getDay()
+  date.setDate(date.getDate() + (dow === 0 ? -6 : 1 - dow))
+  return date.toISOString().slice(0, 10)
+}
+function getNextMondayIso(d: Date = new Date()): string {
+  const date = new Date(d)
+  const dow = date.getDay()
+  date.setDate(date.getDate() + (dow === 0 ? 1 : 8 - dow))
+  return date.toISOString().slice(0, 10)
+}
+function getKW(isoDate: string): number {
+  const d = new Date(isoDate + 'T00:00:00')
+  const thu = new Date(d)
+  thu.setDate(d.getDate() + 3 - (d.getDay() + 6) % 7)
+  const yearStart = new Date(thu.getFullYear(), 0, 4)
+  return Math.ceil((((thu.getTime() - yearStart.getTime()) / 86400000) + 1) / 7)
+}
+function getWeekRange(mondayIso: string): string {
+  const mon = new Date(mondayIso + 'T00:00:00')
+  const sun = new Date(mon)
+  sun.setDate(mon.getDate() + 6)
+  const M = ['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez']
+  return `${mon.getDate()}.–${sun.getDate()}. ${M[sun.getMonth()]}`
+}
 
 const CFG: Record<string, { bg: string; c: string }> = {
   MA: { bg: '#E1F5EE', c: '#0F6E56' },
@@ -56,6 +83,11 @@ interface Props {
   shoppingPersons?: Record<string, Chef>
   onShoppingPersonsChange?: (persons: Record<string, Chef>) => Promise<void>
   lastDishes?: string[]
+  weekStart?: string | null
+  nextWeekStart?: string | null
+  nextWeekData?: NextWeekData | null
+  onNextWeekDataChange?: (data: Partial<NextWeekData>, nextMonday: string) => Promise<void>
+  onActivateNextWeek?: () => Promise<void>
 }
 
 type View = 'home' | 'week' | 'plan' | 'attendance'
@@ -111,6 +143,11 @@ export default function WocheScreen({
   shoppingPersons = {},
   onShoppingPersonsChange,
   lastDishes = [],
+  weekStart = null,
+  nextWeekStart = null,
+  nextWeekData = null,
+  onNextWeekDataChange,
+  onActivateNextWeek,
 }: Props) {
   const personNames: Record<Chef, string> = Object.fromEntries(
     (members.length ? members : DEFAULT_MEMBERS).map(m => [m.id, m.name])
@@ -179,6 +216,19 @@ export default function WocheScreen({
   const [vorratHinweis, setVorratHinweis] = useState(false)
 
   const [wishFormKey, setWishFormKey] = useState<string | null>(null)
+  const [nextWeekWishInput, setNextWeekWishInput] = useState('')
+  const [nextWeekWishSaving, setNextWeekWishSaving] = useState(false)
+
+  async function submitNextWeekWish() {
+    if (!nextWeekWishInput.trim() || !onNextWeekDataChange) return
+    setNextWeekWishSaving(true)
+    const wish: NextWeekWish = { id: crypto.randomUUID(), person: currentUser, text: nextWeekWishInput.trim() }
+    const nextMonday = nextWeekStart ?? getNextMondayIso()
+    const currentWishes = nextWeekData?.wishes ?? []
+    await onNextWeekDataChange({ wishes: [...currentWishes, wish] }, nextMonday)
+    setNextWeekWishInput('')
+    setNextWeekWishSaving(false)
+  }
 
   function openWishForm(tag: string, slot: WochenSlot) { setWishFormKey(`${tag}-${slot}`) }
   function closeWishForm() { setWishFormKey(null) }
@@ -1573,7 +1623,7 @@ export default function WocheScreen({
           </div>
         )}
         {planConfirmed && (
-          <div style={{ background: '#F0FAF5', border: '1px solid #B2DFCC', borderRadius: 10, padding: '10px 14px', marginBottom: 14 }}>
+          <div style={{ background: '#F0FAF5', border: '1px solid #B2DFCC', borderRadius: 10, padding: '10px 14px', marginBottom: 12 }}>
             {currentUser !== wochenchef ? (
               <>
                 <div style={{ fontSize: 13, fontWeight: 600, color: '#0F6E56', marginBottom: 3 }}>
@@ -1588,37 +1638,113 @@ export default function WocheScreen({
               </>
             ) : (
               <div style={{ fontSize: 12, color: '#0F6E56' }}>
-                ✅ Woche bestätigt
+                ✅ Woche bestätigt{weekStart ? ` · KW ${getKW(weekStart)}` : ''}
                 {shoppingDays.length > 0 && (
                   <> · Einkauf am <strong>{shoppingDays.map(d => shoppingPersons[d] ? `${d} (${personNames[shoppingPersons[d]]})` : d).join(' und ')}</strong></>
                 )}
               </div>
             )}
-            <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid #B2DFCC' }}>
-              <div style={{ fontSize: 11, color: '#085041', fontWeight: 600, marginBottom: 6 }}>👩‍🍳 Wochenchef für nächste Woche</div>
-              <div style={{ display: 'flex', gap: 6 }}>
-                {activeMembers.map(m => {
-                  const isSelected = m.id === wochenchef
-                  const isSuggested = m.id === suggestedNextChef
-                  const cc = CFG[m.id as Chef] ?? CFG.MA
-                  return (
-                    <button
-                      key={m.id}
-                      onClick={() => onWochenchefChange(m.id as Chef)}
-                      style={{ flex: 1, padding: '7px 4px', borderRadius: 8, textAlign: 'center', cursor: 'pointer', border: `2px solid ${isSelected ? cc.c : isSuggested ? '#FCD34D' : '#c6e9d8'}`, background: isSelected ? cc.bg : isSuggested ? '#FFFBEB' : 'white' }}
-                    >
-                      <div style={{ fontSize: 9, color: isSelected ? cc.c : '#9ca3af', marginBottom: 1 }}>{m.id}</div>
-                      <div style={{ fontSize: 12, fontWeight: 700, color: isSelected ? cc.c : '#374151' }}>{m.name}</div>
-                      <div style={{ fontSize: 9, marginTop: 2, color: isSelected ? cc.c : isSuggested ? '#92400E' : 'transparent' }}>
-                        {isSelected ? '✓' : isSuggested ? '★' : '·'}
-                      </div>
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
           </div>
         )}
+
+        {/* Nächste Woche vorbereiten */}
+        {planConfirmed && (() => {
+          const nextMonday = nextWeekStart ?? getNextMondayIso()
+          const kw = getKW(nextMonday)
+          const dateRange = getWeekRange(nextMonday)
+          const nextChef = nextWeekData?.wochenchef
+          const currentMonday = getMondayIso()
+          const isCurrentWeekPast = weekStart != null && weekStart < currentMonday
+          const nextWishes = nextWeekData?.wishes ?? []
+          const myWish = nextWishes.find(w => w.person === currentUser)
+          return (
+            <div style={{ background: '#F8FAFC', border: '1px solid #E5E7EB', borderRadius: 10, padding: '12px 14px', marginBottom: 14 }}>
+              {/* Header */}
+              <div style={{ fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 10 }}>
+                📅 Nächste Woche · KW {kw} · {dateRange}
+              </div>
+
+              {/* Wochenchef-Auswahl (nur Wochenchef) */}
+              {currentUser === wochenchef ? (
+                <div style={{ marginBottom: 10 }}>
+                  <div style={{ fontSize: 10, color: '#888', marginBottom: 6 }}>Wochenchef festlegen:</div>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    {activeMembers.map(m => {
+                      const isSelected = nextChef === m.id
+                      const isSuggested = !nextChef && m.id === suggestedNextChef
+                      const cc = CFG[m.id as Chef] ?? CFG.MA
+                      return (
+                        <button key={m.id}
+                          onClick={() => onNextWeekDataChange?.({ wochenchef: m.id as Chef }, nextMonday)}
+                          style={{ flex: 1, padding: '7px 4px', borderRadius: 8, textAlign: 'center', cursor: 'pointer',
+                            border: `2px solid ${isSelected ? cc.c : isSuggested ? '#FCD34D' : '#e5e7eb'}`,
+                            background: isSelected ? cc.bg : isSuggested ? '#FFFBEB' : 'white' }}>
+                          <div style={{ fontSize: 11, fontWeight: 700, color: isSelected ? cc.c : '#333' }}>{m.name}</div>
+                          <div style={{ fontSize: 9, marginTop: 2, color: isSelected ? cc.c : isSuggested ? '#92400E' : 'transparent' }}>
+                            {isSelected ? '✓' : isSuggested ? '★ Empfehlung' : '·'}
+                          </div>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              ) : (
+                <div style={{ fontSize: 12, color: '#555', marginBottom: 10 }}>
+                  Wochenchef: <strong>{nextChef ? personNames[nextChef] : '— noch nicht festgelegt'}</strong>
+                </div>
+              )}
+
+              {/* Alle Wünsche (für Wochenchef) */}
+              {currentUser === wochenchef && nextWishes.length > 0 && (
+                <div style={{ marginBottom: 8, padding: '7px 10px', background: '#fff', borderRadius: 8, border: '1px solid #e5e7eb' }}>
+                  <div style={{ fontSize: 10, color: '#888', marginBottom: 4 }}>Wünsche der Familie:</div>
+                  {nextWishes.map(w => {
+                    const cc = CFG[w.person as Chef] ?? CFG.MA
+                    return (
+                      <div key={w.id} style={{ fontSize: 11, color: '#444', marginBottom: 2, display: 'flex', alignItems: 'center', gap: 4 }}>
+                        <span style={{ fontWeight: 700, color: cc.c }}>{personNames[w.person as Chef]}:</span>
+                        <span>„{w.text}"</span>
+                        <button onClick={() => onNextWeekDataChange?.({ wishes: nextWishes.filter(x => x.id !== w.id) }, nextMonday)}
+                          style={{ marginLeft: 'auto', border: 'none', background: 'none', color: '#ccc', cursor: 'pointer', fontSize: 13, lineHeight: 1 }}>×</button>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+
+              {/* Wunsch-Eingabe */}
+              {myWish ? (
+                <div style={{ fontSize: 11, color: '#0F6E56', display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+                  <span>✓ Dein Wunsch: „{myWish.text}"</span>
+                  <button onClick={() => onNextWeekDataChange?.({ wishes: nextWishes.filter(x => x.id !== myWish.id) }, nextMonday)}
+                    style={{ border: 'none', background: 'none', color: '#aaa', cursor: 'pointer', fontSize: 13, lineHeight: 1, padding: 0 }}>×</button>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+                  <input
+                    value={nextWeekWishInput}
+                    onChange={e => setNextWeekWishInput(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && submitNextWeekWish()}
+                    placeholder="Wunsch für nächste Woche..."
+                    style={{ flex: 1, border: '1px solid #e5e7eb', borderRadius: 7, padding: '5px 9px', fontSize: 12, outline: 'none', background: 'white' }}
+                  />
+                  <button onClick={submitNextWeekWish} disabled={!nextWeekWishInput.trim() || nextWeekWishSaving}
+                    style={{ padding: '5px 10px', borderRadius: 7, border: 'none', background: nextWeekWishInput.trim() ? '#1D9E75' : '#ddd', color: 'white', fontSize: 12, cursor: nextWeekWishInput.trim() ? 'pointer' : 'default' }}>
+                    {nextWeekWishSaving ? '…' : '+ Eintragen'}
+                  </button>
+                </div>
+              )}
+
+              {/* Neue Woche starten */}
+              {isCurrentWeekPast && (
+                <button onClick={onActivateNextWeek}
+                  style={{ width: '100%', padding: '9px', border: 'none', borderRadius: 9, background: '#0C447C', color: 'white', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+                  🗓 Neue Woche starten
+                </button>
+              )}
+            </div>
+          )
+        })()}
         <div style={{ borderRadius: 12, border: '1px solid #e5e7eb', marginBottom: 14, overflow: 'hidden' }}>
           <div style={{ padding: '8px 12px', background: '#f0faf5', borderBottom: '1px solid #e0f0e8', display: 'flex', alignItems: 'center', gap: 6 }}>
             <span style={{ flex: 1, fontSize: 12, fontWeight: 700, color: '#085041' }}>Heute · {today}</span>

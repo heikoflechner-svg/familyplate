@@ -1,16 +1,30 @@
 import { supabase, FAMILY_ID } from './supabase'
-import type { WeekPlanEntry, Rezept, Wish, RemyVorschlag, WochenSlot, DayAttendance, Chef, ShoppingItem, ChangeProposal } from './state'
+import type { WeekPlanEntry, Rezept, Wish, RemyVorschlag, WochenSlot, DayAttendance, Chef, ShoppingItem, ChangeProposal, NextWeekData, NextWeekWish } from './state'
 
-export async function loadWeekPlan(): Promise<{ plan: WeekPlanEntry[]; mealsData: Record<string, Rezept>; wishes: Wish[]; attendance: DayAttendance[]; attendanceConfirmed: Chef[]; shoppingList: ShoppingItem[]; proposals: ChangeProposal[]; wochenchef: Chef; planConfirmed: boolean; shopDone: boolean; shoppingDays: string[]; shoppingPersons: Record<string, Chef> }> {
+export function getMondayIso(d: Date = new Date()): string {
+  const date = new Date(d)
+  const dow = date.getDay()
+  date.setDate(date.getDate() + (dow === 0 ? -6 : 1 - dow))
+  return date.toISOString().slice(0, 10)
+}
+
+export function getNextMondayIso(d: Date = new Date()): string {
+  const date = new Date(d)
+  const dow = date.getDay()
+  date.setDate(date.getDate() + (dow === 0 ? 1 : 8 - dow))
+  return date.toISOString().slice(0, 10)
+}
+
+export async function loadWeekPlan(): Promise<{ plan: WeekPlanEntry[]; mealsData: Record<string, Rezept>; wishes: Wish[]; attendance: DayAttendance[]; attendanceConfirmed: Chef[]; shoppingList: ShoppingItem[]; proposals: ChangeProposal[]; wochenchef: Chef; planConfirmed: boolean; shopDone: boolean; shoppingDays: string[]; shoppingPersons: Record<string, Chef>; weekStart: string | null }> {
   const { data, error } = await supabase
     .from('week_plans')
-    .select('plan_data, meals_data, wishes, attendance, shopping_list, proposals, wochenchef, plan_confirmed, shopping_done, shopping_day, shopping_persons')
+    .select('plan_data, meals_data, wishes, attendance, shopping_list, proposals, wochenchef, plan_confirmed, shopping_done, shopping_day, shopping_persons, week_start')
     .eq('family_id', FAMILY_ID)
     .order('updated_at', { ascending: false })
     .limit(1)
     .single()
 
-  if (error || !data) return { plan: [], mealsData: {}, wishes: [], attendance: [], attendanceConfirmed: [], shoppingList: [], proposals: [], wochenchef: 'PA', planConfirmed: false, shopDone: false, shoppingDays: [], shoppingPersons: {} }
+  if (error || !data) return { plan: [], mealsData: {}, wishes: [], attendance: [], attendanceConfirmed: [], shoppingList: [], proposals: [], wochenchef: 'PA', planConfirmed: false, shopDone: false, shoppingDays: [], shoppingPersons: {}, weekStart: null }
 
   const rawAttendance = data.attendance
   let attendance: DayAttendance[] = []
@@ -36,6 +50,7 @@ export async function loadWeekPlan(): Promise<{ plan: WeekPlanEntry[]; mealsData
     shopDone: (data.shopping_done as boolean | null) ?? false,
     shoppingDays: ((data.shopping_day as string | null) ?? '').split(',').filter(Boolean),
     shoppingPersons: (data.shopping_persons as Record<string, Chef> | null) ?? {},
+    weekStart: (data.week_start as string | null) ?? null,
   }
 }
 
@@ -51,6 +66,79 @@ export async function saveShoppingPersons(persons: Record<string, Chef>): Promis
   if (existing?.id) {
     await supabase.from('week_plans').update({ shopping_persons: value }).eq('id', existing.id)
   }
+}
+
+export async function saveWeekStart(weekStart: string): Promise<void> {
+  const { data: existing } = await supabase
+    .from('week_plans')
+    .select('id')
+    .eq('family_id', FAMILY_ID)
+    .limit(1)
+    .single()
+  if (existing?.id) {
+    await supabase.from('week_plans').update({ week_start: weekStart }).eq('id', existing.id)
+  }
+}
+
+export async function loadNextWeekData(): Promise<{ nextWeekStart: string | null; nextWeekData: NextWeekData | null }> {
+  const { data, error } = await supabase
+    .from('week_plans')
+    .select('next_week_start, next_week_data')
+    .eq('family_id', FAMILY_ID)
+    .limit(1)
+    .single()
+  if (error || !data) return { nextWeekStart: null, nextWeekData: null }
+  return {
+    nextWeekStart: (data.next_week_start as string | null) ?? null,
+    nextWeekData: (data.next_week_data as NextWeekData | null) ?? null,
+  }
+}
+
+export async function saveNextWeekData(weekStart: string, data: NextWeekData): Promise<void> {
+  const { data: existing } = await supabase
+    .from('week_plans')
+    .select('id')
+    .eq('family_id', FAMILY_ID)
+    .limit(1)
+    .single()
+  if (existing?.id) {
+    await supabase.from('week_plans')
+      .update({ next_week_start: weekStart, next_week_data: data })
+      .eq('id', existing.id)
+  }
+}
+
+export async function activateNextWeek(): Promise<{ weekStart: string | null; nextWeekData: NextWeekData | null }> {
+  const { data: existing } = await supabase
+    .from('week_plans')
+    .select('id, next_week_start, next_week_data')
+    .eq('family_id', FAMILY_ID)
+    .limit(1)
+    .single()
+
+  if (!existing?.id) return { weekStart: null, nextWeekData: null }
+
+  const nextStart = existing.next_week_start as string | null
+  const nextData = existing.next_week_data as NextWeekData | null
+
+  await supabase.from('week_plans').update({
+    week_start: nextStart ?? getMondayIso(),
+    wochenchef: nextData?.wochenchef ?? 'PA',
+    plan_data: [],
+    meals_data: {},
+    wishes: (nextData?.wishes ?? []) as unknown as NextWeekWish[],
+    proposals: [],
+    attendance: [],
+    plan_confirmed: false,
+    shopping_list: [],
+    shopping_done: false,
+    shopping_day: null,
+    shopping_persons: null,
+    next_week_start: null,
+    next_week_data: null,
+  }).eq('id', existing.id)
+
+  return { weekStart: nextStart, nextWeekData: nextData }
 }
 
 export async function saveShopDone(done: boolean): Promise<void> {
