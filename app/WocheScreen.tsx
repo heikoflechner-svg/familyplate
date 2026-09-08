@@ -434,19 +434,25 @@ export default function WocheScreen({
         {showPreConfirm && (
           <div style={{ padding: '12px 14px', background: '#F0FAF5' }}>
             <div style={{ fontSize: 12, color: '#0F6E56', fontWeight: 600, marginBottom: 6 }}>
-              Wochenchef-Entscheidung abschließen
+              Wochenplan als Wochenchef bestätigen
             </div>
-            <div style={{ fontSize: 11, color: '#555', marginBottom: 10 }}>
-              {Object.keys(chefAltSelection).filter(k => chefAltSelection[k] !== 'original').length} Alternative(n) übernommen ·{' '}
-              {chefErgaenzungIds.length} Ergänzung(en) auf Einkaufsliste
-            </div>
+            {(() => {
+              const altCount = Object.keys(chefAltSelection).filter(k => chefAltSelection[k] !== 'original').length
+              const ergCount = chefErgaenzungIds.length
+              if (altCount === 0 && ergCount === 0) return null
+              return (
+                <div style={{ fontSize: 11, color: '#555', marginBottom: 10 }}>
+                  {altCount} Alternative(n) übernommen · {ergCount} Ergänzung(en) auf Einkaufsliste
+                </div>
+              )
+            })()}
             <button
               className="btn primary"
               onClick={confirmAsChef}
               disabled={saving}
               style={{ background: '#1D9E75', fontSize: 13 }}
             >
-              {saving ? '⏳ Speichern…' : `✅ Als Wochenchef bestätigen (${personNames[wochenchef]})`}
+              {saving ? '⏳ Speichern…' : `✅ Wochenplan bestätigen (${personNames[wochenchef]})`}
             </button>
           </div>
         )}
@@ -945,46 +951,6 @@ export default function WocheScreen({
 
           {planState === 'options' && (
             <>
-              {/* ── Wochenchef auswählen ── */}
-              <div style={{ marginBottom: 24 }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: '#111', marginBottom: 10 }}>👩‍🍳 Wochenchef für die kommende Woche festlegen</div>
-                <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
-                  {activeMembers.map(m => {
-                    const isSelected = m.id === wochenchef
-                    const isSuggested = m.id === suggestedNextChef && m.id !== wochenchef
-                    const cc = CFG[m.id as Chef] ?? CFG.MA
-                    return (
-                      <button
-                        key={m.id}
-                        onClick={() => onWochenchefChange(m.id as Chef)}
-                        style={{
-                          flex: 1, padding: '10px 6px', borderRadius: 10, textAlign: 'center', cursor: 'pointer',
-                          border: `2px solid ${isSelected ? cc.c : isSuggested ? '#FCD34D' : '#e5e7eb'}`,
-                          background: isSelected ? cc.bg : isSuggested ? '#FFFBEB' : 'white',
-                        }}
-                      >
-                        <div style={{ fontSize: 10, color: isSelected ? cc.c : '#bbb', marginBottom: 2 }}>{m.id}</div>
-                        <div style={{ fontSize: 13, fontWeight: 700, color: isSelected ? cc.c : '#333' }}>{m.name}</div>
-                        <div style={{ fontSize: 9, marginTop: 3, color: isSelected ? cc.c : isSuggested ? '#92400E' : '#ddd' }}>
-                          {isSelected ? '✓ ausgewählt' : isSuggested ? '★ Empfehlung' : ''}
-                        </div>
-                      </button>
-                    )
-                  })}
-                </div>
-                {(() => {
-                  const sel = activeMembers.find(m => m.id === wochenchef)
-                  const last = sel?.chefStat?.lastCook
-                  if (!last) return null
-                  const d = new Date(last)
-                  const fmt = `${d.getDate().toString().padStart(2, '0')}.${(d.getMonth() + 1).toString().padStart(2, '0')}.`
-                  return (
-                    <div style={{ fontSize: 10, color: '#bbb' }}>
-                      {personNames[wochenchef]} hat zuletzt am {fmt} gekocht · {sel?.chefStat?.count ?? 0}× gesamt
-                    </div>
-                  )
-                })()}
-              </div>
               {/* ── Anwesenheit (kompakte Statuszeile) ── */}
               {(() => {
                 const confirmed = attendanceConfirmed.filter(c => allChefIds.includes(c)).length
@@ -1539,11 +1505,21 @@ export default function WocheScreen({
             <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Rémy plant eure Woche in Sekunden</div>
           </div>
 
+          {/* Wochenchef-Info */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: '#F0FAF5', borderRadius: 12, marginBottom: 14, border: '1px solid #B2DFCC' }}>
+            <span style={{ fontSize: 22 }}>👩‍🍳</span>
+            <div>
+              <div style={{ fontSize: 11, color: '#0F6E56', fontWeight: 600 }}>Wochenchef diese Woche</div>
+              <div style={{ fontSize: 15, fontWeight: 700, color: '#111' }}>{personNames[wochenchef]}</div>
+            </div>
+          </div>
+
           {/* Karte 1: Anwesenheit (vor dem Planen) */}
           <div style={{ borderRadius: 12, border: '1px solid #e5e7eb', marginBottom: 12, overflow: 'hidden' }}>
             <div style={{ padding: '10px 14px', background: '#f9fafb', borderBottom: '1px solid #f0f0f0', display: 'flex', alignItems: 'center', gap: 8 }}>
               <span style={{ width: 22, height: 22, borderRadius: '50%', background: '#1D9E75', color: 'white', fontSize: 11, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>1</span>
               <span style={{ fontSize: 13, fontWeight: 700, color: '#111' }}>Anwesenheit eintragen</span>
+              <span style={{ fontSize: 10, color: '#6B7280', background: '#F3F4F6', borderRadius: 10, padding: '2px 8px', marginLeft: 2 }}>empfohlen</span>
             </div>
             <div style={{ padding: '10px 14px' }}>
               <div style={{ fontSize: 12, color: '#666', marginBottom: 10 }}>
@@ -1567,8 +1543,8 @@ export default function WocheScreen({
                   🐀 Woche planen
                 </button>
               ) : (
-                <div style={{ fontSize: 12, color: '#bbb', textAlign: 'center', padding: '4px 0' }}>
-                  {personNames[wochenchef]} ist diese Woche Wochenchef
+                <div style={{ fontSize: 12, color: '#666', padding: '4px 0', lineHeight: 1.5 }}>
+                  <span style={{ fontWeight: 600, color: '#555' }}>{personNames[wochenchef]}</span> plant die Woche — die Essensplanung steht noch aus.
                 </div>
               )}
             </div>

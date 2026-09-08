@@ -1,5 +1,5 @@
 'use client'
-import type { Chef, FamilyMember, ChangeProposal } from '../lib/state'
+import type { Chef, FamilyMember, ChangeProposal, WeekPlanEntry } from '../lib/state'
 
 const WOCHENTAGE = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag']
 const TAG_SHORT: Record<string, string> = {
@@ -17,6 +17,7 @@ interface Props {
   currentUser: Chef
   wochenchef: Chef
   members: FamilyMember[]
+  weekPlan: WeekPlanEntry[]
   shoppingDays: string[]
   shoppingPersons: Record<string, Chef>
   proposals: ChangeProposal[]
@@ -27,12 +28,16 @@ interface Props {
 }
 
 export default function MehrScreen({
-  currentUser, wochenchef, members, shoppingDays, shoppingPersons, proposals,
+  currentUser, wochenchef, members, weekPlan, shoppingDays, shoppingPersons, proposals,
   onShoppingDaysChange, onShoppingPersonsChange, onShoppingProposalSubmit, onGoToAttendance,
 }: Props) {
   const isChef = currentUser === wochenchef
   const personNames = Object.fromEntries(members.map(m => [m.id, m.name])) as Record<Chef, string>
   const activeMembers = members.filter(m => ['PA', 'MA', 'TI'].includes(m.id))
+
+  function cookingConflict(tag: string, person: Chef): boolean {
+    return weekPlan.some(e => e.tag === tag && e.chef === person)
+  }
 
   function toggleDay(tag: string) {
     const next = shoppingDays.includes(tag)
@@ -117,15 +122,18 @@ export default function MehrScreen({
                 <div style={{ marginTop: 16 }}>
                   {shoppingDays.map(tag => {
                     const assigned = shoppingPersons[tag]
+                    const missing = !assigned
                     return (
-                      <div key={tag} style={{ marginBottom: 12, background: '#F9FAFB', borderRadius: 10, padding: '10px 12px' }}>
-                        <div style={{ fontSize: 11, fontWeight: 600, color: '#555', marginBottom: 8 }}>
+                      <div key={tag} style={{ marginBottom: 12, background: '#F9FAFB', borderRadius: 10, padding: '10px 12px', border: `1px solid ${missing ? '#FCA5A5' : '#e5e7eb'}` }}>
+                        <div style={{ fontSize: 11, fontWeight: 600, color: missing ? '#DC2626' : '#555', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 4 }}>
                           🛒 {tag} — wer kauft ein?
+                          {missing && <span style={{ fontSize: 10, fontWeight: 700, color: '#DC2626' }}>*</span>}
                         </div>
                         <div style={{ display: 'flex', gap: 6 }}>
                           {activeMembers.map(m => {
                             const isSelected = assigned === m.id
                             const cc = CFG[m.id as Chef] ?? CFG.MA
+                            const conflict = isSelected && cookingConflict(tag, m.id as Chef)
                             return (
                               <button
                                 key={m.id}
@@ -139,7 +147,8 @@ export default function MehrScreen({
                                 <div style={{ fontSize: 11, fontWeight: 700, color: isSelected ? cc.c : '#333' }}>
                                   {m.name}
                                 </div>
-                                {isSelected && <div style={{ fontSize: 9, color: cc.c, marginTop: 2 }}>✓</div>}
+                                {isSelected && !conflict && <div style={{ fontSize: 9, color: cc.c, marginTop: 2 }}>✓</div>}
+                                {conflict && <div style={{ fontSize: 9, color: '#DC2626', marginTop: 2 }}>⚠ kocht auch</div>}
                               </button>
                             )
                           })}

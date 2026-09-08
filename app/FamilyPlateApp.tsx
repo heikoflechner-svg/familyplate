@@ -324,6 +324,7 @@ export default function FamilyPlateApp() {
             currentUser={currentUser}
             wochenchef={activeWochenchef}
             members={members}
+            weekPlan={weekPlan}
             shoppingDays={shoppingDays}
             shoppingPersons={shoppingPersons}
             proposals={proposals}
