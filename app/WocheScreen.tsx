@@ -90,7 +90,8 @@ interface Props {
   onActivateNextWeek?: () => Promise<void>
 }
 
-type View = 'home' | 'week' | 'plan' | 'attendance'
+type View = 'home' | 'week' | 'plan' | 'attendance' | 'notfall'
+type NotfallPlanState = 'select' | 'loading' | 'results'
 type PlanState = 'options' | 'loading' | 'results'
 
 // Frist-Logik: 1 Tag vor dem nächsten Einkaufstag, 20:00 Uhr.
@@ -218,6 +219,11 @@ export default function WocheScreen({
   const [wishFormKey, setWishFormKey] = useState<string | null>(null)
   const [nextWeekWishInput, setNextWeekWishInput] = useState('')
   const [nextWeekWishSaving, setNextWeekWishSaving] = useState(false)
+  const [notfallPlanState, setNotfallPlanState] = useState<NotfallPlanState>('select')
+  const [selectedNotfallSlots, setSelectedNotfallSlots] = useState<Set<string>>(new Set())
+  const [notfallCorrected, setNotfallCorrected] = useState<Record<string, WeekPlanEntry>>({})
+  const [notfallCorrectedMeals, setNotfallCorrectedMeals] = useState<Record<string, Rezept>>({})
+  const [notfallSlotLoadingKey, setNotfallSlotLoadingKey] = useState<string | null>(null)
 
   async function submitNextWeekWish() {
     if (!nextWeekWishInput.trim() || !onNextWeekDataChange) return
@@ -228,6 +234,97 @@ export default function WocheScreen({
     await onNextWeekDataChange({ wishes: [...currentWishes, wish] }, nextMonday)
     setNextWeekWishInput('')
     setNextWeekWishSaving(false)
+  }
+
+  function goToNotfall() {
+    setView('notfall')
+    setNotfallPlanState('select')
+    setSelectedNotfallSlots(new Set())
+    setNotfallCorrected({})
+    setNotfallCorrectedMeals({})
+    setChefPickerKey(null)
+  }
+
+  function toggleNotfallSlot(key: string) {
+    setSelectedNotfallSlots(prev => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
+
+  async function startNotfallKorrektur() {
+    setNotfallPlanState('loading')
+    const slots = Array.from(selectedNotfallSlots).map(key => {
+      const lastDash = key.lastIndexOf('-')
+      return { tag: key.slice(0, lastDash), slot: key.slice(lastDash + 1) as WochenSlot, key }
+    })
+    try {
+      const results = await Promise.all(
+        slots.map(({ tag, slot }) =>
+          generateWeekPlan({
+            planMittag: slot === 'Abend' ? false : planMittag,
+            planWE,
+            freezerList: getFreezerListString(freezerItems),
+            pantryList: getPantryListString(pantryItems),
+            behaltene: weekPlan.filter(e => !(e.tag === tag && e.slot === slot)),
+            neuTage: [tag],
+            familyPrompt,
+          })
+        )
+      )
+      const newCorrected: Record<string, WeekPlanEntry> = {}
+      let newMeals: Record<string, Rezept> = {}
+      for (let i = 0; i < slots.length; i++) {
+        const { tag, slot, key } = slots[i]
+        const { plan, mealsData: meals } = results[i]
+        const entry = plan.find(e => e.tag === tag && e.slot === slot)
+        if (entry) newCorrected[key] = entry
+        newMeals = { ...newMeals, ...meals }
+      }
+      setNotfallCorrected(newCorrected)
+      setNotfallCorrectedMeals(newMeals)
+      setNotfallPlanState('results')
+    } catch {
+      setNotfallPlanState('select')
+    }
+  }
+
+  async function replanNotfallSlot(tag: string, slot: WochenSlot) {
+    const key = `${tag}-${slot}`
+    setNotfallSlotLoadingKey(key)
+    try {
+      const { plan, mealsData: meals } = await generateWeekPlan({
+        planMittag: slot === 'Abend' ? false : planMittag,
+        planWE,
+        freezerList: getFreezerListString(freezerItems),
+        pantryList: getPantryListString(pantryItems),
+        behaltene: weekPlan.filter(e => !(e.tag === tag && e.slot === slot)),
+        neuTage: [tag],
+        familyPrompt,
+      })
+      const entry = plan.find(e => e.tag === tag && e.slot === slot)
+      if (entry) {
+        setNotfallCorrected(prev => ({ ...prev, [key]: entry }))
+        setNotfallCorrectedMeals(prev => ({ ...prev, ...meals }))
+      }
+    } catch {
+      // silently fail
+    }
+    setNotfallSlotLoadingKey(null)
+  }
+
+  async function acceptNotfallKorrektur() {
+    setSaving(true)
+    const newPlan = weekPlan.map(e => notfallCorrected[`${e.tag}-${e.slot}`] ?? e)
+    await onWeekPlanChange(newPlan, { ...mealsData, ...notfallCorrectedMeals })
+    setNotfallCorrected({})
+    setNotfallCorrectedMeals({})
+    setNotfallPlanState('select')
+    setSelectedNotfallSlots(new Set())
+    setSaving(false)
+    setView('home')
   }
 
   function openWishForm(tag: string, slot: WochenSlot) { setWishFormKey(`${tag}-${slot}`) }
@@ -894,6 +991,165 @@ export default function WocheScreen({
     setNeuTage(s)
   }
 
+  // ── Notfall-Korrektur view ────────────────────────────────────────────────
+  if (view === 'notfall') {
+    const orderedCorrectedKeys = WOCHENTAGE.flatMap(tag =>
+      (['Mittag', 'Abend'] as const).map(slot => `${tag}-${slot}`)
+    ).filter(key => notfallCorrected[key])
+
+    return (
+      <div className="screen active">
+        <div className="topbar">
+          {notfallPlanState !== 'loading' && (
+            <button className="back" onClick={() => { setView('home'); setNotfallPlanState('select'); setSelectedNotfallSlots(new Set()) }}>‹</button>
+          )}
+          <h1>🚨 Notfall-Korrektur</h1>
+        </div>
+        <div className="content">
+
+          {/* Warnhinweis */}
+          <div style={{ background: '#FFF7ED', border: '1px solid #FED7AA', borderRadius: 10, padding: '10px 14px', marginBottom: 16, display: 'flex', gap: 10 }}>
+            <span style={{ fontSize: 16, flexShrink: 0 }}>⚠️</span>
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 700, color: '#92400E', marginBottom: 3 }}>Korrektur der laufenden Woche</div>
+              <div style={{ fontSize: 11, color: '#7C3A07', lineHeight: 1.5 }}>
+                Hier korrigierst du einzelne Mahlzeiten der <strong>bereits bestätigten, laufenden Woche</strong> — keine neue Wochenplanung.
+                Für die <em>nächste</em> Woche nutze „Nächste Woche" auf der Startseite.
+              </div>
+            </div>
+          </div>
+
+          {/* Loading */}
+          {notfallPlanState === 'loading' && (
+            <div style={{ textAlign: 'center', padding: '48px 0' }}>
+              <div style={{ fontSize: 48, marginBottom: 14 }}>🐀</div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: '#085041', marginBottom: 8 }}>Rémy plant Korrekturen…</div>
+              <div style={{ fontSize: 13, color: '#555', marginBottom: 4 }}>Das dauert ca. 30 Sekunden – bitte warten.</div>
+              <div style={{ fontSize: 12, color: '#bbb' }}>Nur die gewählten Slots werden neu geplant.</div>
+            </div>
+          )}
+
+          {/* Auswahl */}
+          {notfallPlanState === 'select' && (
+            <>
+              <div style={{ fontSize: 12, color: '#555', marginBottom: 12 }}>
+                Welche Mahlzeiten soll Rémy neu vorschlagen?
+              </div>
+              {plannedDays.map(tag => {
+                const mittag = getSlot(weekPlan, tag, 'Mittag')
+                const abend = getSlot(weekPlan, tag, 'Abend')
+                return (
+                  <div key={tag} style={{ borderRadius: 10, border: '1px solid #e5e7eb', marginBottom: 10, overflow: 'hidden' }}>
+                    <div style={{ padding: '7px 12px', background: tag === today ? '#F0FAF5' : '#f9fafb', borderBottom: '1px solid #f0f0f0', display: 'flex', alignItems: 'center' }}>
+                      <span style={{ flex: 1, fontSize: 11, fontWeight: 700, color: tag === today ? '#085041' : '#666', textTransform: 'uppercase', letterSpacing: '.5px' }}>{tag}</span>
+                      {tag === today && <span className="pill today">Heute</span>}
+                    </div>
+                    {mittag && (
+                      <NotfallSlotRow slot="Mittag" entry={mittag} slotKey={`${tag}-Mittag`}
+                        checked={selectedNotfallSlots.has(`${tag}-Mittag`)} onToggle={toggleNotfallSlot} personNames={personNames} />
+                    )}
+                    {abend && (
+                      <NotfallSlotRow slot="Abend" entry={abend} slotKey={`${tag}-Abend`}
+                        checked={selectedNotfallSlots.has(`${tag}-Abend`)} onToggle={toggleNotfallSlot} personNames={personNames} />
+                    )}
+                  </div>
+                )
+              })}
+              {selectedNotfallSlots.size === 0 && (
+                <div style={{ fontSize: 11, color: '#bbb', textAlign: 'center', padding: '4px 0 8px' }}>Mindestens einen Slot auswählen</div>
+              )}
+              <button
+                className="btn primary"
+                onClick={startNotfallKorrektur}
+                disabled={selectedNotfallSlots.size === 0}
+                style={{ opacity: selectedNotfallSlots.size === 0 ? 0.4 : 1 }}
+              >
+                🐀 Rémy fragen {selectedNotfallSlots.size > 0 ? `(${selectedNotfallSlots.size} ${selectedNotfallSlots.size === 1 ? 'Slot' : 'Slots'})` : ''}
+              </button>
+            </>
+          )}
+
+          {/* Ergebnisse */}
+          {notfallPlanState === 'results' && (
+            <>
+              <div style={{ fontSize: 13, fontWeight: 600, color: '#085041', marginBottom: 4 }}>Neue Vorschläge</div>
+              {notfallSlotLoadingKey ? (
+                <div style={{ fontSize: 11, color: '#085041', background: '#F0FAF5', border: '1px solid #B2DFCC', borderRadius: 8, padding: '7px 12px', marginBottom: 12 }}>
+                  🐀 Rémy schlägt neu vor…
+                </div>
+              ) : (
+                <div style={{ fontSize: 11, color: '#bbb', marginBottom: 12 }}>Koch antippen · ↺ nochmal würfeln</div>
+              )}
+              {orderedCorrectedKeys.map(key => {
+                const lastDash = key.lastIndexOf('-')
+                const tag = key.slice(0, lastDash)
+                const slot = key.slice(lastDash + 1) as WochenSlot
+                const newEntry = notfallCorrected[key]!
+                const original = getSlot(weekPlan, tag, slot)
+                const isSlotLoading = notfallSlotLoadingKey === key
+                return (
+                  <div key={key} style={{ borderRadius: 10, border: '1px solid #e5e7eb', marginBottom: 12, overflow: 'hidden' }}>
+                    <div style={{ padding: '7px 12px', background: '#f9fafb', borderBottom: '1px solid #f0f0f0', display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: '#666', textTransform: 'uppercase', letterSpacing: '.5px' }}>{tag}</span>
+                      <SlotPill slot={slot} />
+                    </div>
+                    {original && (
+                      <div style={{ padding: '6px 12px', background: '#fafafa', display: 'flex', alignItems: 'center', gap: 8, borderBottom: '1px solid #f0f0f0' }}>
+                        <span style={{ fontSize: 13, opacity: 0.35 }}>{original.emoji}</span>
+                        <span style={{ fontSize: 11, color: '#bbb', flex: 1, textDecoration: 'line-through' }}>{original.gericht}</span>
+                        <span style={{ fontSize: 10, color: '#d1d5db' }}>bisher</span>
+                      </div>
+                    )}
+                    {isSlotLoading ? (
+                      <div style={{ padding: '12px', fontSize: 12, color: '#aaa' }}>🐀 Rémy schlägt vor…</div>
+                    ) : (
+                      <div style={{ padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{ fontSize: 18 }}>{newEntry.emoji}</span>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: 13, fontWeight: 700, color: '#111' }}>{newEntry.gericht}</div>
+                          <div style={{ fontSize: 11, color: '#aaa' }}>{newEntry.minuten} min</div>
+                        </div>
+                        <span
+                          onClick={() => setChefPickerKey(chefPickerKey === key ? null : key)}
+                          style={{ fontSize: 11, color: '#555', cursor: 'pointer', textDecoration: 'underline', textDecorationStyle: 'dashed', textDecorationColor: '#bbb' }}
+                        >{personNames[newEntry.chef]}</span>
+                        <button
+                          onClick={() => replanNotfallSlot(tag, slot)}
+                          disabled={notfallSlotLoadingKey !== null}
+                          style={{ width: 40, height: 40, flexShrink: 0, border: 'none', borderRadius: 8, background: 'transparent', cursor: notfallSlotLoadingKey !== null ? 'default' : 'pointer', fontSize: 18, color: notfallSlotLoadingKey === key ? '#1D9E75' : '#ccc', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: notfallSlotLoadingKey !== null && notfallSlotLoadingKey !== key ? 0.3 : 1 }}
+                        >
+                          {isSlotLoading ? '⏳' : '↺'}
+                        </button>
+                      </div>
+                    )}
+                    {chefPickerKey === key && (
+                      <ChefPicker
+                        current={newEntry.chef}
+                        onSelect={chef => { setNotfallCorrected(prev => ({ ...prev, [key]: { ...prev[key]!, chef } })); setChefPickerKey(null) }}
+                        personNames={personNames}
+                        members={activeMembers}
+                      />
+                    )}
+                  </div>
+                )
+              })}
+              <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+                <button className="btn primary" onClick={acceptNotfallKorrektur} disabled={saving}>
+                  {saving ? '⏳ Speichern…' : '✅ Korrekturen übernehmen'}
+                </button>
+                <button
+                  className="btn"
+                  onClick={() => { setNotfallCorrected({}); setNotfallCorrectedMeals({}); setNotfallPlanState('select') }}
+                  style={{ width: 'auto', padding: '13px 16px' }}
+                >✕</button>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    )
+  }
+
   // ── Attendance view ────────────────────────────────────────────────────────
   if (view === 'attendance') {
     const confirmedCount = attendanceConfirmed.filter(c => allChefIds.includes(c)).length
@@ -1446,6 +1702,15 @@ export default function WocheScreen({
               🔄 {weekPlan.length > 0 ? 'Neu planen' : 'Woche planen'}
             </button>
           )}
+          {currentUser === wochenchef && planConfirmed && (
+            <button
+              className="btn"
+              style={{ marginTop: 8, color: '#92400E', borderColor: '#FED7AA', background: '#FFF7ED' }}
+              onClick={goToNotfall}
+            >
+              🚨 Mahlzeiten kurzfristig ändern
+            </button>
+          )}
         </div>
       </div>
     )
@@ -1784,6 +2049,16 @@ export default function WocheScreen({
             👥 Anwesenheit
           </button>
         </div>
+        {planConfirmed && currentUser === wochenchef && (
+          <div style={{ textAlign: 'center', marginTop: 8 }}>
+            <button
+              onClick={goToNotfall}
+              style={{ border: 'none', background: 'none', color: '#92400E', fontSize: 11, cursor: 'pointer', opacity: 0.75 }}
+            >
+              🚨 Mahlzeit kurzfristig ändern
+            </button>
+          </div>
+        )}
       </div>
       {currentUser === wochenchef && !planConfirmed && (
         <div style={{ padding: '0 20px 16px' }}>
@@ -2110,6 +2385,34 @@ function WishesSection({
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+function NotfallSlotRow({ slot, entry, slotKey, checked, onToggle, personNames }: {
+  slot: WochenSlot
+  entry: WeekPlanEntry
+  slotKey: string
+  checked: boolean
+  onToggle: (key: string) => void
+  personNames: Record<Chef, string>
+}) {
+  return (
+    <div style={{ borderTop: '1px solid #f0f0f0' }}>
+      <button
+        onClick={() => onToggle(slotKey)}
+        style={{ width: '100%', padding: '9px 12px', display: 'flex', alignItems: 'center', gap: 10, background: checked ? '#F0FAF5' : 'white', cursor: 'pointer', border: 'none', textAlign: 'left' }}
+      >
+        <div style={{ width: 20, height: 20, borderRadius: 5, border: `1.5px solid ${checked ? '#1D9E75' : '#ddd'}`, background: checked ? '#1D9E75' : 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          {checked && <span style={{ color: 'white', fontSize: 11, fontWeight: 700 }}>✓</span>}
+        </div>
+        <SlotPill slot={slot} />
+        <span style={{ fontSize: 14 }}>{entry.emoji}</span>
+        <div style={{ flex: 1, textAlign: 'left' }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: '#111' }}>{entry.gericht}</div>
+          <div style={{ fontSize: 10, color: '#aaa' }}>{personNames[entry.chef]} · {entry.minuten} min</div>
+        </div>
+      </button>
     </div>
   )
 }
