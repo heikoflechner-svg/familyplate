@@ -124,8 +124,8 @@ export async function activateNextWeek(): Promise<{ weekStart: string | null; ne
   await supabase.from('week_plans').update({
     week_start: nextStart ?? getMondayIso(),
     wochenchef: nextData?.wochenchef ?? 'PA',
-    plan_data: [],
-    meals_data: {},
+    plan_data: nextData?.plan ?? [],
+    meals_data: nextData?.mealsData ?? {},
     wishes: (nextData?.wishes ?? []) as unknown as NextWeekWish[],
     proposals: [],
     attendance: [],

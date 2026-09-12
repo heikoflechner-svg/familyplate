@@ -19,52 +19,78 @@ export interface ShoppingGroup {
   gericht: string
   emoji: string
   items: ShoppingItem[]
+  nextWeek?: boolean
+}
+
+/**
+ * Returns the day names from NEXT week that the last shopping day of the current week
+ * must already cover (because the next shopping day falls after the week boundary).
+ * Example: shoppingDays=['Samstag','Dienstag'] → ['Montag']
+ */
+export function computeNextWeekCoverage(shoppingDays: string[]): string[] {
+  if (shoppingDays.length === 0) return []
+  const dayIndex = (d: string) => WOCHENTAGE.indexOf(d)
+  const valid = shoppingDays.filter(d => dayIndex(d) >= 0)
+  if (valid.length === 0) return []
+  // first shopping day of next week = lowest day index among all configured shopping days
+  const firstNextShopIndex = Math.min(...valid.map(dayIndex))
+  // next-week days BEFORE that first shopping day need to be bought in the current-week's last shop
+  return WOCHENTAGE.slice(0, firstNextShopIndex)
+}
+
+function generateItemsForEntry(entry: WeekPlanEntry, mealsData: Record<string, Rezept>, nextWeek = false): ShoppingItem[] {
+  const rezept = mealsData[entry.gericht]
+  if (!rezept) return []
+  const items: ShoppingItem[] = []
+  const seen = new Set<string>()
+  for (const zutat of rezept.zutaten) {
+    const key = zutat.name.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    items.push({
+      id: randomId(),
+      name: zutat.name,
+      menge: zutat.menge,
+      kategorie: KATEGORIE_MAP[zutat.typ] ?? 'Sonstiges',
+      erledigt: false,
+      tag: entry.tag,
+      slot: entry.slot,
+      gericht: entry.gericht,
+      ...(nextWeek ? { nextWeek: true } : {}),
+    })
+  }
+  for (const ersatz of (rezept.ersetzteZutaten ?? [])) {
+    items.push({
+      id: randomId(),
+      name: ersatz,
+      menge: '',
+      kategorie: 'Ersatz-Zutat',
+      erledigt: false,
+      tag: entry.tag,
+      slot: entry.slot,
+      gericht: entry.gericht,
+      ...(nextWeek ? { nextWeek: true } : {}),
+    })
+  }
+  return items
 }
 
 export function generateShoppingList(
   weekPlan: WeekPlanEntry[],
   mealsData: Record<string, Rezept>,
   selectedDays?: string[],
+  nextWeekPlan?: WeekPlanEntry[],
+  nextWeekMealsData?: Record<string, Rezept>,
+  selectedNextWeekDays?: string[],
 ): ShoppingItem[] {
-  const items: ShoppingItem[] = []
   const filtered = selectedDays
     ? weekPlan.filter(e => selectedDays.includes(e.tag))
     : weekPlan
+  const items = filtered.flatMap(e => generateItemsForEntry(e, mealsData))
 
-  for (const entry of filtered) {
-    const rezept = mealsData[entry.gericht]
-    if (!rezept) continue
-
-    const seen = new Set<string>()
-    for (const zutat of rezept.zutaten) {
-      const key = zutat.name.toLowerCase()
-      if (seen.has(key)) continue
-      seen.add(key)
-
-      items.push({
-        id: randomId(),
-        name: zutat.name,
-        menge: zutat.menge,
-        kategorie: KATEGORIE_MAP[zutat.typ] ?? 'Sonstiges',
-        erledigt: false,
-        tag: entry.tag,
-        slot: entry.slot,
-        gericht: entry.gericht,
-      })
-    }
-
-    for (const ersatz of (rezept.ersetzteZutaten ?? [])) {
-      items.push({
-        id: randomId(),
-        name: ersatz,
-        menge: '',
-        kategorie: 'Ersatz-Zutat',
-        erledigt: false,
-        tag: entry.tag,
-        slot: entry.slot,
-        gericht: entry.gericht,
-      })
-    }
+  if (nextWeekPlan && nextWeekMealsData && selectedNextWeekDays && selectedNextWeekDays.length > 0) {
+    const nwFiltered = nextWeekPlan.filter(e => selectedNextWeekDays.includes(e.tag))
+    items.push(...nwFiltered.flatMap(e => generateItemsForEntry(e, nextWeekMealsData, true)))
   }
 
   return items
@@ -73,6 +99,7 @@ export function generateShoppingList(
 export function groupShoppingByMeal(
   items: ShoppingItem[],
   weekPlan: WeekPlanEntry[],
+  nextWeekPlan?: WeekPlanEntry[],
 ): ShoppingGroup[] {
   const groups: ShoppingGroup[] = []
   const seen = new Set<string>()
@@ -84,11 +111,28 @@ export function groupShoppingByMeal(
       const key = `${day}-${slot}-${entry.gericht}`
       if (seen.has(key)) continue
       const groupItems = items.filter(
-        i => i.tag === day && i.slot === slot && i.gericht === entry.gericht,
+        i => !i.nextWeek && i.tag === day && i.slot === slot && i.gericht === entry.gericht,
       )
       if (groupItems.length === 0) continue
       seen.add(key)
       groups.push({ tag: day, slot, gericht: entry.gericht, emoji: entry.emoji, items: groupItems })
+    }
+  }
+
+  if (nextWeekPlan) {
+    for (const day of WOCHENTAGE) {
+      for (const slot of ['Mittag', 'Abend'] as WochenSlot[]) {
+        const entry = nextWeekPlan.find(e => e.tag === day && e.slot === slot)
+        if (!entry) continue
+        const key = `nw-${day}-${slot}-${entry.gericht}`
+        if (seen.has(key)) continue
+        const groupItems = items.filter(
+          i => i.nextWeek && i.tag === day && i.slot === slot && i.gericht === entry.gericht,
+        )
+        if (groupItems.length === 0) continue
+        seen.add(key)
+        groups.push({ tag: day, slot, gericht: entry.gericht, emoji: entry.emoji, items: groupItems, nextWeek: true })
+      }
     }
   }
 

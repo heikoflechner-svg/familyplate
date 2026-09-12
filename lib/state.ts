@@ -87,6 +87,7 @@ export interface ShoppingItem {
   tag?: string
   slot?: WochenSlot
   gericht?: string
+  nextWeek?: boolean
 }
 
 export interface DayAttendance {

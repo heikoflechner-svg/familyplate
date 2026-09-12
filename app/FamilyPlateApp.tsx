@@ -347,6 +347,8 @@ export default function FamilyPlateApp() {
             laeden={familyProfile.laeden}
             zutatenLaden={familyProfile.zutatenLaden}
             onZutatenLadenChange={handleZutatenLadenChange}
+            shoppingDays={shoppingDays}
+            nextWeekData={nextWeekData}
           />
         )}
         {activeTab === 'rezepte' && (
