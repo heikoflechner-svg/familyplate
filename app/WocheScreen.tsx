@@ -867,7 +867,7 @@ export default function WocheScreen({
     setSaving(true)
     await onWeekPlanChange(pendingPlan, { ...mealsData, ...pendingPlanMeals })
     await onPlanConfirm?.(pendingPlan)
-    await onPlanConfirmedChange(currentUser === wochenchef)
+    await onPlanConfirmedChange(true)
 
     // Auto-Entfernen aus Gefriertruhe: für Reste-Gerichte exakt matchen,
     // für gefriertruhe-Gerichte per exakter Namensübereinstimmung
@@ -1117,12 +1117,12 @@ export default function WocheScreen({
                           <button
                             onClick={() => canEdit && toggleSlotAttendance(tag, 'Mittag', chef)}
                             disabled={!canEdit}
-                            style={{ width: 26, height: 26, borderRadius: 5, border: `1px solid ${mitOn ? cc.c : '#ddd'}`, background: mitOn ? cc.bg : 'white', cursor: canEdit ? 'pointer' : 'default', fontSize: 9, color: mitOn ? cc.c : 'transparent', fontWeight: 700 }}
+                            style={{ width: 26, height: 26, borderRadius: 5, border: `1px solid ${mitOn ? cc.c : '#ddd'}`, background: mitOn ? cc.bg : 'white', cursor: canEdit ? 'pointer' : 'default', fontSize: 9, color: mitOn ? cc.c : 'transparent', fontWeight: 700, opacity: canEdit ? 1 : 0.4 }}
                           >✓</button>
                           <button
                             onClick={() => canEdit && toggleSlotAttendance(tag, 'Abend', chef)}
                             disabled={!canEdit}
-                            style={{ width: 26, height: 26, borderRadius: 5, border: `1px solid ${abdOn ? cc.c : '#ddd'}`, background: abdOn ? cc.bg : 'white', cursor: canEdit ? 'pointer' : 'default', fontSize: 9, color: abdOn ? cc.c : 'transparent', fontWeight: 700 }}
+                            style={{ width: 26, height: 26, borderRadius: 5, border: `1px solid ${abdOn ? cc.c : '#ddd'}`, background: abdOn ? cc.bg : 'white', cursor: canEdit ? 'pointer' : 'default', fontSize: 9, color: abdOn ? cc.c : 'transparent', fontWeight: 700, opacity: canEdit ? 1 : 0.4 }}
                           >✓</button>
                         </div>
                       )
@@ -1131,13 +1131,22 @@ export default function WocheScreen({
                   {isMine && (
                     <button
                       onClick={() => {
-                        const next = attendanceConfirmed.includes(chef) ? attendanceConfirmed : [...attendanceConfirmed, chef]
-                        onAttendanceConfirmedChange(next)
+                        if (isConfirmed) {
+                          // De-confirm so user can re-edit and then re-confirm
+                          onAttendanceConfirmedChange(attendanceConfirmed.filter(c => c !== chef))
+                        } else {
+                          onAttendanceConfirmedChange([...attendanceConfirmed, chef])
+                        }
                       }}
                       style={{ marginTop: 10, width: '100%', padding: '7px', border: 'none', borderRadius: 7, background: isConfirmed ? '#E1F5EE' : '#1D9E75', color: isConfirmed ? '#0F6E56' : 'white', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
                     >
-                      {isConfirmed ? '✓ Erneut bestätigen' : 'Meine Anwesenheit bestätigen'}
+                      {isConfirmed ? '✏️ Anwesenheit neu eintragen' : 'Meine Anwesenheit bestätigen'}
                     </button>
+                  )}
+                  {!isMine && !canEdit && (
+                    <div style={{ marginTop: 6, fontSize: 10, color: '#bbb', textAlign: 'center' }}>
+                      Nur {member.name} kann das ändern
+                    </div>
                   )}
                 </div>
               </div>
