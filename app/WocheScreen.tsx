@@ -867,7 +867,7 @@ export default function WocheScreen({
     setSaving(true)
     await onWeekPlanChange(pendingPlan, { ...mealsData, ...pendingPlanMeals })
     await onPlanConfirm?.(pendingPlan)
-    await onPlanConfirmedChange(true)
+    await onPlanConfirmedChange(currentUser === wochenchef)
 
     // Auto-Entfernen aus Gefriertruhe: für Reste-Gerichte exakt matchen,
     // für gefriertruhe-Gerichte per exakter Namensübereinstimmung
@@ -2154,6 +2154,14 @@ export default function WocheScreen({
       <div className="topbar"><h1>🍽 FamilyPlate</h1></div>
       <div className="content">
         {renderWochenchefDecisions()}
+        {!planConfirmed && weekPlan.length > 0 && currentUser !== wochenchef && (
+          <div style={{ background: '#FFFBEB', border: '1px solid #FCD34D', borderRadius: 10, padding: '10px 14px', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ fontSize: 16, flexShrink: 0 }}>⏳</span>
+            <div style={{ fontSize: 12, color: '#92400E' }}>
+              Plan gespeichert – <strong>{personNames[wochenchef]}</strong> muss noch bestätigen.
+            </div>
+          </div>
+        )}
         {vorratHinweis && currentUser === wochenchef && (
           <div style={{ background: '#FFFBEB', border: '1px solid #FCD34D', borderRadius: 10, padding: '10px 14px', marginBottom: 14, display: 'flex', alignItems: 'flex-start', gap: 10 }}>
             <span style={{ fontSize: 16, flexShrink: 0 }}>📦</span>
