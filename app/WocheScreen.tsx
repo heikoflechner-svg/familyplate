@@ -157,7 +157,8 @@ export default function WocheScreen({
   const suggestedNextChef: Chef = ([...activeMembers].sort((a, b) => {
     const aDate = a.chefStat?.lastCook ?? ''
     const bDate = b.chefStat?.lastCook ?? ''
-    return aDate < bDate ? -1 : aDate > bDate ? 1 : 0
+    if (aDate !== bDate) return aDate < bDate ? -1 : 1
+    return (a.chefStat?.count ?? 0) - (b.chefStat?.count ?? 0)
   }).find(m => m.id !== wochenchef)?.id ?? activeMembers.find(m => m.id !== wochenchef)?.id ?? 'PA') as Chef
   const wishDeadlineStatus = getShoppingDeadlineStatus(shoppingDays)
   const wishDeadlinePassed = planConfirmed && (wishDeadlineStatus?.passed ?? false)
@@ -2218,6 +2219,23 @@ export default function WocheScreen({
               {currentUser === wochenchef ? (
                 <div style={{ marginBottom: 10 }}>
                   <div style={{ fontSize: 10, color: '#888', marginBottom: 6 }}>Wochenchef festlegen:</div>
+                  {!nextChef && (() => {
+                    const suggestedMember = activeMembers.find(m => m.id === suggestedNextChef)
+                    const stat = suggestedMember?.chefStat
+                    const lastCookText = (() => {
+                      if (!stat?.lastCook) return 'noch nie Wochenchef'
+                      const days = Math.floor((Date.now() - new Date(stat.lastCook).getTime()) / 86400000)
+                      if (days < 7) return `zuletzt vor ${days} Tag${days === 1 ? '' : 'en'} Wochenchef`
+                      const weeks = Math.round(days / 7)
+                      return `zuletzt vor ${weeks} Woche${weeks === 1 ? '' : 'n'} Wochenchef`
+                    })()
+                    const countText = stat ? `, ${stat.count}× insgesamt` : ''
+                    return (
+                      <div style={{ fontSize: 10, color: '#92400E', background: '#FFFBEB', border: '1px solid #FCD34D', borderRadius: 6, padding: '4px 8px', marginBottom: 6 }}>
+                        ★ Rémy schlägt <strong>{personNames[suggestedNextChef]}</strong> vor – {lastCookText}{countText}
+                      </div>
+                    )
+                  })()}
                   <div style={{ display: 'flex', gap: 6 }}>
                     {activeMembers.map(m => {
                       const isSelected = nextChef === m.id
