@@ -2122,15 +2122,14 @@ export default function WocheScreen({
               <span style={{ fontSize: 13, fontWeight: 700, color: '#111' }}>Wochenplan erstellen</span>
             </div>
             <div style={{ padding: '10px 14px' }}>
-              {currentUser === wochenchef ? (
-                <button className="btn primary" onClick={goToPlan}>
-                  🐀 Woche planen
-                </button>
-              ) : (
-                <div style={{ fontSize: 12, color: '#666', padding: '4px 0', lineHeight: 1.5 }}>
-                  <span style={{ fontWeight: 600, color: '#555' }}>{personNames[wochenchef]}</span> plant die Woche — die Essensplanung steht noch aus.
+              {currentUser !== wochenchef && (
+                <div style={{ fontSize: 11, color: '#888', marginBottom: 8 }}>
+                  Wochenchef: <strong style={{ color: '#555' }}>{personNames[wochenchef]}</strong>
                 </div>
               )}
+              <button className="btn primary" onClick={goToPlan}>
+                🐀 Woche planen
+              </button>
             </div>
           </div>
         </div>
