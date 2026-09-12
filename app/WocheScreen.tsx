@@ -867,7 +867,7 @@ export default function WocheScreen({
     setSaving(true)
     await onWeekPlanChange(pendingPlan, { ...mealsData, ...pendingPlanMeals })
     await onPlanConfirm?.(pendingPlan)
-    await onPlanConfirmedChange(false)
+    await onPlanConfirmedChange(currentUser === wochenchef)
 
     // Auto-Entfernen aus Gefriertruhe: für Reste-Gerichte exakt matchen,
     // für gefriertruhe-Gerichte per exakter Namensübereinstimmung
