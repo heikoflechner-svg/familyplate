@@ -219,6 +219,17 @@ export default function WocheScreen({
   const [nextWeekWishInput, setNextWeekWishInput] = useState('')
   const [nextWeekWishSaving, setNextWeekWishSaving] = useState(false)
 
+  // ── Nächste Woche – Plan-State ────────────────────────────────────────────
+  const [nwExpanded, setNwExpanded] = useState(false)
+  const [nwPlanLoading, setNwPlanLoading] = useState(false)
+  const [nwPendingPlan, setNwPendingPlan] = useState<WeekPlanEntry[] | null>(null)
+  const [nwPendingMeals, setNwPendingMeals] = useState<Record<string, Rezept>>({})
+  const [nwSlotLoading, setNwSlotLoading] = useState<string | null>(null)
+  const [nwEditMealKey, setNwEditMealKey] = useState<string | null>(null)
+  const [nwMealSubMode, setNwMealSubMode] = useState<'manual' | 'pantry' | null>(null)
+  const [nwManualDish, setNwManualDish] = useState('')
+  const [nwSaving, setNwSaving] = useState(false)
+
   async function submitNextWeekWish() {
     if (!nextWeekWishInput.trim() || !onNextWeekDataChange) return
     setNextWeekWishSaving(true)
@@ -228,6 +239,132 @@ export default function WocheScreen({
     await onNextWeekDataChange({ wishes: [...currentWishes, wish] }, nextMonday)
     setNextWeekWishInput('')
     setNextWeekWishSaving(false)
+  }
+
+  async function generateNwPlan() {
+    if (!onNextWeekDataChange) return
+    setNwPlanLoading(true)
+    setNwPendingPlan(null)
+    try {
+      const { plan: result, mealsData: newMeals } = await generateWeekPlan({
+        planMittag,
+        planWE,
+        freezerList: getFreezerListString(freezerItems),
+        pantryList: getPantryListString(pantryItems),
+        neuTage: planWE ? [...WOCHENTAGE] : WOCHENTAGE.slice(0, 5),
+        wishes: (nextWeekData?.wishes ?? []).map(w => ({
+          id: w.id, person: w.person, tag: 'alle', slot: 'Abend' as WochenSlot,
+          type: 'ergaenzung' as const, text: w.text, postConfirm: false,
+        })),
+        familyPrompt,
+      })
+      setNwPendingPlan(result)
+      setNwPendingMeals(newMeals)
+    } catch {
+      // silently fail
+    }
+    setNwPlanLoading(false)
+  }
+
+  async function replanNwPendingSlot(tag: string, slot: WochenSlot) {
+    if (!nwPendingPlan) return
+    const key = `${tag}-${slot}`
+    setNwSlotLoading(key)
+    try {
+      const { plan: result, mealsData: newMeals } = await generateWeekPlan({
+        planMittag: slot === 'Abend' ? false : planMittag,
+        planWE,
+        freezerList: getFreezerListString(freezerItems),
+        pantryList: getPantryListString(pantryItems),
+        behaltene: nwPendingPlan.filter(e => !(e.tag === tag && e.slot === slot)),
+        neuTage: [tag],
+        familyPrompt,
+      })
+      const newEntry = result.find(e => e.tag === tag && e.slot === slot)
+      if (newEntry) {
+        setNwPendingPlan(prev => prev!.map(e => e.tag === tag && e.slot === slot ? newEntry : e))
+        setNwPendingMeals(prev => ({ ...prev, ...newMeals }))
+      }
+    } catch {
+      // silently fail
+    }
+    setNwSlotLoading(null)
+  }
+
+  async function acceptNwPlan() {
+    if (!nwPendingPlan || !onNextWeekDataChange) return
+    setNwSaving(true)
+    const nextMonday = nextWeekStart ?? getNextMondayIso()
+    await onNextWeekDataChange({ plan: nwPendingPlan, mealsData: nwPendingMeals, planConfirmed: false }, nextMonday)
+    setNwPendingPlan(null)
+    setNwPendingMeals({})
+    setNwSaving(false)
+  }
+
+  async function confirmNwWeek() {
+    if (!onNextWeekDataChange) return
+    setNwSaving(true)
+    const nextMonday = nextWeekStart ?? getNextMondayIso()
+    await onNextWeekDataChange({ planConfirmed: true }, nextMonday)
+    setNwSaving(false)
+  }
+
+  async function replanNwSlot(tag: string, slot: WochenSlot) {
+    if (!onNextWeekDataChange || !nextWeekData?.plan) return
+    const key = `${tag}-${slot}`
+    setNwSlotLoading(key)
+    try {
+      const { plan: result, mealsData: newMeals } = await generateWeekPlan({
+        planMittag: slot === 'Abend' ? false : planMittag,
+        planWE,
+        freezerList: getFreezerListString(freezerItems),
+        pantryList: getPantryListString(pantryItems),
+        behaltene: nextWeekData.plan.filter(e => !(e.tag === tag && e.slot === slot)),
+        neuTage: [tag],
+        familyPrompt,
+      })
+      const newEntry = result.find(e => e.tag === tag && e.slot === slot)
+      if (newEntry) {
+        const nextMonday = nextWeekStart ?? getNextMondayIso()
+        const newPlan = nextWeekData.plan.map(e => e.tag === tag && e.slot === slot ? newEntry : e)
+        await onNextWeekDataChange({ plan: newPlan, mealsData: { ...nextWeekData.mealsData, ...newMeals } }, nextMonday)
+      }
+    } catch {
+      // silently fail
+    }
+    setNwSlotLoading(null)
+  }
+
+  function applyNwManualDish(tag: string, slot: WochenSlot, name: string) {
+    if (!name.trim() || !onNextWeekDataChange || !nextWeekData?.plan) return
+    const nextMonday = nextWeekStart ?? getNextMondayIso()
+    const newPlan = nextWeekData.plan.map(e =>
+      e.tag === tag && e.slot === slot ? { ...e, gericht: name.trim(), emoji: '🍽️', quelle: 'manuell' } : e
+    )
+    void onNextWeekDataChange({ plan: newPlan, mealsData: nextWeekData.mealsData }, nextMonday)
+    setNwEditMealKey(null)
+    setNwMealSubMode(null)
+    setNwManualDish('')
+  }
+
+  function applyNwStockItem(tag: string, slot: WochenSlot, name: string, emoji: string) {
+    if (!onNextWeekDataChange || !nextWeekData?.plan) return
+    const nextMonday = nextWeekStart ?? getNextMondayIso()
+    const newPlan = nextWeekData.plan.map(e =>
+      e.tag === tag && e.slot === slot ? { ...e, gericht: name, emoji, quelle: 'vorrat' } : e
+    )
+    void onNextWeekDataChange({ plan: newPlan, mealsData: nextWeekData.mealsData }, nextMonday)
+    setNwEditMealKey(null)
+    setNwMealSubMode(null)
+  }
+
+  function changeNwChef(tag: string, slot: WochenSlot, chef: Chef) {
+    if (!onNextWeekDataChange || !nextWeekData?.plan) return
+    const nextMonday = nextWeekStart ?? getNextMondayIso()
+    const newPlan = nextWeekData.plan.map(e =>
+      e.tag === tag && e.slot === slot ? { ...e, chef } : e
+    )
+    void onNextWeekDataChange({ plan: newPlan, mealsData: nextWeekData.mealsData }, nextMonday)
   }
 
   async function replanSlot(tag: string, slot: WochenSlot) {
@@ -1532,6 +1669,274 @@ export default function WocheScreen({
               🔄 {weekPlan.length > 0 ? 'Neu planen' : 'Woche planen'}
             </button>
           )}
+
+          {/* ── Nächste Woche ────────────────────────────────────────── */}
+          {planConfirmed && (() => {
+            const nextMonday = nextWeekStart ?? getNextMondayIso()
+            const nwKw = getKW(nextMonday)
+            const nwRange = getWeekRange(nextMonday)
+            const nwChef = nextWeekData?.wochenchef
+            const nwPlan = nextWeekData?.plan ?? []
+            const nwMeals = nextWeekData?.mealsData ?? {}
+            const nwConfirmed = nextWeekData?.planConfirmed ?? false
+            const isNwChef = !!nwChef && currentUser === nwChef
+            const nwDays = (planWE ? WOCHENTAGE : WOCHENTAGE.slice(0, 5)).filter(t => nwPlan.some(e => e.tag === t))
+            const nwWishes = nextWeekData?.wishes ?? []
+            const myNwWish = nwWishes.find(w => w.person === currentUser)
+            const autoExpand = nwConfirmed || !!nwPendingPlan || nwPlanLoading
+            const expanded = nwExpanded || autoExpand
+
+            return (
+              <div style={{ marginTop: 20, borderRadius: 10, border: '1px solid #E5E7EB', overflow: 'hidden' }}>
+                {/* Compact header */}
+                <button
+                  onClick={() => setNwExpanded(v => !v)}
+                  style={{ width: '100%', padding: '9px 12px', display: 'flex', alignItems: 'center', gap: 8, background: nwConfirmed ? '#F0FAF5' : '#F8FAFC', border: 'none', cursor: 'pointer', textAlign: 'left' }}
+                >
+                  <span style={{ fontSize: 11, fontWeight: 700, color: nwConfirmed ? '#085041' : '#374151', flex: 1 }}>
+                    📅 Nächste Woche · KW {nwKw} · {nwRange}
+                  </span>
+                  {nwChef && (
+                    <span style={{ fontSize: 10, color: nwConfirmed ? '#0F6E56' : '#6B7280', background: nwConfirmed ? '#B2DFCC' : '#E5E7EB', borderRadius: 10, padding: '2px 7px', fontWeight: 600 }}>
+                      {nwConfirmed ? '✓ freigegeben' : '∘ nicht freigegeben'}
+                    </span>
+                  )}
+                  <span style={{ fontSize: 12, color: '#aaa' }}>{expanded ? '▲' : '▼'}</span>
+                </button>
+
+                {expanded && (
+                  <div style={{ borderTop: '1px solid #E5E7EB' }}>
+                    {/* Wochenchef-Zeile */}
+                    <div style={{ padding: '8px 12px', background: '#f9fafb', display: 'flex', alignItems: 'center', gap: 6, borderBottom: '1px solid #f0f0f0' }}>
+                      <span style={{ fontSize: 11, color: '#888' }}>Wochenchef:</span>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: nwChef ? (CFG[nwChef]?.c ?? '#333') : '#bbb' }}>
+                        {nwChef ? personNames[nwChef] : '— noch nicht festgelegt'}
+                      </span>
+                    </div>
+
+                    {/* Loading */}
+                    {nwPlanLoading && (
+                      <div style={{ textAlign: 'center', padding: '32px 0' }}>
+                        <div style={{ fontSize: 36, marginBottom: 10 }}>🐀</div>
+                        <div style={{ fontSize: 14, fontWeight: 700, color: '#085041', marginBottom: 6 }}>Rémy plant die nächste Woche…</div>
+                        <div style={{ fontSize: 12, color: '#aaa' }}>Einen Moment bitte.</div>
+                      </div>
+                    )}
+
+                    {/* Pending plan (Rémy's suggestion) */}
+                    {!nwPlanLoading && nwPendingPlan && (
+                      <div style={{ padding: '10px 12px' }}>
+                        <div style={{ fontSize: 12, fontWeight: 600, color: '#085041', marginBottom: 8 }}>Rémy schlägt vor:</div>
+                        {(planWE ? WOCHENTAGE : WOCHENTAGE.slice(0, 5)).map(tag => {
+                          const mittag = nwPendingPlan.find(e => e.tag === tag && e.slot === 'Mittag')
+                          const abend = nwPendingPlan.find(e => e.tag === tag && e.slot === 'Abend')
+                          if (!mittag && !abend) return null
+                          return (
+                            <div key={tag} style={{ borderRadius: 8, border: '1px solid #e5e7eb', marginBottom: 8, overflow: 'hidden' }}>
+                              <div style={{ padding: '5px 10px', background: '#f9fafb', borderBottom: '1px solid #f0f0f0', fontSize: 10, fontWeight: 700, color: '#666', textTransform: 'uppercase', letterSpacing: '.5px' }}>{tag}</div>
+                              {[mittag, abend].filter(Boolean).map(e => {
+                                const key = `nwp-${e!.tag}-${e!.slot}`
+                                return (
+                                  <div key={key} style={{ padding: '6px 10px', display: 'flex', alignItems: 'center', gap: 8, borderTop: '1px solid #f0f0f0' }}>
+                                    <SlotPill slot={e!.slot} />
+                                    {nwSlotLoading === `${e!.tag}-${e!.slot}` ? (
+                                      <span style={{ fontSize: 11, color: '#aaa' }}>🐀 wird neu geplant…</span>
+                                    ) : (
+                                      <>
+                                        <span style={{ fontSize: 16 }}>{e!.emoji}</span>
+                                        <span style={{ flex: 1, fontSize: 12, fontWeight: 600, color: '#111' }}>{e!.gericht}</span>
+                                        <span style={{ fontSize: 10, color: '#bbb' }}>{e!.minuten} min</span>
+                                        <button onClick={() => replanNwPendingSlot(e!.tag, e!.slot)} disabled={nwSlotLoading !== null}
+                                          style={{ width: 30, height: 30, border: 'none', borderRadius: 6, background: 'transparent', cursor: 'pointer', fontSize: 14, color: '#ccc', opacity: nwSlotLoading !== null ? 0.3 : 1 }}>↺</button>
+                                      </>
+                                    )}
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          )
+                        })}
+                        <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                          <button className="btn primary" onClick={acceptNwPlan} disabled={nwSaving} style={{ fontSize: 12 }}>
+                            {nwSaving ? '⏳…' : '✅ Plan übernehmen'}
+                          </button>
+                          <button onClick={() => { setNwPendingPlan(null); setNwPendingMeals({}) }} style={{ padding: '10px 14px', border: '1px solid #ddd', borderRadius: 8, background: 'white', fontSize: 12, cursor: 'pointer', color: '#666' }}>✕</button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Plan saved, not yet confirmed */}
+                    {!nwPlanLoading && !nwPendingPlan && nwPlan.length > 0 && !nwConfirmed && (
+                      <div style={{ padding: '8px 12px' }}>
+                        <div style={{ fontSize: 11, color: '#888', marginBottom: 8 }}>Plan vorhanden – noch nicht freigegeben</div>
+                        {(planWE ? WOCHENTAGE : WOCHENTAGE.slice(0, 5)).map(tag => {
+                          const mittag = nwPlan.find(e => e.tag === tag && e.slot === 'Mittag')
+                          const abend = nwPlan.find(e => e.tag === tag && e.slot === 'Abend')
+                          if (!mittag && !abend) return null
+                          return (
+                            <div key={tag} style={{ borderRadius: 8, border: '1px solid #e5e7eb', marginBottom: 6, overflow: 'hidden' }}>
+                              <div style={{ padding: '5px 10px', background: '#f9fafb', borderBottom: '1px solid #f0f0f0', fontSize: 10, fontWeight: 700, color: '#666', textTransform: 'uppercase', letterSpacing: '.5px' }}>{tag}</div>
+                              {[mittag, abend].filter(Boolean).map(e => (
+                                <div key={`${e!.slot}`} style={{ padding: '5px 10px', display: 'flex', alignItems: 'center', gap: 8, borderTop: '1px solid #f5f5f5' }}>
+                                  <SlotPill slot={e!.slot} />
+                                  <span style={{ fontSize: 15 }}>{e!.emoji}</span>
+                                  <span style={{ flex: 1, fontSize: 12, color: '#333' }}>{e!.gericht}</span>
+                                  <span style={{ fontSize: 10, color: '#bbb' }}>{e!.minuten} min</span>
+                                </div>
+                              ))}
+                            </div>
+                          )
+                        })}
+                        <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                          {isNwChef && (
+                            <button className="btn primary" onClick={confirmNwWeek} disabled={nwSaving} style={{ fontSize: 12 }}>
+                              {nwSaving ? '⏳…' : '✅ Woche freigeben'}
+                            </button>
+                          )}
+                          {isNwChef && (
+                            <button onClick={generateNwPlan} disabled={nwPlanLoading} style={{ padding: '10px 14px', border: '1px solid #ddd', borderRadius: 8, background: 'white', fontSize: 12, cursor: 'pointer', color: '#555' }}>
+                              🔄 Neu planen
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* After confirmation: full day view */}
+                    {!nwPlanLoading && !nwPendingPlan && nwConfirmed && nwDays.map(tag => {
+                      const mittag = nwPlan.find(e => e.tag === tag && e.slot === 'Mittag')
+                      const abend = nwPlan.find(e => e.tag === tag && e.slot === 'Abend')
+                      if (!mittag && !abend) return null
+                      return (
+                        <div key={tag} style={{ borderTop: '1px solid #f0f0f0' }}>
+                          <div style={{ padding: '7px 12px', background: '#f9fafb', borderBottom: '1px solid #f0f0f0', display: 'flex', alignItems: 'center' }}>
+                            <span style={{ flex: 1, fontSize: 11, fontWeight: 700, color: '#666', textTransform: 'uppercase', letterSpacing: '.5px' }}>{tag}</span>
+                          </div>
+                          {([mittag, abend] as const).map(e => {
+                            if (!e) return null
+                            const slot = e.slot
+                            const nwKey = `nw-${tag}-${slot}`
+                            const isNwEditing = nwEditMealKey === nwKey
+                            return (
+                              <div key={slot} style={{ borderTop: '1px solid #f0f0f0' }}>
+                                <div style={{ padding: '8px 12px 3px', display: 'flex', alignItems: 'center', gap: 6 }}>
+                                  <SlotPill slot={slot} />
+                                  <span
+                                    onClick={isNwChef ? () => { setNwEditMealKey(isNwEditing ? null : nwKey); setNwMealSubMode(null); setNwManualDish('') } : undefined}
+                                    style={{ fontSize: 11, color: '#555', cursor: isNwChef ? 'pointer' : 'default', textDecoration: isNwChef ? 'underline' : 'none', textDecorationStyle: 'dashed', textDecorationColor: '#bbb' }}
+                                  >Koch: {personNames[e.chef]}</span>
+                                </div>
+                                {isNwEditing && isNwChef && (() => {
+                                  const stockItems = [...freezerItems, ...pantryItems]
+                                  return (
+                                    <div style={{ padding: '4px 12px 8px', background: '#f9f9f9' }}>
+                                      <ChefPicker current={e.chef} onSelect={chef => { changeNwChef(tag, slot, chef); setNwEditMealKey(null) }} personNames={personNames} members={members} />
+                                      <div style={{ display: 'flex', gap: 4, marginTop: 6 }}>
+                                        <button onClick={() => replanNwSlot(tag, slot)} disabled={nwSlotLoading !== null}
+                                          style={{ flex: 1, padding: '6px 4px', border: '1px solid #ddd', borderRadius: 8, background: 'white', cursor: nwSlotLoading !== null ? 'default' : 'pointer', fontSize: 11, color: nwSlotLoading === `${tag}-${slot}` ? '#085041' : '#555', opacity: (nwSlotLoading !== null && nwSlotLoading !== `${tag}-${slot}`) ? 0.4 : 1 }}>
+                                          {nwSlotLoading === `${tag}-${slot}` ? '⏳…' : '↺ Rémy'}
+                                        </button>
+                                        <button onClick={() => { setNwMealSubMode(m => m === 'manual' ? null : 'manual'); setNwManualDish('') }}
+                                          style={{ flex: 1, padding: '6px 4px', border: `1px solid ${nwMealSubMode === 'manual' ? '#1D9E75' : '#ddd'}`, borderRadius: 8, background: nwMealSubMode === 'manual' ? '#E1F5EE' : 'white', cursor: 'pointer', fontSize: 11, color: nwMealSubMode === 'manual' ? '#0F6E56' : '#555' }}>
+                                          ✏️ Eigenes
+                                        </button>
+                                        <button onClick={() => setNwMealSubMode(m => m === 'pantry' ? null : 'pantry')}
+                                          style={{ flex: 1, padding: '6px 4px', border: `1px solid ${nwMealSubMode === 'pantry' ? '#1D9E75' : '#ddd'}`, borderRadius: 8, background: nwMealSubMode === 'pantry' ? '#E1F5EE' : 'white', cursor: 'pointer', fontSize: 11, color: nwMealSubMode === 'pantry' ? '#0F6E56' : '#555' }}>
+                                          ❄️ Vorrat
+                                        </button>
+                                      </div>
+                                      {nwMealSubMode === 'manual' && (
+                                        <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
+                                          <input type="text" value={nwManualDish} onChange={ev => setNwManualDish(ev.target.value)}
+                                            onKeyDown={ev => ev.key === 'Enter' && applyNwManualDish(tag, slot, nwManualDish)}
+                                            placeholder="Gerichtsname…" autoFocus
+                                            style={{ flex: 1, fontSize: 12, padding: '6px 10px', border: '1px solid #ddd', borderRadius: 6, outline: 'none' }} />
+                                          <button onClick={() => applyNwManualDish(tag, slot, nwManualDish)} disabled={!nwManualDish.trim()}
+                                            style={{ padding: '6px 12px', border: 'none', borderRadius: 6, background: '#1D9E75', color: 'white', fontSize: 12, fontWeight: 600, cursor: nwManualDish.trim() ? 'pointer' : 'default', opacity: nwManualDish.trim() ? 1 : 0.4 }}>✓</button>
+                                        </div>
+                                      )}
+                                      {nwMealSubMode === 'pantry' && (stockItems.length === 0
+                                        ? <div style={{ fontSize: 11, color: '#bbb', textAlign: 'center', padding: '4px 0', marginTop: 4 }}>Nichts im Vorrat</div>
+                                        : <div style={{ maxHeight: 100, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 3, marginTop: 4 }}>
+                                            {stockItems.map(item => (
+                                              <button key={item.id} onClick={() => applyNwStockItem(tag, slot, item.name, item.emoji)}
+                                                style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 8px', border: '1px solid #eee', borderRadius: 6, background: 'white', cursor: 'pointer', textAlign: 'left' }}>
+                                                <span style={{ fontSize: 14 }}>{item.emoji}</span>
+                                                <span style={{ flex: 1, fontSize: 12, color: '#333' }}>{item.name}</span>
+                                                <span style={{ fontSize: 10, color: '#bbb' }}>{item.menge}</span>
+                                              </button>
+                                            ))}
+                                          </div>
+                                      )}
+                                    </div>
+                                  )
+                                })()}
+                                <div style={{ padding: '3px 12px 10px', display: 'flex', alignItems: 'center', gap: 8 }}>
+                                  <span style={{ fontSize: 18 }}>{e.emoji}</span>
+                                  <div style={{ flex: 1 }}>
+                                    <div style={{ fontSize: 13, fontWeight: 700, color: '#111' }}>{e.gericht}</div>
+                                    <div style={{ fontSize: 11, color: '#aaa' }}>{e.minuten} min</div>
+                                  </div>
+                                </div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )
+                    })}
+
+                    {/* Footer actions */}
+                    <div style={{ padding: '8px 12px 10px', borderTop: nwConfirmed || nwPlan.length > 0 ? '1px solid #f0f0f0' : 'none', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      {/* Generate plan (when no plan yet) */}
+                      {!nwPlanLoading && !nwPendingPlan && nwPlan.length === 0 && isNwChef && (
+                        <button onClick={generateNwPlan}
+                          style={{ padding: '9px 12px', border: 'none', borderRadius: 8, background: '#1D9E75', color: 'white', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+                          🐀 Rémy fragen – Woche planen
+                        </button>
+                      )}
+
+                      {/* Wish input (for non-nwChef or also nwChef) */}
+                      {!nwPendingPlan && (
+                        <div>
+                          {myNwWish ? (
+                            <div style={{ fontSize: 11, color: '#0F6E56', display: 'flex', alignItems: 'center', gap: 6 }}>
+                              <span>✓ Dein Wunsch: „{myNwWish.text}"</span>
+                              <button onClick={() => onNextWeekDataChange?.({ wishes: nwWishes.filter(x => x.id !== myNwWish.id) }, nextMonday)}
+                                style={{ border: 'none', background: 'none', color: '#aaa', cursor: 'pointer', fontSize: 13, padding: 0 }}>×</button>
+                            </div>
+                          ) : (
+                            <div style={{ display: 'flex', gap: 6 }}>
+                              <input value={nextWeekWishInput} onChange={ev => setNextWeekWishInput(ev.target.value)}
+                                onKeyDown={ev => ev.key === 'Enter' && submitNextWeekWish()}
+                                placeholder="Wunsch für nächste Woche..."
+                                style={{ flex: 1, border: '1px solid #e5e7eb', borderRadius: 7, padding: '5px 9px', fontSize: 12, outline: 'none', background: 'white' }} />
+                              <button onClick={submitNextWeekWish} disabled={!nextWeekWishInput.trim() || nextWeekWishSaving}
+                                style={{ padding: '5px 10px', borderRadius: 7, border: 'none', background: nextWeekWishInput.trim() ? '#1D9E75' : '#ddd', color: 'white', fontSize: 12, cursor: nextWeekWishInput.trim() ? 'pointer' : 'default' }}>
+                                {nextWeekWishSaving ? '…' : '+ Wunsch'}
+                              </button>
+                            </div>
+                          )}
+                          {isNwChef && nwWishes.length > 0 && (
+                            <div style={{ marginTop: 6, padding: '6px 8px', background: '#fff', borderRadius: 6, border: '1px solid #e5e7eb' }}>
+                              <div style={{ fontSize: 10, color: '#888', marginBottom: 3 }}>Wünsche der Familie:</div>
+                              {nwWishes.map(w => (
+                                <div key={w.id} style={{ fontSize: 11, color: '#444', display: 'flex', alignItems: 'center', gap: 4, marginBottom: 2 }}>
+                                  <span style={{ fontWeight: 700, color: CFG[w.person as Chef]?.c ?? '#333' }}>{personNames[w.person as Chef]}:</span>
+                                  <span>„{w.text}"</span>
+                                  <button onClick={() => onNextWeekDataChange?.({ wishes: nwWishes.filter(x => x.id !== w.id) }, nextMonday)}
+                                    style={{ marginLeft: 'auto', border: 'none', background: 'none', color: '#ccc', cursor: 'pointer', fontSize: 13, lineHeight: 1 }}>×</button>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )
+          })()}
         </div>
       </div>
     )

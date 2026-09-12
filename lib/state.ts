@@ -105,6 +105,9 @@ export interface NextWeekWish {
 export interface NextWeekData {
   wochenchef: Chef
   wishes: NextWeekWish[]
+  plan?: WeekPlanEntry[]
+  mealsData?: Record<string, Rezept>
+  planConfirmed?: boolean
 }
 
 export interface ChefStat {
