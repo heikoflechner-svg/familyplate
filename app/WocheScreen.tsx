@@ -414,7 +414,7 @@ export default function WocheScreen({
     closeMealPanel()
   }
 
-  function openWishForm(tag: string, slot: WochenSlot) { setWishFormKey(`${tag}-${slot}`) }
+  function openWishForm(tag: string, slot: WochenSlot) { setWishFormKey(`${tag}-${slot}`); closeMealPanel() }
   function closeWishForm() { setWishFormKey(null) }
 
   async function handleWishSubmit(wish: Wish) {
@@ -509,6 +509,7 @@ export default function WocheScreen({
   function toggleEditMeal(key: string) {
     if (editMealKey === key) { closeMealPanel(); return }
     setEditMealKey(key)
+    setWishFormKey(null)
     setChefPickerKey(null)
     setMealSubMode(null)
     setManualDishInput('')
