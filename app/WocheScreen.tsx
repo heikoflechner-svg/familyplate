@@ -2198,20 +2198,29 @@ export default function WocheScreen({
                 <div style={{ fontSize: 13, fontWeight: 600, color: '#0F6E56', marginBottom: 3 }}>
                   Hallo {personNames[currentUser]}! 👋
                 </div>
-                <div style={{ fontSize: 12, color: '#444' }}>
-                  {personNames[wochenchef]} hat die Woche geplant – trag gerne deine Wünsche ein.
-                  {shoppingDays.length > 0 && (
-                    <> Einkauf ist am <strong>{shoppingDays.map(d => shoppingPersons[d] ? `${d} (${personNames[shoppingPersons[d]]})` : d).join(' und ')}</strong>.</>
-                  )}
+                <div style={{ fontSize: 12, color: '#444', marginBottom: shoppingDays.length > 0 ? 4 : 0 }}>
+                  Diese Woche ist <strong>{personNames[wochenchef]}</strong> der Wochenchef (organisiert und kocht mit). {personNames[wochenchef]} hat die Woche bereits geplant – du kannst aber noch deine Wünsche eintragen.
                 </div>
+                {shoppingDays.length > 0 && (
+                  <div style={{ fontSize: 12, color: '#444' }}>
+                    Einkauf am <strong>{shoppingDays.map(d => shoppingPersons[d] ? `${d} (${personNames[shoppingPersons[d]]})` : d).join(' und ')}</strong>.
+                  </div>
+                )}
               </>
             ) : (
-              <div style={{ fontSize: 12, color: '#0F6E56' }}>
-                ✅ Woche bestätigt{weekStart ? ` · KW ${getKW(weekStart)}` : ''}
+              <>
+                <div style={{ fontSize: 12, fontWeight: 600, color: '#0F6E56', marginBottom: 3 }}>
+                  ✅ Woche bestätigt{weekStart ? ` · KW ${getKW(weekStart)}` : ''}
+                </div>
+                <div style={{ fontSize: 12, color: '#444', marginBottom: shoppingDays.length > 0 ? 4 : 0 }}>
+                  Du bist diese Woche Wochenchef – du organisierst die Woche und kochst mit.
+                </div>
                 {shoppingDays.length > 0 && (
-                  <> · Einkauf am <strong>{shoppingDays.map(d => shoppingPersons[d] ? `${d} (${personNames[shoppingPersons[d]]})` : d).join(' und ')}</strong></>
+                  <div style={{ fontSize: 12, color: '#444' }}>
+                    Einkauf am <strong>{shoppingDays.map(d => shoppingPersons[d] ? `${d} (${personNames[shoppingPersons[d]]})` : d).join(' und ')}</strong>.
+                  </div>
                 )}
-              </div>
+              </>
             )}
           </div>
         )}
