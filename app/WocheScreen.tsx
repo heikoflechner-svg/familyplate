@@ -1542,7 +1542,7 @@ export default function WocheScreen({
                         <WishesSection
                           tag={tag} wishes={wishes} freezerItems={freezerItems} pantryItems={pantryItems}
                           personNames={personNames} planMittag={planMittag} lockedSlot={slot} showExisting={false}
-                          canAdd={!shopDone && !wishDeadlinePassed} deadlineHint={wishDeadlineHint}
+                          canAdd={!shopDone && !wishDeadlinePassed && !(currentUser === wochenchef && planConfirmed)} deadlineHint={wishDeadlineHint}
                           isOpen={wishFormKey === `${tag}-${slot}`} initialPerson={currentUser} familyPrompt={familyPrompt}
                           onOpen={() => openWishForm(tag, slot)} onClose={closeWishForm} onSubmitWish={handleWishSubmit} onRemove={removeWish}
                         />
@@ -2111,7 +2111,7 @@ export default function WocheScreen({
         <WishesSection
           tag={tag} wishes={wishes} freezerItems={freezerItems} pantryItems={pantryItems}
           personNames={personNames} planMittag={planMittag} lockedSlot={slot}
-          canAdd={!shopDone && !wishDeadlinePassed} deadlineHint={wishDeadlineHint}
+          canAdd={!shopDone && !wishDeadlinePassed && !(currentUser === wochenchef && planConfirmed)} deadlineHint={wishDeadlineHint}
           isOpen={wishFormKey === `${tag}-${slot}`} initialPerson={currentUser} familyPrompt={familyPrompt}
           onOpen={() => openWishForm(tag, slot)} onClose={closeWishForm} onSubmitWish={handleWishSubmit} onRemove={removeWish}
         />
