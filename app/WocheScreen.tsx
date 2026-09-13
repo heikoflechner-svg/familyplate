@@ -1453,64 +1453,6 @@ export default function WocheScreen({
                             <ChefPicker current={e.chef} onSelect={chef => changeActiveChef(tag, slot, chef)} personNames={personNames} members={members} />
                           </div>
                         )}
-                        {planConfirmed && currentUser === wochenchef && !shopDone && (() => {
-                          const gKey = key
-                          const isGerichtOpen = gerichtEditKey === gKey
-                          const stockItems = [...freezerItems, ...pantryItems]
-                          return (
-                            <div style={{ borderTop: '1px solid #f5f5f5' }}>
-                              <button
-                                onClick={() => { if (isGerichtOpen) { setGerichtEditKey(null); setMealSubMode(null) } else { setGerichtEditKey(gKey); setEditMealKey(null); setMealSubMode(null) } }}
-                                style={{ width: '100%', padding: '6px 12px', background: 'none', border: 'none', textAlign: 'left', fontSize: 11, color: isGerichtOpen ? '#1D9E75' : '#bbb', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}
-                              >✏️ Gericht ändern</button>
-                              {isGerichtOpen && (
-                                <div style={{ padding: '4px 12px 8px', background: '#f9f9f9' }}>
-                                  <div style={{ display: 'flex', gap: 4 }}>
-                                    <button onClick={() => replanSlot(tag, slot)} disabled={slotLoading !== null || dayLoading !== null}
-                                      style={{ flex: 1, padding: '6px 4px', border: '1px solid #ddd', borderRadius: 8, background: 'white', cursor: (slotLoading !== null || dayLoading !== null) ? 'default' : 'pointer', fontSize: 11, color: slotLoading === key ? '#085041' : '#555', opacity: (slotLoading !== null && slotLoading !== key) ? 0.4 : 1 }}>
-                                      {slotLoading === key ? '⏳…' : '↺ Rémy'}
-                                    </button>
-                                    <button onClick={() => { if (mealSubMode === 'manual') setMealSubMode(null); else { setMealSubMode('manual'); setManualDishInput('') } }}
-                                      style={{ flex: 1, padding: '6px 4px', border: `1px solid ${mealSubMode === 'manual' ? '#1D9E75' : '#ddd'}`, borderRadius: 8, background: mealSubMode === 'manual' ? '#E1F5EE' : 'white', cursor: 'pointer', fontSize: 11, color: mealSubMode === 'manual' ? '#0F6E56' : '#555' }}>
-                                      ✏️ Eigenes
-                                    </button>
-                                    <button onClick={() => setMealSubMode(prev => prev === 'pantry' ? null : 'pantry')}
-                                      style={{ flex: 1, padding: '6px 4px', border: `1px solid ${mealSubMode === 'pantry' ? '#1D9E75' : '#ddd'}`, borderRadius: 8, background: mealSubMode === 'pantry' ? '#E1F5EE' : 'white', cursor: 'pointer', fontSize: 11, color: mealSubMode === 'pantry' ? '#0F6E56' : '#555' }}>
-                                      ❄️ Vorrat
-                                    </button>
-                                  </div>
-                                  {mealSubMode === 'manual' && (
-                                    <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
-                                      <input type="text" value={manualDishInput} onChange={ev => setManualDishInput(ev.target.value)}
-                                        onKeyDown={ev => ev.key === 'Enter' && !!manualDishInput.trim() && applyActiveManualDish(tag, slot, manualDishInput)}
-                                        placeholder="Gerichtsname…" autoFocus
-                                        style={{ flex: 1, fontSize: 12, padding: '6px 10px', border: '1px solid #ddd', borderRadius: 6, outline: 'none' }} />
-                                      <button onClick={() => applyActiveManualDish(tag, slot, manualDishInput)} disabled={!manualDishInput.trim()}
-                                        style={{ padding: '6px 12px', border: 'none', borderRadius: 6, background: '#1D9E75', color: 'white', fontSize: 12, fontWeight: 600, cursor: manualDishInput.trim() ? 'pointer' : 'default', opacity: manualDishInput.trim() ? 1 : 0.4 }}>✓</button>
-                                    </div>
-                                  )}
-                                  {mealSubMode === 'pantry' && (stockItems.length === 0
-                                    ? <div style={{ fontSize: 11, color: '#bbb', textAlign: 'center', padding: '4px 0', marginTop: 4 }}>Nichts im Vorrat</div>
-                                    : <div style={{ maxHeight: 120, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 3, marginTop: 4 }}>
-                                        {stockItems.map(item => (
-                                          <button key={item.id} onClick={() => applyActiveStockItem(tag, slot, item.name, item.emoji)}
-                                            style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 8px', border: '1px solid #eee', borderRadius: 6, background: 'white', cursor: 'pointer', textAlign: 'left' }}>
-                                            <span style={{ fontSize: 14 }}>{item.emoji}</span>
-                                            <span style={{ flex: 1, fontSize: 12, color: '#333' }}>{item.name}</span>
-                                            <span style={{ fontSize: 10, color: '#bbb' }}>{item.menge}</span>
-                                          </button>
-                                        ))}
-                                      </div>
-                                  )}
-                                  <button onClick={() => replanDay(tag)} disabled={dayLoading === tag || slotLoading !== null}
-                                    style={{ padding: '6px 12px', border: '1px solid #ddd', borderRadius: 8, background: 'white', cursor: 'pointer', fontSize: 11, color: '#888', textAlign: 'left', width: '100%', marginTop: 4 }}>
-                                    ↺ ganzer Tag neu planen
-                                  </button>
-                                </div>
-                              )}
-                            </div>
-                          )
-                        })()}
                         {isAttendanceEdit && canEdit && (
                           <div style={{ padding: '6px 12px 8px', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6, background: '#f9f9f9', borderTop: '1px solid #f0f0f0' }}>
                             <span style={{ fontSize: 11, color: '#888', width: '100%' }}>Wer ist dabei?</span>
@@ -1557,6 +1499,8 @@ export default function WocheScreen({
                           canAdd={!shopDone && !wishDeadlinePassed} deadlineHint={wishDeadlineHint}
                           isOpen={wishFormKey === `${tag}-${slot}`} initialPerson={currentUser} familyPrompt={familyPrompt}
                           onOpen={() => openWishForm(tag, slot)} onClose={closeWishForm} onSubmitWish={handleWishSubmit} onRemove={removeWish}
+                          fullWidth isWochenchef={currentUser === wochenchef && !shopDone}
+                          onReplanDay={() => replanDay(tag)} replanDayLoading={dayLoading === tag || slotLoading !== null}
                         />
                         {(() => {
                           const pKey = `${tag}-${slot}`
@@ -2371,6 +2315,10 @@ interface WishesSectionProps {
   isOpen: boolean
   initialPerson: Chef
   familyPrompt: string
+  fullWidth?: boolean
+  isWochenchef?: boolean
+  onReplanDay?: () => void
+  replanDayLoading?: boolean
   onOpen: () => void
   onClose: () => void
   onSubmitWish: (wish: Wish) => void
@@ -2380,6 +2328,7 @@ interface WishesSectionProps {
 function WishesSection({
   tag, wishes, freezerItems, pantryItems, personNames, planMittag,
   lockedSlot, showExisting = true, canAdd = true, deadlineHint, isOpen, initialPerson, familyPrompt,
+  fullWidth, isWochenchef, onReplanDay, replanDayLoading,
   onOpen, onClose, onSubmitWish, onRemove,
 }: WishesSectionProps) {
   const dayWishes = wishes.filter(w => w.tag === tag && (!lockedSlot || w.slot === lockedSlot))
@@ -2490,37 +2439,50 @@ function WishesSection({
     : wishDish !== null || wishText.trim().length > 0
 
   return (
-    <div style={{ padding: '6px 12px 8px', borderTop: '1px solid #f0f0f0' }}>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, alignItems: 'center' }}>
-        {showExisting && dayWishes.map(w => {
-          const c = CFG[w.person] ?? CFG.MA
-          const slotIcon = w.slot === 'Mittag' ? '🌞' : '🌙'
-          const typeLabel = w.type === 'alternative' ? '🔄 ' : ''
-          const content = w.type === 'ergaenzung' ? w.text : `${w.emoji} ${w.dishName}`
-          return (
-            <span key={w.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 3, background: c.bg, color: c.c, borderRadius: 8, padding: '2px 6px', fontSize: 11 }}>
-              <span style={{ fontWeight: 700 }}>{personNames[w.person]}</span>
-              <span style={{ opacity: 0.6 }}>{slotIcon}</span>
-              <span>{typeLabel}{content}</span>
-              <button onClick={() => onRemove(w.id)} style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'inherit', fontSize: 12, padding: '0 0 0 2px', lineHeight: 1 }}>×</button>
-            </span>
-          )
-        })}
-        {!isOpen && canAdd && (
+    <div style={fullWidth ? { borderTop: '1px solid #f5f5f5' } : { padding: '6px 12px 8px', borderTop: '1px solid #f0f0f0' }}>
+      {showExisting && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, alignItems: 'center', ...(fullWidth ? { padding: '6px 12px 0' } : {}) }}>
+          {dayWishes.map(w => {
+            const c = CFG[w.person] ?? CFG.MA
+            const slotIcon = w.slot === 'Mittag' ? '🌞' : '🌙'
+            const typeLabel = w.type === 'alternative' ? '🔄 ' : ''
+            const content = w.type === 'ergaenzung' ? w.text : `${w.emoji} ${w.dishName}`
+            return (
+              <span key={w.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 3, background: c.bg, color: c.c, borderRadius: 8, padding: '2px 6px', fontSize: 11 }}>
+                <span style={{ fontWeight: 700 }}>{personNames[w.person]}</span>
+                <span style={{ opacity: 0.6 }}>{slotIcon}</span>
+                <span>{typeLabel}{content}</span>
+                <button onClick={() => onRemove(w.id)} style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'inherit', fontSize: 12, padding: '0 0 0 2px', lineHeight: 1 }}>×</button>
+              </span>
+            )
+          })}
+        </div>
+      )}
+      {!isOpen && canAdd && (
+        fullWidth ? (
           <button
             onClick={handleOpen}
-            style={{ fontSize: 11, color: '#bbb', border: '1px dashed #ddd', borderRadius: 8, padding: '2px 8px', background: 'none', cursor: 'pointer' }}
-          >
-            + Änderungswunsch
-          </button>
-        )}
-        {!isOpen && !canAdd && deadlineHint && (
+            style={{ width: '100%', padding: '6px 12px', background: 'none', border: 'none', textAlign: 'left', fontSize: 11, color: '#bbb', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}
+          >✏️ Gericht ändern</button>
+        ) : (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, alignItems: 'center' }}>
+            <button
+              onClick={handleOpen}
+              style={{ fontSize: 11, color: '#bbb', border: '1px dashed #ddd', borderRadius: 8, padding: '2px 8px', background: 'none', cursor: 'pointer' }}
+            >+ Änderungswunsch</button>
+          </div>
+        )
+      )}
+      {!isOpen && !canAdd && deadlineHint && (
+        <div style={fullWidth ? { padding: '4px 12px' } : { display: 'flex', flexWrap: 'wrap', gap: 4, alignItems: 'center' }}>
           <span style={{ fontSize: 10, color: '#9ca3af', fontStyle: 'italic' }}>{deadlineHint}</span>
-        )}
-      </div>
+        </div>
+      )}
 
       {isOpen && (
-        <div style={{ marginTop: 8, padding: 10, background: '#f9f9f9', borderRadius: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div style={fullWidth
+          ? { padding: '4px 12px 8px', background: '#f9f9f9', display: 'flex', flexDirection: 'column', gap: 8 }
+          : { marginTop: 8, padding: 10, background: '#f9f9f9', borderRadius: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
           {/* Slot */}
           {planMittag && !lockedSlot && (
             <div style={{ display: 'flex', gap: 4 }}>
@@ -2535,7 +2497,7 @@ function WishesSection({
           )}
 
           {/* Modus */}
-          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 4, flexWrap: fullWidth ? undefined : 'wrap' }}>
             {([
               { mode: 'ergaenzung', label: '➕ Zutat hinzufügen' },
               { mode: 'alternative', label: '🔄 Anderes Gericht' },
@@ -2543,7 +2505,9 @@ function WishesSection({
               { mode: 'remy', label: '🐀 Rémy fragen' },
             ] as { mode: WishMode; label: string }[]).map(({ mode, label }) => (
               <button key={mode} onClick={() => switchMode(mode)}
-                style={{ fontSize: 11, padding: '2px 10px', border: '1px solid', borderColor: wishMode === mode ? '#1D9E75' : '#ddd', borderRadius: 6, background: wishMode === mode ? '#E1F5EE' : 'white', color: wishMode === mode ? '#0F6E56' : '#aaa', cursor: 'pointer' }}
+                style={fullWidth
+                  ? { flex: 1, padding: '6px 4px', border: `1px solid ${wishMode === mode ? '#1D9E75' : '#ddd'}`, borderRadius: 8, background: wishMode === mode ? '#E1F5EE' : 'white', cursor: 'pointer', fontSize: 11, color: wishMode === mode ? '#0F6E56' : '#555' }
+                  : { fontSize: 11, padding: '2px 10px', border: '1px solid', borderColor: wishMode === mode ? '#1D9E75' : '#ddd', borderRadius: 6, background: wishMode === mode ? '#E1F5EE' : 'white', color: wishMode === mode ? '#0F6E56' : '#aaa', cursor: 'pointer' }}
               >
                 {label}
               </button>
@@ -2669,6 +2633,12 @@ function WishesSection({
             )
           )}
 
+          {isWochenchef && onReplanDay && (
+            <button onClick={onReplanDay} disabled={!!replanDayLoading}
+              style={{ padding: '6px 12px', border: '1px solid #ddd', borderRadius: 8, background: 'white', cursor: replanDayLoading ? 'default' : 'pointer', fontSize: 11, color: '#888', textAlign: 'left', width: '100%', opacity: replanDayLoading ? 0.5 : 1 }}>
+              {replanDayLoading ? '⏳…' : '↺ ganzer Tag neu planen'}
+            </button>
+          )}
           <div style={{ display: 'flex', gap: 6 }}>
             <button
               onClick={handleSubmit} disabled={!canSubmit}
