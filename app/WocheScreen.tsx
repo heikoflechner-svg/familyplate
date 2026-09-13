@@ -1071,7 +1071,7 @@ export default function WocheScreen({
             const chef = member.id as Chef
             const isMine = chef === currentUser
             const isConfirmed = attendanceConfirmed.includes(chef)
-            const canEdit = isMine || currentUser === wochenchef
+            const canEdit = isMine && !isConfirmed
             const cc = CFG[chef] ?? CFG.MA
             return (
               <div key={chef} style={{ borderRadius: 12, border: `1px solid ${isMine ? '#B2DFCC' : '#e5e7eb'}`, marginBottom: 14, overflow: 'hidden' }}>
