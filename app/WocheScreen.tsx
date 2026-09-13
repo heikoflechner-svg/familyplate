@@ -1645,6 +1645,109 @@ export default function WocheScreen({
                       </span>
                     </div>
 
+                    {/* Anwesenheit nächste Woche */}
+                    <div style={{ borderBottom: '1px solid #f0f0f0' }}>
+                      <button
+                        onClick={() => setNwAttendanceOpen(o => !o)}
+                        style={{ width: '100%', padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}
+                      >
+                        <span style={{ flex: 1, fontSize: 11, fontWeight: 600, color: '#374151' }}>
+                          👥 Anwesenheit · KW {nwKw} · {nwRange}
+                        </span>
+                        {(() => {
+                          const nwAttConf = nextWeekData?.attendanceConfirmed ?? []
+                          const allIds = (members.length ? members : DEFAULT_MEMBERS).map(m => m.id as Chef)
+                          const count = nwAttConf.filter(c => allIds.includes(c)).length
+                          return count > 0
+                            ? <span style={{ fontSize: 10, color: '#1D9E75', fontWeight: 700 }}>{count}/{allIds.length} ✓</span>
+                            : null
+                        })()}
+                        <span style={{ fontSize: 12, color: '#aaa' }}>{nwAttendanceOpen ? '▲' : '▼'}</span>
+                      </button>
+                      {nwAttendanceOpen && (
+                        <div style={{ padding: '0 12px 10px' }}>
+                          {(members.length ? members : DEFAULT_MEMBERS).map(member => {
+                            const chef = member.id as Chef
+                            const isMine = chef === currentUser
+                            const nwAttConf = nextWeekData?.attendanceConfirmed ?? []
+                            const isNwConfirmed = nwAttConf.includes(chef)
+                            const canEditNw = isMine && !isNwConfirmed
+                            const cc = CFG[chef] ?? CFG.MA
+                            const displayDays = planWE ? WOCHENTAGE : WOCHENTAGE.slice(0, 5)
+                            return (
+                              <div key={chef} style={{ borderRadius: 10, border: `1px solid ${isMine ? '#B2DFCC' : '#e5e7eb'}`, marginBottom: 8, overflow: 'hidden' }}>
+                                <div style={{ padding: '6px 10px', background: isMine ? '#F0FAF5' : '#f9fafb', borderBottom: '1px solid #f0f0f0', display: 'flex', alignItems: 'center' }}>
+                                  <span style={{ flex: 1, fontSize: 11, fontWeight: 700, color: cc.c }}>{member.name}{isMine ? ' · du' : ''}</span>
+                                  {isNwConfirmed
+                                    ? <span style={{ fontSize: 10, color: '#1D9E75', fontWeight: 700 }}>✓ bestätigt</span>
+                                    : <span style={{ fontSize: 10, color: '#aaa' }}>ausstehend</span>
+                                  }
+                                </div>
+                                <div style={{ padding: '6px 10px', overflowX: 'auto' }}>
+                                  <div style={{ display: 'flex', gap: 4, minWidth: 'max-content' }}>
+                                    <div style={{ width: 20, flexShrink: 0 }}>
+                                      <div style={{ height: 14 }} />
+                                      <div style={{ height: 26, lineHeight: '26px', fontSize: 10, color: '#aaa', textAlign: 'center' }}>☀</div>
+                                      <div style={{ height: 26, lineHeight: '26px', fontSize: 10, color: '#aaa', textAlign: 'center' }}>🌙</div>
+                                    </div>
+                                    {displayDays.map(tag => {
+                                      const mitOn = getNwSlotAnwesend(tag, 'Mittag').includes(chef)
+                                      const abdOn = getNwSlotAnwesend(tag, 'Abend').includes(chef)
+                                      return (
+                                        <div key={tag} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+                                          <span style={{ fontSize: 9, color: '#bbb', height: 14, lineHeight: '14px', textAlign: 'center' }}>{tag.slice(0, 2)}</span>
+                                          <button
+                                            onClick={() => canEditNw && toggleNwSlotAttendance(tag, 'Mittag', chef)}
+                                            disabled={!canEditNw}
+                                            style={{ width: 26, height: 26, borderRadius: 5, border: `1px solid ${mitOn ? cc.c : '#ddd'}`, background: mitOn ? cc.bg : 'white', cursor: canEditNw ? 'pointer' : 'default', fontSize: 9, color: mitOn ? cc.c : 'transparent', fontWeight: 700, opacity: canEditNw ? 1 : 0.4 }}
+                                          >✓</button>
+                                          <button
+                                            onClick={() => canEditNw && toggleNwSlotAttendance(tag, 'Abend', chef)}
+                                            disabled={!canEditNw}
+                                            style={{ width: 26, height: 26, borderRadius: 5, border: `1px solid ${abdOn ? cc.c : '#ddd'}`, background: abdOn ? cc.bg : 'white', cursor: canEditNw ? 'pointer' : 'default', fontSize: 9, color: abdOn ? cc.c : 'transparent', fontWeight: 700, opacity: canEditNw ? 1 : 0.4 }}
+                                          >✓</button>
+                                        </div>
+                                      )
+                                    })}
+                                  </div>
+                                  {isMine && (
+                                    <button
+                                      onClick={() => {
+                                        const conf = nextWeekData?.attendanceConfirmed ?? []
+                                        const mon = nextWeekStart ?? getNextMondayIso()
+                                        onNextWeekDataChange?.(
+                                          { attendanceConfirmed: isNwConfirmed ? conf.filter(c => c !== chef) : [...conf, chef] },
+                                          mon
+                                        )
+                                      }}
+                                      style={{ marginTop: 8, width: '100%', padding: '6px', border: 'none', borderRadius: 7, background: isNwConfirmed ? '#E1F5EE' : '#1D9E75', color: isNwConfirmed ? '#0F6E56' : 'white', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}
+                                    >
+                                      {isNwConfirmed ? '✏️ Anwesenheit neu eintragen' : 'Meine Anwesenheit bestätigen'}
+                                    </button>
+                                  )}
+                                  {!isMine && (
+                                    <div style={{ marginTop: 6, fontSize: 10, color: '#bbb', textAlign: 'center' }}>
+                                      Nur {member.name} kann das ändern
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            )
+                          })}
+                          {(() => {
+                            const nwAttConf = nextWeekData?.attendanceConfirmed ?? []
+                            const allIds = (members.length ? members : DEFAULT_MEMBERS).map(m => m.id as Chef)
+                            const count = nwAttConf.filter(c => allIds.includes(c)).length
+                            return (
+                              <div style={{ textAlign: 'center', fontSize: 11, color: count < allIds.length ? '#92400E' : '#0F6E56' }}>
+                                {count < allIds.length ? '⚠️' : '✅'} {count} von {allIds.length} bestätigt
+                              </div>
+                            )
+                          })()}
+                        </div>
+                      )}
+                    </div>
+
                     {/* Loading */}
                     {nwPlanLoading && (
                       <div style={{ textAlign: 'center', padding: '32px 0' }}>
@@ -2128,215 +2231,6 @@ export default function WocheScreen({
             )}
           </div>
         )}
-
-        {/* Nächste Woche vorbereiten */}
-        {planConfirmed && (() => {
-          const nextMonday = nextWeekStart ?? getNextMondayIso()
-          const kw = getKW(nextMonday)
-          const dateRange = getWeekRange(nextMonday)
-          const nextChef = nextWeekData?.wochenchef
-          const currentMonday = getMondayIso()
-          const isCurrentWeekPast = weekStart != null && weekStart < currentMonday
-          const nextWishes = nextWeekData?.wishes ?? []
-          const myWish = nextWishes.find(w => w.person === currentUser)
-          return (
-            <div style={{ background: '#F8FAFC', border: '1px solid #E5E7EB', borderRadius: 10, padding: '12px 14px', marginBottom: 14 }}>
-              {/* Header */}
-              <div style={{ fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 10 }}>
-                📅 Nächste Woche · KW {kw} · {dateRange}
-              </div>
-
-              {/* Wochenchef-Auswahl (nur Wochenchef) */}
-              {currentUser === wochenchef ? (
-                <div style={{ marginBottom: 10 }}>
-                  <div style={{ fontSize: 10, color: '#888', marginBottom: 6 }}>Wochenchef festlegen:</div>
-                  {!nextChef && (() => {
-                    const suggestedMember = activeMembers.find(m => m.id === suggestedNextChef)
-                    const stat = suggestedMember?.chefStat
-                    const lastCookText = (() => {
-                      if (!stat?.lastCook) return 'noch nie Wochenchef'
-                      const days = Math.floor((Date.now() - new Date(stat.lastCook).getTime()) / 86400000)
-                      if (days < 7) return `zuletzt vor ${days} Tag${days === 1 ? '' : 'en'} Wochenchef`
-                      const weeks = Math.round(days / 7)
-                      return `zuletzt vor ${weeks} Woche${weeks === 1 ? '' : 'n'} Wochenchef`
-                    })()
-                    const countText = stat ? `, ${stat.count}× insgesamt` : ''
-                    return (
-                      <div style={{ fontSize: 10, color: '#92400E', background: '#FFFBEB', border: '1px solid #FCD34D', borderRadius: 6, padding: '4px 8px', marginBottom: 6 }}>
-                        ★ Rémy schlägt <strong>{personNames[suggestedNextChef]}</strong> vor – {lastCookText}{countText}
-                      </div>
-                    )
-                  })()}
-                  <div style={{ display: 'flex', gap: 6 }}>
-                    {activeMembers.map(m => {
-                      const isSelected = nextChef === m.id
-                      const isSuggested = !nextChef && m.id === suggestedNextChef
-                      const cc = CFG[m.id as Chef] ?? CFG.MA
-                      return (
-                        <button key={m.id}
-                          onClick={() => onNextWeekDataChange?.({ wochenchef: m.id as Chef }, nextMonday)}
-                          style={{ flex: 1, padding: '7px 4px', borderRadius: 8, textAlign: 'center', cursor: 'pointer',
-                            border: `2px solid ${isSelected ? cc.c : isSuggested ? '#FCD34D' : '#e5e7eb'}`,
-                            background: isSelected ? cc.bg : isSuggested ? '#FFFBEB' : 'white' }}>
-                          <div style={{ fontSize: 11, fontWeight: 700, color: isSelected ? cc.c : '#333' }}>{m.name}</div>
-                          <div style={{ fontSize: 9, marginTop: 2, color: isSelected ? cc.c : isSuggested ? '#92400E' : 'transparent' }}>
-                            {isSelected ? '✓' : isSuggested ? '★ Empfehlung' : '·'}
-                          </div>
-                        </button>
-                      )
-                    })}
-                  </div>
-                </div>
-              ) : (
-                <div style={{ fontSize: 12, color: '#555', marginBottom: 10 }}>
-                  Wochenchef: <strong>{nextChef ? personNames[nextChef] : '— noch nicht festgelegt'}</strong>
-                </div>
-              )}
-
-              {/* Anwesenheit nächste Woche */}
-              <div style={{ marginBottom: 10 }}>
-                <button
-                  onClick={() => setNwAttendanceOpen(o => !o)}
-                  style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'none', border: 'none', cursor: 'pointer', padding: '4px 0' }}
-                >
-                  <span style={{ fontSize: 11, fontWeight: 600, color: '#374151' }}>👥 Anwesenheit erfassen</span>
-                  <span style={{ fontSize: 12, color: '#aaa' }}>{nwAttendanceOpen ? '▲' : '▼'}</span>
-                </button>
-                {nwAttendanceOpen && (
-                  <div style={{ marginTop: 8 }}>
-                    {(members.length ? members : DEFAULT_MEMBERS).map(member => {
-                      const chef = member.id as Chef
-                      const isMine = chef === currentUser
-                      const nwAttConf = nextWeekData?.attendanceConfirmed ?? []
-                      const isNwConfirmed = nwAttConf.includes(chef)
-                      const canEditNw = isMine && !isNwConfirmed
-                      const cc = CFG[chef] ?? CFG.MA
-                      const displayDays = planWE ? WOCHENTAGE : WOCHENTAGE.slice(0, 5)
-                      return (
-                        <div key={chef} style={{ borderRadius: 10, border: `1px solid ${isMine ? '#B2DFCC' : '#e5e7eb'}`, marginBottom: 10, overflow: 'hidden' }}>
-                          <div style={{ padding: '6px 10px', background: isMine ? '#F0FAF5' : '#f9fafb', borderBottom: '1px solid #f0f0f0', display: 'flex', alignItems: 'center' }}>
-                            <span style={{ flex: 1, fontSize: 11, fontWeight: 700, color: cc.c }}>{member.name}{isMine ? ' · du' : ''}</span>
-                            {isNwConfirmed
-                              ? <span style={{ fontSize: 10, color: '#1D9E75', fontWeight: 700 }}>✓ bestätigt</span>
-                              : <span style={{ fontSize: 10, color: '#aaa' }}>ausstehend</span>
-                            }
-                          </div>
-                          <div style={{ padding: '6px 10px', overflowX: 'auto' }}>
-                            <div style={{ display: 'flex', gap: 4, minWidth: 'max-content' }}>
-                              <div style={{ width: 20, flexShrink: 0 }}>
-                                <div style={{ height: 14 }} />
-                                <div style={{ height: 24, lineHeight: '24px', fontSize: 10, color: '#aaa', textAlign: 'center' }}>☀</div>
-                                <div style={{ height: 24, lineHeight: '24px', fontSize: 10, color: '#aaa', textAlign: 'center' }}>🌙</div>
-                              </div>
-                              {displayDays.map(tag => {
-                                const mitOn = getNwSlotAnwesend(tag, 'Mittag').includes(chef)
-                                const abdOn = getNwSlotAnwesend(tag, 'Abend').includes(chef)
-                                return (
-                                  <div key={tag} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
-                                    <span style={{ fontSize: 9, color: '#bbb', height: 14, lineHeight: '14px', textAlign: 'center' }}>{tag.slice(0, 2)}</span>
-                                    <button
-                                      onClick={() => canEditNw && toggleNwSlotAttendance(tag, 'Mittag', chef)}
-                                      disabled={!canEditNw}
-                                      style={{ width: 24, height: 24, borderRadius: 5, border: `1px solid ${mitOn ? cc.c : '#ddd'}`, background: mitOn ? cc.bg : 'white', cursor: canEditNw ? 'pointer' : 'default', fontSize: 9, color: mitOn ? cc.c : 'transparent', fontWeight: 700, opacity: canEditNw ? 1 : 0.4 }}
-                                    >✓</button>
-                                    <button
-                                      onClick={() => canEditNw && toggleNwSlotAttendance(tag, 'Abend', chef)}
-                                      disabled={!canEditNw}
-                                      style={{ width: 24, height: 24, borderRadius: 5, border: `1px solid ${abdOn ? cc.c : '#ddd'}`, background: abdOn ? cc.bg : 'white', cursor: canEditNw ? 'pointer' : 'default', fontSize: 9, color: abdOn ? cc.c : 'transparent', fontWeight: 700, opacity: canEditNw ? 1 : 0.4 }}
-                                    >✓</button>
-                                  </div>
-                                )
-                              })}
-                            </div>
-                            {isMine && (
-                              <button
-                                onClick={() => {
-                                  const conf = nextWeekData?.attendanceConfirmed ?? []
-                                  const mon = nextWeekStart ?? getNextMondayIso()
-                                  onNextWeekDataChange?.(
-                                    { attendanceConfirmed: isNwConfirmed ? conf.filter(c => c !== chef) : [...conf, chef] },
-                                    mon
-                                  )
-                                }}
-                                style={{ marginTop: 8, width: '100%', padding: '6px', border: 'none', borderRadius: 7, background: isNwConfirmed ? '#E1F5EE' : '#1D9E75', color: isNwConfirmed ? '#0F6E56' : 'white', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}
-                              >
-                                {isNwConfirmed ? '✏️ Anwesenheit neu eintragen' : 'Meine Anwesenheit bestätigen'}
-                              </button>
-                            )}
-                            {!isMine && (
-                              <div style={{ marginTop: 6, fontSize: 10, color: '#bbb', textAlign: 'center' }}>
-                                Nur {member.name} kann das ändern
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      )
-                    })}
-                    {(() => {
-                      const nwAttConf = nextWeekData?.attendanceConfirmed ?? []
-                      const allIds = (members.length ? members : DEFAULT_MEMBERS).map(m => m.id as Chef)
-                      const count = nwAttConf.filter(c => allIds.includes(c)).length
-                      return (
-                        <div style={{ textAlign: 'center', fontSize: 11, color: count < allIds.length ? '#92400E' : '#0F6E56', marginBottom: 6 }}>
-                          {count < allIds.length ? '⚠️' : '✅'} {count} von {allIds.length} bestätigt
-                        </div>
-                      )
-                    })()}
-                  </div>
-                )}
-              </div>
-
-              {/* Alle Wünsche (für Wochenchef) */}
-              {currentUser === wochenchef && nextWishes.length > 0 && (
-                <div style={{ marginBottom: 8, padding: '7px 10px', background: '#fff', borderRadius: 8, border: '1px solid #e5e7eb' }}>
-                  <div style={{ fontSize: 10, color: '#888', marginBottom: 4 }}>Wünsche der Familie:</div>
-                  {nextWishes.map(w => {
-                    const cc = CFG[w.person as Chef] ?? CFG.MA
-                    return (
-                      <div key={w.id} style={{ fontSize: 11, color: '#444', marginBottom: 2, display: 'flex', alignItems: 'center', gap: 4 }}>
-                        <span style={{ fontWeight: 700, color: cc.c }}>{personNames[w.person as Chef]}:</span>
-                        <span>„{w.text}"</span>
-                        <button onClick={() => onNextWeekDataChange?.({ wishes: nextWishes.filter(x => x.id !== w.id) }, nextMonday)}
-                          style={{ marginLeft: 'auto', border: 'none', background: 'none', color: '#ccc', cursor: 'pointer', fontSize: 13, lineHeight: 1 }}>×</button>
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
-
-              {/* Wunsch-Eingabe */}
-              {myWish ? (
-                <div style={{ fontSize: 11, color: '#0F6E56', display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
-                  <span>✓ Dein Wunsch: „{myWish.text}"</span>
-                  <button onClick={() => onNextWeekDataChange?.({ wishes: nextWishes.filter(x => x.id !== myWish.id) }, nextMonday)}
-                    style={{ border: 'none', background: 'none', color: '#aaa', cursor: 'pointer', fontSize: 13, lineHeight: 1, padding: 0 }}>×</button>
-                </div>
-              ) : (
-                <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
-                  <input
-                    value={nextWeekWishInput}
-                    onChange={e => setNextWeekWishInput(e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && submitNextWeekWish()}
-                    placeholder="Wunsch für nächste Woche..."
-                    style={{ flex: 1, border: '1px solid #e5e7eb', borderRadius: 7, padding: '5px 9px', fontSize: 12, outline: 'none', background: 'white' }}
-                  />
-                  <button onClick={submitNextWeekWish} disabled={!nextWeekWishInput.trim() || nextWeekWishSaving}
-                    style={{ padding: '5px 10px', borderRadius: 7, border: 'none', background: nextWeekWishInput.trim() ? '#1D9E75' : '#ddd', color: 'white', fontSize: 12, cursor: nextWeekWishInput.trim() ? 'pointer' : 'default' }}>
-                    {nextWeekWishSaving ? '…' : '+ Eintragen'}
-                  </button>
-                </div>
-              )}
-
-              {/* Neue Woche starten */}
-              {isCurrentWeekPast && (
-                <button onClick={onActivateNextWeek}
-                  style={{ width: '100%', padding: '9px', border: 'none', borderRadius: 9, background: '#0C447C', color: 'white', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
-                  🗓 Neue Woche starten
-                </button>
-              )}
-            </div>
-          )
-        })()}
         <div style={{ borderRadius: 12, border: '1px solid #e5e7eb', marginBottom: 14, overflow: 'hidden' }}>
           <div style={{ padding: '8px 12px', background: '#f0faf5', borderBottom: '1px solid #e0f0e8', display: 'flex', alignItems: 'center', gap: 6 }}>
             <span style={{ flex: 1, fontSize: 12, fontWeight: 700, color: '#085041' }}>Heute · {today}</span>
