@@ -109,6 +109,8 @@ export interface NextWeekData {
   plan?: WeekPlanEntry[]
   mealsData?: Record<string, Rezept>
   planConfirmed?: boolean
+  attendance?: DayAttendance[]
+  attendanceConfirmed?: Chef[]
 }
 
 export interface ChefStat {

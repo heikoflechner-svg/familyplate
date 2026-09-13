@@ -128,7 +128,9 @@ export async function activateNextWeek(): Promise<{ weekStart: string | null; ne
     meals_data: nextData?.mealsData ?? {},
     wishes: (nextData?.wishes ?? []) as unknown as NextWeekWish[],
     proposals: [],
-    attendance: [],
+    attendance: nextData?.attendance
+      ? { v: 2, days: nextData.attendance, confirmed: nextData.attendanceConfirmed ?? [] }
+      : [],
     plan_confirmed: false,
     shopping_list: [],
     shopping_done: false,

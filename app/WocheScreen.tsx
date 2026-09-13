@@ -224,6 +224,7 @@ export default function WocheScreen({
 
   // ── Nächste Woche – Plan-State ────────────────────────────────────────────
   const [nwExpanded, setNwExpanded] = useState(false)
+  const [nwAttendanceOpen, setNwAttendanceOpen] = useState(false)
   const [nwPlanLoading, setNwPlanLoading] = useState(false)
   const [nwPendingPlan, setNwPendingPlan] = useState<WeekPlanEntry[] | null>(null)
   const [nwPendingMeals, setNwPendingMeals] = useState<Record<string, Rezept>>({})
@@ -472,6 +473,30 @@ export default function WocheScreen({
     const current = base[field]
     const next = current.includes(chef) ? current.filter(c => c !== chef) : [...current, chef]
     await onAttendanceChange([...attendance.filter(a => a.tag !== tag), { ...base, [field]: next }])
+  }
+
+  function getNwSlotAnwesend(tag: string, slot: WochenSlot): Chef[] {
+    const allChefs = (members.length ? members : DEFAULT_MEMBERS).map(m => m.id as Chef)
+    const days = nextWeekData?.attendance ?? []
+    const day = days.find(a => a.tag === tag) as unknown as Record<string, unknown> | undefined
+    if (!day) return allChefs
+    if (slot === 'Mittag') return (day.mittagAnwesend as Chef[] | undefined) ?? allChefs
+    return (day.abendAnwesend as Chef[] | undefined) ?? allChefs
+  }
+
+  async function toggleNwSlotAttendance(tag: string, slot: WochenSlot, chef: Chef) {
+    if (!onNextWeekDataChange) return
+    const nextMonday = nextWeekStart ?? getNextMondayIso()
+    const allChefs = (members.length ? members : DEFAULT_MEMBERS).map(m => m.id as Chef)
+    const days = nextWeekData?.attendance ?? []
+    const existing = days.find(a => a.tag === tag)
+    const base: DayAttendance = existing
+      ? { ...existing }
+      : { tag, mittagAnwesend: allChefs, abendAnwesend: allChefs, gaeste: 0 }
+    const field = slot === 'Mittag' ? 'mittagAnwesend' : 'abendAnwesend'
+    const current = base[field]
+    const next = current.includes(chef) ? current.filter(c => c !== chef) : [...current, chef]
+    await onNextWeekDataChange({ attendance: [...days.filter(a => a.tag !== tag), { ...base, [field]: next }] }, nextMonday)
   }
 
   function closeMealPanel() {
@@ -2167,6 +2192,99 @@ export default function WocheScreen({
                   Wochenchef: <strong>{nextChef ? personNames[nextChef] : '— noch nicht festgelegt'}</strong>
                 </div>
               )}
+
+              {/* Anwesenheit nächste Woche */}
+              <div style={{ marginBottom: 10 }}>
+                <button
+                  onClick={() => setNwAttendanceOpen(o => !o)}
+                  style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'none', border: 'none', cursor: 'pointer', padding: '4px 0' }}
+                >
+                  <span style={{ fontSize: 11, fontWeight: 600, color: '#374151' }}>👥 Anwesenheit erfassen</span>
+                  <span style={{ fontSize: 12, color: '#aaa' }}>{nwAttendanceOpen ? '▲' : '▼'}</span>
+                </button>
+                {nwAttendanceOpen && (
+                  <div style={{ marginTop: 8 }}>
+                    {(members.length ? members : DEFAULT_MEMBERS).map(member => {
+                      const chef = member.id as Chef
+                      const isMine = chef === currentUser
+                      const nwAttConf = nextWeekData?.attendanceConfirmed ?? []
+                      const isNwConfirmed = nwAttConf.includes(chef)
+                      const canEditNw = isMine && !isNwConfirmed
+                      const cc = CFG[chef] ?? CFG.MA
+                      const displayDays = planWE ? WOCHENTAGE : WOCHENTAGE.slice(0, 5)
+                      return (
+                        <div key={chef} style={{ borderRadius: 10, border: `1px solid ${isMine ? '#B2DFCC' : '#e5e7eb'}`, marginBottom: 10, overflow: 'hidden' }}>
+                          <div style={{ padding: '6px 10px', background: isMine ? '#F0FAF5' : '#f9fafb', borderBottom: '1px solid #f0f0f0', display: 'flex', alignItems: 'center' }}>
+                            <span style={{ flex: 1, fontSize: 11, fontWeight: 700, color: cc.c }}>{member.name}{isMine ? ' · du' : ''}</span>
+                            {isNwConfirmed
+                              ? <span style={{ fontSize: 10, color: '#1D9E75', fontWeight: 700 }}>✓ bestätigt</span>
+                              : <span style={{ fontSize: 10, color: '#aaa' }}>ausstehend</span>
+                            }
+                          </div>
+                          <div style={{ padding: '6px 10px', overflowX: 'auto' }}>
+                            <div style={{ display: 'flex', gap: 4, minWidth: 'max-content' }}>
+                              <div style={{ width: 20, flexShrink: 0 }}>
+                                <div style={{ height: 14 }} />
+                                <div style={{ height: 24, lineHeight: '24px', fontSize: 10, color: '#aaa', textAlign: 'center' }}>☀</div>
+                                <div style={{ height: 24, lineHeight: '24px', fontSize: 10, color: '#aaa', textAlign: 'center' }}>🌙</div>
+                              </div>
+                              {displayDays.map(tag => {
+                                const mitOn = getNwSlotAnwesend(tag, 'Mittag').includes(chef)
+                                const abdOn = getNwSlotAnwesend(tag, 'Abend').includes(chef)
+                                return (
+                                  <div key={tag} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+                                    <span style={{ fontSize: 9, color: '#bbb', height: 14, lineHeight: '14px', textAlign: 'center' }}>{tag.slice(0, 2)}</span>
+                                    <button
+                                      onClick={() => canEditNw && toggleNwSlotAttendance(tag, 'Mittag', chef)}
+                                      disabled={!canEditNw}
+                                      style={{ width: 24, height: 24, borderRadius: 5, border: `1px solid ${mitOn ? cc.c : '#ddd'}`, background: mitOn ? cc.bg : 'white', cursor: canEditNw ? 'pointer' : 'default', fontSize: 9, color: mitOn ? cc.c : 'transparent', fontWeight: 700, opacity: canEditNw ? 1 : 0.4 }}
+                                    >✓</button>
+                                    <button
+                                      onClick={() => canEditNw && toggleNwSlotAttendance(tag, 'Abend', chef)}
+                                      disabled={!canEditNw}
+                                      style={{ width: 24, height: 24, borderRadius: 5, border: `1px solid ${abdOn ? cc.c : '#ddd'}`, background: abdOn ? cc.bg : 'white', cursor: canEditNw ? 'pointer' : 'default', fontSize: 9, color: abdOn ? cc.c : 'transparent', fontWeight: 700, opacity: canEditNw ? 1 : 0.4 }}
+                                    >✓</button>
+                                  </div>
+                                )
+                              })}
+                            </div>
+                            {isMine && (
+                              <button
+                                onClick={() => {
+                                  const conf = nextWeekData?.attendanceConfirmed ?? []
+                                  const mon = nextWeekStart ?? getNextMondayIso()
+                                  onNextWeekDataChange?.(
+                                    { attendanceConfirmed: isNwConfirmed ? conf.filter(c => c !== chef) : [...conf, chef] },
+                                    mon
+                                  )
+                                }}
+                                style={{ marginTop: 8, width: '100%', padding: '6px', border: 'none', borderRadius: 7, background: isNwConfirmed ? '#E1F5EE' : '#1D9E75', color: isNwConfirmed ? '#0F6E56' : 'white', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}
+                              >
+                                {isNwConfirmed ? '✏️ Anwesenheit neu eintragen' : 'Meine Anwesenheit bestätigen'}
+                              </button>
+                            )}
+                            {!isMine && (
+                              <div style={{ marginTop: 6, fontSize: 10, color: '#bbb', textAlign: 'center' }}>
+                                Nur {member.name} kann das ändern
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )
+                    })}
+                    {(() => {
+                      const nwAttConf = nextWeekData?.attendanceConfirmed ?? []
+                      const allIds = (members.length ? members : DEFAULT_MEMBERS).map(m => m.id as Chef)
+                      const count = nwAttConf.filter(c => allIds.includes(c)).length
+                      return (
+                        <div style={{ textAlign: 'center', fontSize: 11, color: count < allIds.length ? '#92400E' : '#0F6E56', marginBottom: 6 }}>
+                          {count < allIds.length ? '⚠️' : '✅'} {count} von {allIds.length} bestätigt
+                        </div>
+                      )
+                    })()}
+                  </div>
+                )}
+              </div>
 
               {/* Alle Wünsche (für Wochenchef) */}
               {currentUser === wochenchef && nextWishes.length > 0 && (
