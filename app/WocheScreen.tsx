@@ -520,6 +520,8 @@ export default function WocheScreen({
   }
 
   async function changeActiveChef(tag: string, slot: WochenSlot, chef: Chef) {
+    const currentEntry = weekPlan.find(e => e.tag === tag && e.slot === slot)
+    if (currentEntry?.chef === chef) { closeMealPanel(); return }
     closeMealPanel()
     if (currentUser === wochenchef) {
       const newPlan = weekPlan.map(e => e.tag === tag && e.slot === slot ? { ...e, chef } : e)
@@ -2350,6 +2352,7 @@ function WishesSection({
   const [wishDish, setWishDish] = useState<{ name: string; emoji: string } | null>(null)
   const [remySuggestions, setRemySuggestions] = useState<RemyVorschlag[]>([])
   const [remyLoading, setRemyLoading] = useState(false)
+  const [vorratIngredient, setVorratIngredient] = useState<{ name: string; emoji: string } | null>(null)
 
   function handleOpen() {
     setWishPerson(initialPerson)
@@ -2358,6 +2361,7 @@ function WishesSection({
     setWishText('')
     setWishDish(null)
     setRemySuggestions([])
+    setVorratIngredient(null)
     onOpen()
   }
 
@@ -2366,6 +2370,7 @@ function WishesSection({
     setWishText('')
     setWishDish(null)
     setRemySuggestions([])
+    setVorratIngredient(null)
     if (mode === 'remy') fetchRemy(mode)
   }
 
@@ -2375,6 +2380,29 @@ function WishesSection({
     try {
       const results = await getRemySuggestions({
         wishes: wishes.filter(w => w.tag === tag && w.slot === wishSlot),
+        zustimmungen: [],
+        choDay: tag,
+        choSlot: wishSlot,
+        freezerList: getFreezerListString(freezerItems),
+        pantryList: getPantryListString(pantryItems),
+        familyPrompt,
+      })
+      setRemySuggestions(results)
+    } catch {
+      setRemySuggestions([])
+    }
+    setRemyLoading(false)
+  }
+
+  async function fetchRemyForVorrat(ingredient: { name: string; emoji: string }) {
+    setRemyLoading(true)
+    setRemySuggestions([])
+    try {
+      const results = await getRemySuggestions({
+        wishes: [
+          ...wishes.filter(w => w.tag === tag && w.slot === wishSlot),
+          { id: 'vorrat-hint', person: wishPerson, tag, slot: wishSlot, type: 'ergaenzung', text: `Gericht mit ${ingredient.name} aus dem Vorrat` },
+        ],
         zustimmungen: [],
         choDay: tag,
         choSlot: wishSlot,
@@ -2414,6 +2442,7 @@ function WishesSection({
     setWishDish(null)
     setWishMode('ergaenzung')
     setRemySuggestions([])
+    setVorratIngredient(null)
   }
 
   const stockItems = [...freezerItems, ...pantryItems]
@@ -2529,23 +2558,58 @@ function WishesSection({
 
           {/* Aus Vorrat */}
           {wishMode === 'vorrat' && (
-            stockItems.length === 0 ? (
+            vorratIngredient ? (
+              <>
+                <button onClick={() => { setVorratIngredient(null); setRemySuggestions([]) }}
+                  style={{ fontSize: 11, color: '#888', background: 'none', border: 'none', cursor: 'pointer', padding: '2px 0', textAlign: 'left' }}
+                >
+                  ← Zurück zur Vorratsliste
+                </button>
+                <div style={{ fontSize: 11, color: '#555', marginBottom: 2 }}>
+                  Rémy schlägt Gerichte mit {vorratIngredient.emoji} <strong>{vorratIngredient.name}</strong> vor:
+                </div>
+                {remyLoading ? (
+                  <div style={{ textAlign: 'center', padding: '10px 0', fontSize: 12, color: '#aaa' }}>🐀 Rémy denkt nach…</div>
+                ) : remySuggestions.length === 0 ? (
+                  <div style={{ fontSize: 11, color: '#bbb', textAlign: 'center', padding: '6px 0' }}>
+                    Keine Vorschläge – bitte erneut versuchen
+                    <button onClick={() => fetchRemyForVorrat(vorratIngredient)} style={{ display: 'block', margin: '6px auto 0', fontSize: 11, color: '#1D9E75', background: 'none', border: 'none', cursor: 'pointer' }}>↺ Nochmal</button>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    {remySuggestions.map((s, i) => {
+                      const selected = wishDish?.name === s.name
+                      return (
+                        <button key={i}
+                          onClick={() => setWishDish(selected ? null : { name: s.name, emoji: s.emoji })}
+                          style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', border: '1px solid', borderColor: selected ? '#1D9E75' : '#eee', borderRadius: 8, background: selected ? '#E1F5EE' : 'white', cursor: 'pointer', textAlign: 'left' }}
+                        >
+                          <span style={{ fontSize: 16 }}>{s.emoji}</span>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontSize: 12, fontWeight: 600, color: '#111' }}>{s.name}</div>
+                            <div style={{ fontSize: 10, color: '#999' }}>{s.info}</div>
+                          </div>
+                          <span style={{ fontSize: 10, color: '#bbb' }}>{s.minuten} min</span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
+              </>
+            ) : stockItems.length === 0 ? (
               <div style={{ fontSize: 11, color: '#bbb', textAlign: 'center', padding: '6px 0' }}>Nichts im Vorrat eingetragen</div>
             ) : (
               <div style={{ maxHeight: 140, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 3 }}>
-                {stockItems.map(item => {
-                  const selected = wishDish?.name === item.name
-                  return (
-                    <button key={item.id}
-                      onClick={() => setWishDish(selected ? null : { name: item.name, emoji: item.emoji })}
-                      style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 8px', border: '1px solid', borderColor: selected ? '#1D9E75' : '#eee', borderRadius: 6, background: selected ? '#E1F5EE' : 'white', cursor: 'pointer', textAlign: 'left' }}
-                    >
-                      <span style={{ fontSize: 15 }}>{item.emoji}</span>
-                      <span style={{ flex: 1, fontSize: 12, color: '#333' }}>{item.name}</span>
-                      <span style={{ fontSize: 10, color: '#bbb' }}>{item.menge}</span>
-                    </button>
-                  )
-                })}
+                {stockItems.map(item => (
+                  <button key={item.id}
+                    onClick={() => { setVorratIngredient({ name: item.name, emoji: item.emoji }); fetchRemyForVorrat({ name: item.name, emoji: item.emoji }) }}
+                    style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 8px', border: '1px solid #eee', borderRadius: 6, background: 'white', cursor: 'pointer', textAlign: 'left' }}
+                  >
+                    <span style={{ fontSize: 15 }}>{item.emoji}</span>
+                    <span style={{ flex: 1, fontSize: 12, color: '#333' }}>{item.name}</span>
+                    <span style={{ fontSize: 10, color: '#bbb' }}>{item.menge}</span>
+                  </button>
+                ))}
               </div>
             )
           )}
