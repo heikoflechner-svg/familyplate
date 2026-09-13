@@ -57,6 +57,7 @@ export default function FamilyPlateApp() {
         if (prev !== chef) setDataLoading(true)
       } else {
         setDataLoading(false)
+        setActiveTab('woche')
         setWeekPlan([])
         setMealsData({})
         setWishes([])

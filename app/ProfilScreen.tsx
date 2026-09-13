@@ -53,7 +53,7 @@ export default function ProfilScreen({
 
         <div className="lbl">Wochenplanung</div>
         <div className="card" style={{ marginBottom: 20 }}>
-          <Toggle label="☀️ Mittagessen planen (Mo–Fr)" checked={planMittag} onChange={onPlanMittagChange} />
+          <Toggle label="☀️ Mittagessen einplanen" checked={planMittag} onChange={onPlanMittagChange} />
           <Toggle label="📅 Wochenende einplanen (Sa + So)" checked={planWE} onChange={onPlanWEChange} last />
         </div>
 
