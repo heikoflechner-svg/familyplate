@@ -175,6 +175,10 @@ export default function WocheScreen({
   const [pendingPlan, setPendingPlan] = useState<WeekPlanEntry[]>([])
   const [pendingPlanMeals, setPendingPlanMeals] = useState<Record<string, Rezept>>({})
   const [pendingDayMeals, setPendingDayMeals] = useState<Record<string, Rezept>>({})
+  const [planProgress, setPlanProgress] = useState(0)
+  const [planStep, setPlanStep] = useState('')
+  const planTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const planStartRef = useRef(0)
 
   // sessionStorage: Vorschlag bei Reload wiederherstellen
   useEffect(() => {
@@ -205,6 +209,55 @@ export default function WocheScreen({
       sessionStorage.removeItem('fp_pendingPlanMeals')
     }
   }, [pendingPlan, pendingPlanMeals])
+  useEffect(() => {
+    const days = planWE ? WOCHENTAGE : WOCHENTAGE.slice(0, 5)
+    if (planState === 'loading') {
+      setPlanProgress(0)
+      planStartRef.current = Date.now()
+      const steps = [
+        { at: 0,     pct: 0,  label: 'Analysiere Familienprofil…' },
+        { at: 1200,  pct: 8,  label: `Plane ${days[0]}…` },
+        { at: 3500,  pct: 22, label: `Plane ${days[1]}…` },
+        { at: 6000,  pct: 36, label: `Plane ${days[2]}…` },
+        { at: 8500,  pct: 50, label: `Plane ${days[3]}…` },
+        { at: 11000, pct: 63, label: `Plane ${days[4]}…` },
+        ...(planWE ? [
+          { at: 12800, pct: 72, label: `Plane ${days[5]}…` },
+          { at: 14200, pct: 79, label: `Plane ${days[6]}…` },
+        ] : []),
+        { at: planWE ? 15500 : 13000, pct: 86, label: 'Erstelle Rezepte…' },
+        { at: planWE ? 17000 : 16000, pct: 92, label: 'Prüfe Unverträglichkeiten…' },
+        { at: planWE ? 19000 : 18500, pct: 95, label: 'Fast fertig…' },
+      ]
+      setPlanStep(steps[0].label)
+      planTimerRef.current = setInterval(() => {
+        const elapsed = Date.now() - planStartRef.current
+        let current = steps[0]
+        let next: (typeof steps)[0] | null = null
+        for (let i = 0; i < steps.length; i++) {
+          if (elapsed >= steps[i].at) { current = steps[i]; next = steps[i + 1] ?? null }
+        }
+        let pct = current.pct
+        if (next) {
+          const frac = Math.min((elapsed - current.at) / (next.at - current.at), 1)
+          pct = current.pct + (next.pct - current.pct) * frac
+        }
+        setPlanProgress(Math.min(pct, 95))
+        setPlanStep(current.label)
+      }, 100)
+    } else if (planState === 'results') {
+      if (planTimerRef.current) { clearInterval(planTimerRef.current); planTimerRef.current = null }
+      setPlanProgress(100)
+    } else {
+      if (planTimerRef.current) { clearInterval(planTimerRef.current); planTimerRef.current = null }
+      setPlanProgress(0)
+      setPlanStep('')
+    }
+    return () => {
+      if (planTimerRef.current) { clearInterval(planTimerRef.current); planTimerRef.current = null }
+    }
+  }, [planState, planWE])
+
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [selectedMealName, setSelectedMealName] = useState<string | null>(null)
@@ -1191,11 +1244,20 @@ export default function WocheScreen({
         <div className="content">
 
           {planState === 'loading' && (
-            <div style={{ textAlign: 'center', padding: '48px 0' }}>
+            <div style={{ textAlign: 'center', padding: '48px 24px 40px' }}>
               <div style={{ fontSize: 48, marginBottom: 14 }}>🍲</div>
-              <div style={{ fontSize: 16, fontWeight: 700, color: '#085041', marginBottom: 8 }}>Rémy plant für dich…</div>
-              <div style={{ fontSize: 13, color: '#555', marginBottom: 4 }}>Das dauert ca. 30 Sekunden – bitte warten.</div>
-              <div style={{ fontSize: 12, color: '#bbb' }}>Wünsche & Vorräte werden berücksichtigt.</div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: '#085041', marginBottom: 6 }}>Rémy plant für dich…</div>
+              <div style={{ fontSize: 13, color: '#555', marginBottom: 20, minHeight: 22 }}>{planStep}</div>
+              <div style={{ background: '#e5e7eb', borderRadius: 999, height: 8, overflow: 'hidden', margin: '0 8px 8px' }}>
+                <div style={{
+                  background: 'linear-gradient(90deg, #1D9E75, #25c691)',
+                  height: '100%',
+                  borderRadius: 999,
+                  width: `${planProgress}%`,
+                  transition: 'width 0.12s ease-out',
+                }} />
+              </div>
+              <div style={{ fontSize: 11, color: '#bbb' }}>{Math.round(planProgress)} %</div>
             </div>
           )}
 
