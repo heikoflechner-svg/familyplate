@@ -513,6 +513,21 @@ export default function WocheScreen({
     return (day.abendAnwesend as Chef[] | undefined) ?? (day.anwesend as Chef[] | undefined) ?? allChefs
   }
 
+  async function changeGaeste(tag: string, delta: number) {
+    const allChefs = (members.length ? members : DEFAULT_MEMBERS).map(m => m.id as Chef)
+    const existing = attendance.find(a => a.tag === tag) as unknown as Record<string, unknown> | undefined
+    const base: DayAttendance = existing
+      ? {
+          tag,
+          mittagAnwesend: (existing.mittagAnwesend as Chef[] | undefined) ?? (existing.anwesend as Chef[] | undefined) ?? allChefs,
+          abendAnwesend: (existing.abendAnwesend as Chef[] | undefined) ?? (existing.anwesend as Chef[] | undefined) ?? allChefs,
+          gaeste: (existing.gaeste as number | undefined) ?? 0,
+        }
+      : { tag, mittagAnwesend: allChefs, abendAnwesend: allChefs, gaeste: 0 }
+    const newGaeste = Math.max(0, (base.gaeste ?? 0) + delta)
+    await onAttendanceChange([...attendance.filter(a => a.tag !== tag), { ...base, gaeste: newGaeste }])
+  }
+
   async function toggleSlotAttendance(tag: string, slot: WochenSlot, chef: Chef) {
     const allChefs = (members.length ? members : DEFAULT_MEMBERS).map(m => m.id as Chef)
     const existing = attendance.find(a => a.tag === tag) as unknown as Record<string, unknown> | undefined
@@ -1500,8 +1515,8 @@ export default function WocheScreen({
                           >Koch: {personNames[e.chef]}</span>
                           <span style={{ fontSize: 10, color: '#ddd' }}>·</span>
                           <span
-                            onClick={canEdit ? () => setAttendanceEditKey(isAttendanceEdit ? null : key) : undefined}
-                            style={{ fontSize: 11, color: '#555', cursor: canEdit ? 'pointer' : 'default', textDecoration: canEdit ? 'underline' : 'none', textDecorationStyle: 'dashed', textDecorationColor: '#bbb' }}
+                            onClick={() => setAttendanceEditKey(isAttendanceEdit ? null : key)}
+                            style={{ fontSize: 11, color: '#555', cursor: 'pointer', textDecoration: 'underline', textDecorationStyle: 'dashed', textDecorationColor: '#bbb' }}
                           >Essen: {slotEssenLabel(tag, slot)}</span>
                           {hasPendingChefProposal(tag, slot) && (
                             <span style={{ marginLeft: 'auto', fontSize: 10, color: '#92400E', background: '#FFFBEB', border: '1px solid #FCD34D', borderRadius: 5, padding: '1px 6px' }}>⏳ Koch-Vorschlag eingereicht</span>
@@ -1515,18 +1530,32 @@ export default function WocheScreen({
                             <ChefPicker current={e.chef} onSelect={chef => changeActiveChef(tag, slot, chef)} personNames={personNames} members={members} />
                           </div>
                         )}
-                        {isAttendanceEdit && canEdit && (
+                        {isAttendanceEdit && (
                           <div style={{ padding: '6px 12px 8px', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6, background: '#f9f9f9', borderTop: '1px solid #f0f0f0' }}>
-                            <span style={{ fontSize: 11, color: '#888', width: '100%' }}>Wer ist dabei?</span>
+                            <span style={{ fontSize: 11, color: '#888', width: '100%' }}>Wer isst mit?</span>
                             {allChefIds.map(c => {
                               const on = slotAnwesend.includes(c)
                               const cc = CFG[c] ?? CFG.MA
-                              return (
+                              return canEdit ? (
                                 <button key={c} onClick={() => toggleSlotAttendance(tag, slot, c)}
                                   style={{ padding: '4px 10px', borderRadius: 8, border: `1px solid ${on ? cc.c : '#ddd'}`, background: on ? cc.bg : 'white', color: on ? cc.c : '#aaa', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
                                 >{personNames[c] ?? c}</button>
+                              ) : (
+                                <span key={c} style={{ padding: '4px 10px', borderRadius: 8, border: `1px solid ${on ? cc.c : '#e5e7eb'}`, background: on ? cc.bg : '#f3f4f6', color: on ? cc.c : '#ccc', fontSize: 11, fontWeight: 700 }}>{personNames[c] ?? c}</span>
                               )
                             })}
+                            {canEdit && (() => {
+                              const dayAtt = attendance.find(a => a.tag === tag) as unknown as Record<string, unknown> | undefined
+                              const g = (dayAtt?.gaeste as number | undefined) ?? 0
+                              return (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                  <span style={{ fontSize: 11, color: '#888' }}>Gäste:</span>
+                                  <button onClick={() => changeGaeste(tag, -1)} disabled={g === 0} style={{ width: 22, height: 22, borderRadius: 6, border: '1px solid #ddd', background: 'white', fontSize: 14, cursor: g > 0 ? 'pointer' : 'default', opacity: g > 0 ? 1 : 0.4, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>−</button>
+                                  <span style={{ fontSize: 12, minWidth: 16, textAlign: 'center', fontWeight: 600 }}>{g}</span>
+                                  <button onClick={() => changeGaeste(tag, 1)} style={{ width: 22, height: 22, borderRadius: 6, border: '1px solid #ddd', background: 'white', fontSize: 14, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
+                                </div>
+                              )
+                            })()}
                             <button onClick={() => setAttendanceEditKey(null)} style={{ marginLeft: 'auto', padding: '4px 10px', border: '1px solid #ddd', borderRadius: 8, background: 'white', color: '#888', fontSize: 11, cursor: 'pointer' }}>Fertig</button>
                           </div>
                         )}
@@ -2041,8 +2070,8 @@ export default function WocheScreen({
           >Koch: {personNames[entry.chef]}</span>
           <span style={{ fontSize: 10, color: '#ddd' }}>·</span>
           <span
-            onClick={canEdit ? () => setAttendanceEditKey(isAttendanceEdit ? null : key) : undefined}
-            style={{ fontSize: 11, color: '#555', cursor: canEdit ? 'pointer' : 'default', textDecoration: canEdit ? 'underline' : 'none', textDecorationStyle: 'dashed', textDecorationColor: '#bbb' }}
+            onClick={() => setAttendanceEditKey(isAttendanceEdit ? null : key)}
+            style={{ fontSize: 11, color: '#555', cursor: 'pointer', textDecoration: 'underline', textDecorationStyle: 'dashed', textDecorationColor: '#bbb' }}
           >Essen: {slotEssenLabel(tag, slot)}</span>
           {hasPendingChefProposal(tag, slot) && (
             <span style={{ marginLeft: 'auto', fontSize: 10, color: '#92400E', background: '#FFFBEB', border: '1px solid #FCD34D', borderRadius: 5, padding: '1px 6px' }}>⏳ Koch-Vorschlag eingereicht</span>
@@ -2114,18 +2143,32 @@ export default function WocheScreen({
             </div>
           )
         })()}
-        {isAttendanceEdit && canEdit && (
+        {isAttendanceEdit && (
           <div style={{ padding: '6px 12px 8px', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6, background: '#f9f9f9', borderTop: '1px solid #f0f0f0' }}>
-            <span style={{ fontSize: 11, color: '#888', width: '100%' }}>Wer ist dabei?</span>
+            <span style={{ fontSize: 11, color: '#888', width: '100%' }}>Wer isst mit?</span>
             {allChefIds.map(c => {
               const on = slotAnwesend.includes(c)
               const cc = CFG[c] ?? CFG.MA
-              return (
+              return canEdit ? (
                 <button key={c} onClick={() => toggleSlotAttendance(tag, slot, c)}
                   style={{ padding: '4px 10px', borderRadius: 8, border: `1px solid ${on ? cc.c : '#ddd'}`, background: on ? cc.bg : 'white', color: on ? cc.c : '#aaa', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
                 >{personNames[c] ?? c}</button>
+              ) : (
+                <span key={c} style={{ padding: '4px 10px', borderRadius: 8, border: `1px solid ${on ? cc.c : '#e5e7eb'}`, background: on ? cc.bg : '#f3f4f6', color: on ? cc.c : '#ccc', fontSize: 11, fontWeight: 700 }}>{personNames[c] ?? c}</span>
               )
             })}
+            {canEdit && (() => {
+              const dayAtt = attendance.find(a => a.tag === tag) as unknown as Record<string, unknown> | undefined
+              const g = (dayAtt?.gaeste as number | undefined) ?? 0
+              return (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <span style={{ fontSize: 11, color: '#888' }}>Gäste:</span>
+                  <button onClick={() => changeGaeste(tag, -1)} disabled={g === 0} style={{ width: 22, height: 22, borderRadius: 6, border: '1px solid #ddd', background: 'white', fontSize: 14, cursor: g > 0 ? 'pointer' : 'default', opacity: g > 0 ? 1 : 0.4, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>−</button>
+                  <span style={{ fontSize: 12, minWidth: 16, textAlign: 'center', fontWeight: 600 }}>{g}</span>
+                  <button onClick={() => changeGaeste(tag, 1)} style={{ width: 22, height: 22, borderRadius: 6, border: '1px solid #ddd', background: 'white', fontSize: 14, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
+                </div>
+              )
+            })()}
             <button onClick={() => setAttendanceEditKey(null)} style={{ marginLeft: 'auto', padding: '4px 10px', border: '1px solid #ddd', borderRadius: 8, background: 'white', color: '#888', fontSize: 11, cursor: 'pointer' }}>Fertig</button>
           </div>
         )}
