@@ -1265,6 +1265,7 @@ export default function WocheScreen({
                           <div style={{ background: '#f9f9f9', borderTop: '1px solid #eee', padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
                             <div style={{ fontSize: 11, fontWeight: 600, color: '#aaa' }}>Koch ändern</div>
                             <ChefPicker current={e.chef} onSelect={chef => changePendingChef(tag, slot, chef)} personNames={personNames} members={members} />
+                            <div style={{ fontSize: 11, fontWeight: 600, color: '#aaa', paddingTop: 4, borderTop: '1px solid #e5e5e5' }}>Gericht ändern</div>
                             <div style={{ display: 'flex', gap: 4 }}>
                               <button
                                 onClick={() => replanPendingDay(tag)}
@@ -1330,9 +1331,9 @@ export default function WocheScreen({
                 <button
                   className="btn"
                   onClick={() => { setPendingPlan([]); setPendingPlanMeals({}); setPlanState('options'); closeMealPanel() }}
-                  style={{ width: 'auto', padding: '13px 16px' }}
+                  style={{ width: 'auto', padding: '13px 14px', fontSize: 12 }}
                 >
-                  ✕
+                  ↺ Gesamte Woche neu planen
                 </button>
               </div>
             </>
@@ -1451,7 +1452,8 @@ export default function WocheScreen({
                               const stockItems = [...freezerItems, ...pantryItems]
                               return (
                                 <>
-                                  <div style={{ display: 'flex', gap: 4, marginTop: 6 }}>
+                                  <div style={{ fontSize: 11, fontWeight: 600, color: '#aaa', marginTop: 6, paddingTop: 6, borderTop: '1px solid #e5e5e5' }}>Gericht ändern</div>
+                                  <div style={{ display: 'flex', gap: 4, marginTop: 4 }}>
                                     <button onClick={() => replanSlot(tag, slot)} disabled={slotLoading !== null || dayLoading !== null}
                                       style={{ flex: 1, padding: '6px 4px', border: '1px solid #ddd', borderRadius: 8, background: 'white', cursor: (slotLoading !== null || dayLoading !== null) ? 'default' : 'pointer', fontSize: 11, color: slotLoading === key ? '#085041' : '#555', opacity: (slotLoading !== null && slotLoading !== key) ? 0.4 : 1 }}>
                                       {slotLoading === key ? '⏳…' : '↺ Rémy'}
@@ -1867,7 +1869,8 @@ export default function WocheScreen({
                                   return (
                                     <div style={{ padding: '4px 12px 8px', background: '#f9f9f9' }}>
                                       <ChefPicker current={e.chef} onSelect={chef => { changeNwChef(tag, slot, chef); setNwEditMealKey(null) }} personNames={personNames} members={members} />
-                                      <div style={{ display: 'flex', gap: 4, marginTop: 6 }}>
+                                      <div style={{ fontSize: 11, fontWeight: 600, color: '#aaa', marginTop: 6, paddingTop: 6, borderTop: '1px solid #e5e5e5' }}>Gericht ändern</div>
+                                      <div style={{ display: 'flex', gap: 4, marginTop: 4 }}>
                                         <button onClick={() => replanNwSlot(tag, slot)} disabled={nwSlotLoading !== null}
                                           style={{ flex: 1, padding: '6px 4px', border: '1px solid #ddd', borderRadius: 8, background: 'white', cursor: nwSlotLoading !== null ? 'default' : 'pointer', fontSize: 11, color: nwSlotLoading === `${tag}-${slot}` ? '#085041' : '#555', opacity: (nwSlotLoading !== null && nwSlotLoading !== `${tag}-${slot}`) ? 0.4 : 1 }}>
                                           {nwSlotLoading === `${tag}-${slot}` ? '⏳…' : '↺ Rémy'}
@@ -1944,7 +1947,7 @@ export default function WocheScreen({
                             <div style={{ display: 'flex', gap: 6 }}>
                               <input value={nextWeekWishInput} onChange={ev => setNextWeekWishInput(ev.target.value)}
                                 onKeyDown={ev => ev.key === 'Enter' && submitNextWeekWish()}
-                                placeholder="Wunsch für nächste Woche..."
+                                placeholder="Essenswunsch für nächste Woche..."
                                 style={{ flex: 1, border: '1px solid #e5e7eb', borderRadius: 7, padding: '5px 9px', fontSize: 12, outline: 'none', background: 'white' }} />
                               <button onClick={submitNextWeekWish} disabled={!nextWeekWishInput.trim() || nextWeekWishSaving}
                                 style={{ padding: '5px 10px', borderRadius: 7, border: 'none', background: nextWeekWishInput.trim() ? '#1D9E75' : '#ddd', color: 'white', fontSize: 12, cursor: nextWeekWishInput.trim() ? 'pointer' : 'default' }}>
@@ -2025,7 +2028,8 @@ export default function WocheScreen({
               const stockItems = [...freezerItems, ...pantryItems]
               return (
                 <>
-                  <div style={{ display: 'flex', gap: 4, marginTop: 6 }}>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: '#aaa', marginTop: 6, paddingTop: 6, borderTop: '1px solid #e5e5e5' }}>Gericht ändern</div>
+                  <div style={{ display: 'flex', gap: 4, marginTop: 4 }}>
                     <button onClick={() => replanSlot(tag, slot)} disabled={slotLoading !== null || dayLoading !== null}
                       style={{ flex: 1, padding: '6px 4px', border: '1px solid #ddd', borderRadius: 8, background: 'white', cursor: (slotLoading !== null || dayLoading !== null) ? 'default' : 'pointer', fontSize: 11, color: slotLoading === key ? '#085041' : '#555', opacity: (slotLoading !== null && slotLoading !== key) ? 0.4 : 1 }}>
                       {slotLoading === key ? '⏳…' : '↺ Rémy'}
@@ -2136,6 +2140,7 @@ export default function WocheScreen({
             <div>
               <div style={{ fontSize: 11, color: '#0F6E56', fontWeight: 600 }}>Wochenchef diese Woche</div>
               <div style={{ fontSize: 15, fontWeight: 700, color: '#111' }}>{personNames[wochenchef]}</div>
+              <div style={{ fontSize: 11, color: '#555', marginTop: 2 }}>Organisiert alles und kocht auch zwischendrin</div>
             </div>
           </div>
 
@@ -2482,21 +2487,6 @@ function WishesSection({
 
       {isOpen && (
         <div style={{ marginTop: 8, padding: 10, background: '#f9f9f9', borderRadius: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {/* Person */}
-          <div style={{ display: 'flex', gap: 4 }}>
-            {(['PA', 'MA', 'TI'] as Chef[]).map(p => {
-              const c = CFG[p]
-              const active = wishPerson === p
-              return (
-                <button key={p} onClick={() => setWishPerson(p)}
-                  style={{ padding: '3px 10px', borderRadius: 8, border: '1px solid', borderColor: active ? c.c : '#ddd', background: active ? c.bg : 'white', color: active ? c.c : '#aaa', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
-                >
-                  {personNames[p]}
-                </button>
-              )
-            })}
-          </div>
-
           {/* Slot */}
           {planMittag && !lockedSlot && (
             <div style={{ display: 'flex', gap: 4 }}>
