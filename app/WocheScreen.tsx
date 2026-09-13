@@ -1499,8 +1499,7 @@ export default function WocheScreen({
                           canAdd={!shopDone && !wishDeadlinePassed} deadlineHint={wishDeadlineHint}
                           isOpen={wishFormKey === `${tag}-${slot}`} initialPerson={currentUser} familyPrompt={familyPrompt}
                           onOpen={() => openWishForm(tag, slot)} onClose={closeWishForm} onSubmitWish={handleWishSubmit} onRemove={removeWish}
-                          fullWidth isWochenchef={currentUser === wochenchef && !shopDone}
-                          onReplanDay={() => replanDay(tag)} replanDayLoading={dayLoading === tag || slotLoading !== null}
+                          fullWidth
                         />
                         {(() => {
                           const pKey = `${tag}-${slot}`
@@ -2316,9 +2315,6 @@ interface WishesSectionProps {
   initialPerson: Chef
   familyPrompt: string
   fullWidth?: boolean
-  isWochenchef?: boolean
-  onReplanDay?: () => void
-  replanDayLoading?: boolean
   onOpen: () => void
   onClose: () => void
   onSubmitWish: (wish: Wish) => void
@@ -2328,7 +2324,7 @@ interface WishesSectionProps {
 function WishesSection({
   tag, wishes, freezerItems, pantryItems, personNames, planMittag,
   lockedSlot, showExisting = true, canAdd = true, deadlineHint, isOpen, initialPerson, familyPrompt,
-  fullWidth, isWochenchef, onReplanDay, replanDayLoading,
+  fullWidth,
   onOpen, onClose, onSubmitWish, onRemove,
 }: WishesSectionProps) {
   const dayWishes = wishes.filter(w => w.tag === tag && (!lockedSlot || w.slot === lockedSlot))
@@ -2633,13 +2629,7 @@ function WishesSection({
             )
           )}
 
-          {isWochenchef && onReplanDay && (
-            <button onClick={onReplanDay} disabled={!!replanDayLoading}
-              style={{ padding: '6px 12px', border: '1px solid #ddd', borderRadius: 8, background: 'white', cursor: replanDayLoading ? 'default' : 'pointer', fontSize: 11, color: '#888', textAlign: 'left', width: '100%', opacity: replanDayLoading ? 0.5 : 1 }}>
-              {replanDayLoading ? '⏳…' : '↺ ganzer Tag neu planen'}
-            </button>
-          )}
-          <div style={{ display: 'flex', gap: 6 }}>
+<div style={{ display: 'flex', gap: 6 }}>
             <button
               onClick={handleSubmit} disabled={!canSubmit}
               style={{ flex: 1, padding: '7px', background: '#1D9E75', color: 'white', border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: canSubmit ? 'pointer' : 'default', opacity: canSubmit ? 1 : 0.45 }}
