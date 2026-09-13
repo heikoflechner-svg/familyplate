@@ -1544,7 +1544,7 @@ export default function WocheScreen({
                                 <span key={c} style={{ padding: '4px 10px', borderRadius: 8, border: `1px solid ${on ? cc.c : '#e5e7eb'}`, background: on ? cc.bg : '#f3f4f6', color: on ? cc.c : '#ccc', fontSize: 11, fontWeight: 700 }}>{personNames[c] ?? c}</span>
                               )
                             })}
-                            {canEdit && (() => {
+                            {(() => {
                               const dayAtt = attendance.find(a => a.tag === tag) as unknown as Record<string, unknown> | undefined
                               const g = (dayAtt?.gaeste as number | undefined) ?? 0
                               return (
@@ -2157,7 +2157,7 @@ export default function WocheScreen({
                 <span key={c} style={{ padding: '4px 10px', borderRadius: 8, border: `1px solid ${on ? cc.c : '#e5e7eb'}`, background: on ? cc.bg : '#f3f4f6', color: on ? cc.c : '#ccc', fontSize: 11, fontWeight: 700 }}>{personNames[c] ?? c}</span>
               )
             })}
-            {canEdit && (() => {
+            {(() => {
               const dayAtt = attendance.find(a => a.tag === tag) as unknown as Record<string, unknown> | undefined
               const g = (dayAtt?.gaeste as number | undefined) ?? 0
               return (
