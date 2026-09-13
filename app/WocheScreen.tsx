@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { generateWeekPlan, getRemySuggestions, generateRecipe, saveLastDishes } from '../lib/mealLogic'
 import { getFreezerListString, getPantryListString, addFreezerItem, deleteFreezerItem } from '../lib/freezerLogic'
 import { buildFamilyPrompt, DEFAULT_MEMBERS } from '../lib/familyLogic'
@@ -167,7 +167,10 @@ export default function WocheScreen({
     : undefined
 
   const [view, setView] = useState<View>('home')
-  useEffect(() => { if (attendanceSignal && attendanceSignal > 0) setView('attendance') }, [attendanceSignal])
+  const mountedAttendanceSignal = useRef(attendanceSignal ?? 0)
+  useEffect(() => {
+    if ((attendanceSignal ?? 0) > mountedAttendanceSignal.current) setView('attendance')
+  }, [attendanceSignal])
   const [planState, setPlanState] = useState<PlanState>('options')
   const [pendingPlan, setPendingPlan] = useState<WeekPlanEntry[]>([])
   const [pendingPlanMeals, setPendingPlanMeals] = useState<Record<string, Rezept>>({})
@@ -202,7 +205,6 @@ export default function WocheScreen({
       sessionStorage.removeItem('fp_pendingPlanMeals')
     }
   }, [pendingPlan, pendingPlanMeals])
-  const [neuTage, setNeuTage] = useState<Set<string>>(new Set(['alle']))
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [selectedMealName, setSelectedMealName] = useState<string | null>(null)
@@ -828,29 +830,19 @@ export default function WocheScreen({
     return `${total}${gaeste > 0 ? ` (${gaeste} Gast${gaeste > 1 ? 'e' : ''})` : ''}`
   }
 
-  function goToPlan() {
-    setView('plan')
-    setPlanState('options')
-    setError('')
-    setNeuTage(new Set(['alle']))
-  }
-
   async function startPlanning() {
+    setView('plan')
     setPlanState('loading')
     setError('')
-    const tage = neuTage.has('alle')
-      ? activeDays
-      : activeDays.filter(t => neuTage.has(t))
-    const behaltene = weekPlan.filter(e => !tage.includes(e.tag))
     try {
       const { plan: newPlan, mealsData: newMeals } = await generateWeekPlan({
         planMittag,
         planWE,
         freezerList: getFreezerListString(freezerItems),
         pantryList: getPantryListString(pantryItems),
-        behaltene,
-        neuTage: tage,
-        wishes: wishes.filter(w => tage.includes(w.tag)),
+        behaltene: [],
+        neuTage: activeDays,
+        wishes,
         familyPrompt,
         lastDishes,
       })
@@ -860,7 +852,7 @@ export default function WocheScreen({
       setPlanState('results')
     } catch {
       setError('Rémy konnte nicht planen. Bitte erneut versuchen.')
-      setPlanState('options')
+      setView('home')
     }
   }
 
@@ -907,7 +899,6 @@ export default function WocheScreen({
     setPendingPlan([])
     setPendingPlanMeals({})
     setPlanState('options')
-    setNeuTage(new Set(['alle']))
     setView('home')
   }
 
@@ -1063,17 +1054,6 @@ export default function WocheScreen({
     setKochPanelKey(prev => prev === key ? null : key)
   }
 
-  function toggleNeuTag(tag: string) {
-    const s = new Set(neuTage)
-    if (tag === 'alle') {
-      setNeuTage(s.has('alle') ? new Set<string>() : new Set(['alle']))
-      return
-    }
-    s.delete('alle')
-    s.has(tag) ? s.delete(tag) : s.add(tag)
-    if (s.size === 0) s.add('alle')
-    setNeuTage(s)
-  }
 
   // ── Attendance view ────────────────────────────────────────────────────────
   if (view === 'attendance') {
@@ -1159,7 +1139,7 @@ export default function WocheScreen({
           </div>
 
           {currentUser === wochenchef && (
-            <button className="btn primary" onClick={goToPlan} style={{ marginTop: 8, background: '#1D9E75' }}>
+            <button className="btn primary" onClick={startPlanning} style={{ marginTop: 8, background: '#1D9E75' }}>
               🗓 Zur Wochenplanung →
             </button>
           )}
@@ -1187,90 +1167,6 @@ export default function WocheScreen({
               <div style={{ fontSize: 13, color: '#555', marginBottom: 4 }}>Das dauert ca. 30 Sekunden – bitte warten.</div>
               <div style={{ fontSize: 12, color: '#bbb' }}>Wünsche & Vorräte werden berücksichtigt.</div>
             </div>
-          )}
-
-          {planState === 'options' && (
-            <>
-              {/* ── Anwesenheit (kompakte Statuszeile) ── */}
-              {(() => {
-                const confirmed = attendanceConfirmed.filter(c => allChefIds.includes(c)).length
-                const total = allChefIds.length
-                const done = confirmed === total
-                return (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 16, padding: '7px 10px', borderRadius: 8, border: `1px solid ${done ? '#B2DFCC' : '#FCD34D'}`, background: done ? '#F0FAF5' : '#FFFBEB', fontSize: 11 }}>
-                    <span style={{ color: done ? '#0F6E56' : '#92400E' }}>{done ? '✅' : '⏳'} Anwesenheit: {confirmed}/{total}</span>
-                    <button onClick={() => setView('attendance')} style={{ marginLeft: 'auto', border: 'none', background: 'none', color: '#1D9E75', fontSize: 11, cursor: 'pointer', fontWeight: 600, padding: 0 }}>
-                      {done ? 'Bearbeiten →' : 'Eintragen →'}
-                    </button>
-                  </div>
-                )
-              })()}
-              {/* ── Schritt 2: Wochenplan ── */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-                <span style={{ width: 22, height: 22, borderRadius: '50%', background: '#1D9E75', color: 'white', fontSize: 11, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>2</span>
-                <span style={{ fontSize: 13, fontWeight: 700, color: '#111' }}>Wochenplan erstellen</span>
-              </div>
-              {weekPlan.length > 0 && (
-                <>
-                  <div className="lbl">Welche Tage neu planen?</div>
-                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 16 }}>
-                    <button
-                      className={`menu-tab${neuTage.has('alle') ? ' on' : ''}`}
-                      onClick={() => toggleNeuTag('alle')}
-                    >
-                      Alle
-                    </button>
-                    {activeDays.map(t => (
-                      <button
-                        key={t}
-                        className={`menu-tab${neuTage.has('alle') || neuTage.has(t) ? ' on' : ''}`}
-                        onClick={() => toggleNeuTag(t)}
-                      >
-                        {t.slice(0, 2)}
-                      </button>
-                    ))}
-                  </div>
-                </>
-              )}
-              <div style={{ fontSize: 12, color: '#aaa', marginBottom: 20 }}>
-                {planMittag ? '☀️ Mittag + 🌙 Abend' : '🌙 Nur Abend'}
-                {' · '}
-                {planWE ? 'Mo–So' : 'Mo–Fr'}
-                <span style={{ marginLeft: 8, color: '#ccc' }}>(Einstellungen im Profil-Tab)</span>
-              </div>
-              {(() => {
-                const planTage = neuTage.has('alle') ? activeDays : activeDays.filter(t => neuTage.has(t))
-                const relevantWishes = wishes.filter(w => planTage.includes(w.tag))
-                return relevantWishes.length > 0 ? (
-                  <div style={{ marginBottom: 16 }}>
-                    <div className="lbl">Wünsche für geplante Tage</div>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                      {relevantWishes.map(w => {
-                        const c = CFG[w.person] ?? CFG.MA
-                        const slotIcon = w.slot === 'Mittag' ? '🌞' : '🌙'
-                        const content = w.type === 'ergaenzung' ? w.text : `${w.emoji} ${w.dishName}`
-                        return (
-                          <div key={w.id} style={{ display: 'flex', alignItems: 'center', gap: 4, background: c.bg, color: c.c, borderRadius: 8, padding: '3px 8px', fontSize: 11, fontWeight: 600 }}>
-                            <span>{w.person}</span>
-                            <span style={{ fontWeight: 400 }}>{w.tag.slice(0, 2)}</span>
-                            <span style={{ fontWeight: 400 }}>{slotIcon}</span>
-                            <span>·</span>
-                            <span style={{ fontWeight: 400 }}>{w.type === 'alternative' ? '🔄 ' : ''}{content}</span>
-                          </div>
-                        )
-                      })}
-                    </div>
-                    <div style={{ fontSize: 10, color: '#aaa', marginTop: 4 }}>werden an Rémy weitergegeben</div>
-                  </div>
-                ) : null
-              })()}
-              {error && (
-                <div style={{ fontSize: 12, color: '#E24B4A', marginBottom: 12 }}>{error}</div>
-              )}
-              <button className="btn primary" onClick={startPlanning}>
-                🐀 Rémy plant jetzt die Woche
-              </button>
-            </>
           )}
 
           {planState === 'results' && (
@@ -1675,7 +1571,7 @@ export default function WocheScreen({
             })
           )}
           {currentUser === wochenchef && !planConfirmed && (
-            <button className="btn soft" style={{ marginTop: 8 }} onClick={goToPlan}>
+            <button className="btn soft" style={{ marginTop: 8 }} onClick={startPlanning}>
               🔄 {weekPlan.length > 0 ? 'Neu planen' : 'Woche planen'}
             </button>
           )}
@@ -2094,6 +1990,11 @@ export default function WocheScreen({
       <div className="screen active">
         <div className="topbar"><h1>🍽 FamilyPlate</h1></div>
         <div className="content">
+          {error && (
+            <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 8, padding: '10px 14px', marginBottom: 12, fontSize: 12, color: '#991B1B' }}>
+              ⚠️ {error}
+            </div>
+          )}
           <div style={{ textAlign: 'center', padding: '24px 0 20px' }}>
             <div style={{ fontSize: 40, marginBottom: 8 }}>🐀</div>
             <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Rémy plant eure Woche in Sekunden</div>
@@ -2137,7 +2038,7 @@ export default function WocheScreen({
                   Wochenchef: <strong style={{ color: '#555' }}>{personNames[wochenchef]}</strong>
                 </div>
               )}
-              <button className="btn primary" onClick={goToPlan}>
+              <button className="btn primary" onClick={startPlanning}>
                 🐀 Woche planen
               </button>
             </div>
@@ -2154,6 +2055,11 @@ export default function WocheScreen({
       )}
       <div className="topbar"><h1>🍽 FamilyPlate</h1></div>
       <div className="content">
+        {error && (
+          <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 8, padding: '10px 14px', marginBottom: 12, fontSize: 12, color: '#991B1B' }}>
+            ⚠️ {error}
+          </div>
+        )}
         {renderWochenchefDecisions()}
         {!planConfirmed && weekPlan.length > 0 && currentUser !== wochenchef && (
           <div style={{ background: '#FFFBEB', border: '1px solid #FCD34D', borderRadius: 10, padding: '10px 14px', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -2355,7 +2261,7 @@ export default function WocheScreen({
       </div>
       {currentUser === wochenchef && !planConfirmed && (
         <div style={{ padding: '0 20px 16px' }}>
-          <button className="btn soft" onClick={goToPlan}>🔄 Neu planen</button>
+          <button className="btn soft" onClick={startPlanning}>🔄 Neu planen</button>
         </div>
       )}
     </div>

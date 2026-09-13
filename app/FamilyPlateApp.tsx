@@ -26,7 +26,7 @@ export default function FamilyPlateApp() {
   const [weekPlan, setWeekPlan] = useState<WeekPlanEntry[]>([])
   const [mealsData, setMealsData] = useState<Record<string, Rezept>>({})
   const [planMittag, setPlanMittag] = useState(true)
-  const [planWE, setPlanWE] = useState(false)
+  const [planWE, setPlanWE] = useState(true)
   const [freezerItems, setFreezerItems] = useState<FreezerItem[]>([])
   const [pantryItems, setPantryItems] = useState<PantryItem[]>([])
   const [wishes, setWishes] = useState<Wish[]>([])
