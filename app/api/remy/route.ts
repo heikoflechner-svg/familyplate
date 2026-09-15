@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 
+export const maxDuration = 60
+
 const FALLBACK = [
   { emoji: '🐟', name: 'Lachs-Pasta', info: 'Sabine + Tim · Regional · aus Gefriertruhe', minuten: 25 },
   { emoji: '🍗', name: 'Hähnchen mit Pasta', info: 'Hühnerfilets aus Gefriertruhe · Spaghetti vorhanden', minuten: 30 },

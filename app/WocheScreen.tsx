@@ -1237,7 +1237,11 @@ export default function WocheScreen({
           </div>
 
           {currentUser === wochenchef && (
-            <button className="btn primary" onClick={startPlanning} style={{ marginTop: 8, background: '#1D9E75' }}>
+            <button className="btn primary" onClick={() => {
+              if (pendingPlan.length > 0) setView('plan')
+              else if (weekPlan.length > 0) setView('home')
+              else startPlanning()
+            }} style={{ marginTop: 8, background: '#1D9E75' }}>
               🗓 Zur Wochenplanung →
             </button>
           )}
@@ -1319,9 +1323,12 @@ export default function WocheScreen({
                             <div style={{ fontSize: 13, fontWeight: 700, color: '#111', display: 'flex', alignItems: 'center', gap: 4 }}>
                               {e.gericht}
                               {(pendingPlanMeals[e.gericht]?.ersetzteZutaten?.length ?? 0) > 0 && (
-                                <span title={pendingPlanMeals[e.gericht]!.ersetzteZutaten!.join(' · ')} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 14, height: 14, borderRadius: '50%', background: '#EF4444', color: 'white', fontSize: 9, fontWeight: 700, flexShrink: 0, cursor: 'default' }}>!</span>
+                                <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 14, height: 14, borderRadius: '50%', background: '#EF4444', color: 'white', fontSize: 9, fontWeight: 700, flexShrink: 0 }}>!</span>
                               )}
                             </div>
+                            {(pendingPlanMeals[e.gericht]?.ersetzteZutaten?.length ?? 0) > 0 && (
+                              <div style={{ fontSize: 10, color: '#DC2626', marginTop: 1 }}>⚠️ {pendingPlanMeals[e.gericht]!.ersetzteZutaten!.join(' · ')}</div>
+                            )}
                             <div style={{ fontSize: 11, color: '#aaa' }}>{e.minuten} min</div>
                           </div>
                           <button
@@ -1568,12 +1575,15 @@ export default function WocheScreen({
                             <div style={{ fontSize: 13, fontWeight: 700, color: '#111', display: 'flex', alignItems: 'center', gap: 4 }}>
                               {e.gericht}{mealsData[e.gericht] ? <span style={{ fontSize: 10, color: '#bbb' }}>›</span> : null}
                               {(mealsData[e.gericht]?.ersetzteZutaten?.length ?? 0) > 0 && (
-                                <span title={mealsData[e.gericht]!.ersetzteZutaten!.join(' · ')} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 14, height: 14, borderRadius: '50%', background: '#EF4444', color: 'white', fontSize: 9, fontWeight: 700, flexShrink: 0, cursor: 'default' }}>!</span>
+                                <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 14, height: 14, borderRadius: '50%', background: '#EF4444', color: 'white', fontSize: 9, fontWeight: 700, flexShrink: 0 }}>!</span>
                               )}
                               {planConfirmed && !mealsData[e.gericht] && (
                                 <span title="Kein Rezept – fehlt in der Einkaufsliste" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 14, height: 14, borderRadius: '50%', background: '#F59E0B', color: 'white', fontSize: 9, fontWeight: 700, flexShrink: 0, cursor: 'default' }}>?</span>
                               )}
                             </div>
+                            {(mealsData[e.gericht]?.ersetzteZutaten?.length ?? 0) > 0 && (
+                              <div style={{ fontSize: 10, color: '#DC2626', marginTop: 1 }}>⚠️ {mealsData[e.gericht]!.ersetzteZutaten!.join(' · ')}</div>
+                            )}
                             <div style={{ fontSize: 11, color: '#aaa' }}>{e.minuten} min</div>
                           </div>
                         </div>
@@ -2181,12 +2191,15 @@ export default function WocheScreen({
             <div style={{ fontSize: 13, fontWeight: 700, color: '#111', display: 'flex', alignItems: 'center', gap: 4 }}>
               {entry.gericht}{hasRecipe ? <span style={{ fontSize: 10, color: '#bbb' }}>›</span> : null}
               {(mealsData[entry.gericht]?.ersetzteZutaten?.length ?? 0) > 0 && (
-                <span title={mealsData[entry.gericht]!.ersetzteZutaten!.join(' · ')} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 14, height: 14, borderRadius: '50%', background: '#EF4444', color: 'white', fontSize: 9, fontWeight: 700, flexShrink: 0, cursor: 'default' }}>!</span>
+                <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 14, height: 14, borderRadius: '50%', background: '#EF4444', color: 'white', fontSize: 9, fontWeight: 700, flexShrink: 0 }}>!</span>
               )}
               {planConfirmed && !mealsData[entry.gericht] && (
                 <span title="Kein Rezept – fehlt in der Einkaufsliste" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 14, height: 14, borderRadius: '50%', background: '#F59E0B', color: 'white', fontSize: 9, fontWeight: 700, flexShrink: 0, cursor: 'default' }}>?</span>
               )}
             </div>
+            {(mealsData[entry.gericht]?.ersetzteZutaten?.length ?? 0) > 0 && (
+              <div style={{ fontSize: 10, color: '#DC2626', marginTop: 1 }}>⚠️ {mealsData[entry.gericht]!.ersetzteZutaten!.join(' · ')}</div>
+            )}
             <div style={{ fontSize: 11, color: '#aaa' }}>{entry.minuten} min</div>
           </div>
         </div>

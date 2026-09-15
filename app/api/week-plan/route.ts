@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 
+export const maxDuration = 60
+
 const FB_MITTAG = [
   { e: '🥗', g: 'Reste vom Vortag', m: 10, q: 'kuehlschrank' },
   { e: '🥪', g: 'Belegte Brote', m: 10, q: 'frisch' },
