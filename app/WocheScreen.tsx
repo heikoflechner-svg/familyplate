@@ -290,6 +290,46 @@ export default function WocheScreen({
   const [nwMealSubMode, setNwMealSubMode] = useState<'manual' | 'pantry' | null>(null)
   const [nwManualDish, setNwManualDish] = useState('')
   const [nwSaving, setNwSaving] = useState(false)
+  const [nwPlanProgress, setNwPlanProgress] = useState(0)
+  const [nwPlanError, setNwPlanError] = useState(false)
+  const nwPlanStartRef = useRef(0)
+  const nwPlanTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  useEffect(() => {
+    if (nwPlanLoading) {
+      setNwPlanProgress(0)
+      setNwPlanError(false)
+      nwPlanStartRef.current = Date.now()
+      const steps = [
+        { at: 0,     pct: 0  },
+        { at: 2000,  pct: 15 },
+        { at: 6000,  pct: 35 },
+        { at: 12000, pct: 55 },
+        { at: 18000, pct: 72 },
+        { at: 24000, pct: 85 },
+        { at: 30000, pct: 92 },
+        { at: 40000, pct: 95 },
+      ]
+      nwPlanTimerRef.current = setInterval(() => {
+        const elapsed = Date.now() - nwPlanStartRef.current
+        let current = steps[0]
+        let next: (typeof steps)[0] | null = null
+        for (let i = 0; i < steps.length; i++) {
+          if (elapsed >= steps[i].at) { current = steps[i]; next = steps[i + 1] ?? null }
+        }
+        let pct = current.pct
+        if (next) {
+          const frac = Math.min((elapsed - current.at) / (next.at - current.at), 1)
+          pct = current.pct + (next.pct - current.pct) * frac
+        }
+        setNwPlanProgress(Math.min(pct, 95))
+      }, 150)
+    } else {
+      if (nwPlanTimerRef.current) { clearInterval(nwPlanTimerRef.current); nwPlanTimerRef.current = null }
+    }
+    return () => {
+      if (nwPlanTimerRef.current) { clearInterval(nwPlanTimerRef.current); nwPlanTimerRef.current = null }
+    }
+  }, [nwPlanLoading])
 
   async function submitNextWeekWish() {
     if (!nextWeekWishInput.trim() || !onNextWeekDataChange) return
@@ -319,10 +359,11 @@ export default function WocheScreen({
         })),
         familyPrompt,
       })
+      setNwPlanProgress(100)
       setNwPendingPlan(result)
       setNwPendingMeals(newMeals)
     } catch {
-      // silently fail
+      setNwPlanError(true)
     }
     setNwPlanLoading(false)
   }
@@ -1446,11 +1487,14 @@ export default function WocheScreen({
           <h1>📋 Wochenplan</h1>
         </div>
         <div className="content">
-          {weekStart && (
-            <div style={{ textAlign: 'center', fontSize: 12, color: '#888', marginBottom: 8 }}>
-              KW {getKW(weekStart)} · {getWeekRange(weekStart)}
-            </div>
-          )}
+          {(() => {
+            const ws = weekStart ?? getMondayIso()
+            return (
+              <div style={{ textAlign: 'center', fontSize: 12, color: '#888', marginBottom: 8 }}>
+                KW {getKW(ws)} · {getWeekRange(ws)}
+              </div>
+            )
+          })()}
           {renderWochenchefDecisions()}
           {plannedDays.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '40px 0' }}>
@@ -1818,10 +1862,24 @@ export default function WocheScreen({
 
                     {/* Loading */}
                     {nwPlanLoading && (
-                      <div style={{ textAlign: 'center', padding: '32px 0' }}>
+                      <div style={{ textAlign: 'center', padding: '28px 16px' }}>
                         <div style={{ fontSize: 36, marginBottom: 10 }}>🐀</div>
                         <div style={{ fontSize: 14, fontWeight: 700, color: '#085041', marginBottom: 6 }}>Rémy plant die nächste Woche…</div>
-                        <div style={{ fontSize: 12, color: '#aaa' }}>Einen Moment bitte.</div>
+                        <div style={{ background: '#e5e7eb', borderRadius: 999, height: 8, overflow: 'hidden', margin: '0 8px 6px' }}>
+                          <div style={{ background: 'linear-gradient(90deg, #1D9E75, #25c691)', height: '100%', borderRadius: 999, width: `${nwPlanProgress}%`, transition: 'width 0.15s ease-out' }} />
+                        </div>
+                        <div style={{ fontSize: 11, color: '#bbb' }}>{Math.round(nwPlanProgress)} %</div>
+                      </div>
+                    )}
+                    {/* Error state */}
+                    {nwPlanError && !nwPlanLoading && !nwPendingPlan && (
+                      <div style={{ margin: '8px 12px', padding: '10px 12px', background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 8 }}>
+                        <div style={{ fontSize: 12, color: '#991B1B', fontWeight: 600, marginBottom: 4 }}>⚠️ Planung fehlgeschlagen</div>
+                        <div style={{ fontSize: 11, color: '#991B1B', marginBottom: 8 }}>Rémy hatte Probleme. Bitte nochmal versuchen.</div>
+                        <button onClick={() => { setNwPlanError(false); generateNwPlan() }}
+                          style={{ padding: '6px 12px', border: 'none', borderRadius: 6, background: '#1D9E75', color: 'white', fontSize: 12, cursor: 'pointer' }}>
+                          🔄 Nochmal versuchen
+                        </button>
                       </div>
                     )}
 
@@ -2012,10 +2070,17 @@ export default function WocheScreen({
                       )}
                       {/* Context for non-chefs when no plan exists yet */}
                       {!nwPlanLoading && !nwPendingPlan && nwPlan.length === 0 && !isNwChef && (
-                        <div style={{ fontSize: 11, color: '#888', padding: '2px 0' }}>
-                          {nwChef
-                            ? `${personNames[nwChef] ?? nwChef} plant die nächste Woche. Der Plan wird hier angezeigt, sobald er freigegeben ist.`
-                            : 'Der Wochenchef für nächste Woche steht noch nicht fest.'}
+                        <div style={{ padding: '8px 10px', background: '#F0FAF5', borderRadius: 8, border: '1px solid #B2DFCC' }}>
+                          <div style={{ fontSize: 12, color: '#085041', fontWeight: 600 }}>
+                            {nwChef
+                              ? `📅 ${personNames[nwChef] ?? nwChef} plant die nächste Woche.`
+                              : '📅 Wochenchef für nächste Woche noch nicht festgelegt.'}
+                          </div>
+                          {nwChef && (
+                            <div style={{ fontSize: 11, color: '#0F6E56', marginTop: 2 }}>
+                              Der Plan erscheint hier, sobald er freigegeben ist.
+                            </div>
+                          )}
                         </div>
                       )}
 
