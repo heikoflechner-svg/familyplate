@@ -2409,7 +2409,7 @@ export default function WocheScreen({
             ) : (
               <>
                 <div style={{ fontSize: 12, fontWeight: 600, color: '#0F6E56', marginBottom: 3 }}>
-                  ✅ Woche bestätigt{weekStart ? ` · KW ${getKW(weekStart)}` : ''}
+                  ✅ Woche bestätigt · KW {getKW(weekStart ?? getMondayIso())}
                 </div>
                 <div style={{ fontSize: 12, color: '#444', marginBottom: shoppingDays.length > 0 ? 4 : 0 }}>
                   Du bist diese Woche Wochenchef – du organisierst die Woche und kochst mit.
@@ -2423,6 +2423,14 @@ export default function WocheScreen({
             )}
           </div>
         )}
+        {(() => {
+          const ws = weekStart ?? getMondayIso()
+          return (
+            <div style={{ textAlign: 'center', fontSize: 12, color: '#888', marginBottom: 10 }}>
+              KW {getKW(ws)} · {getWeekRange(ws)}
+            </div>
+          )
+        })()}
         <div style={{ borderRadius: 12, border: '1px solid #e5e7eb', marginBottom: 14, overflow: 'hidden' }}>
           <div style={{ padding: '8px 12px', background: '#f0faf5', borderBottom: '1px solid #e0f0e8', display: 'flex', alignItems: 'center', gap: 6 }}>
             <span style={{ flex: 1, fontSize: 12, fontWeight: 700, color: '#085041' }}>Heute · {today}</span>
