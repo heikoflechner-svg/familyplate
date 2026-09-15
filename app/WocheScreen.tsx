@@ -78,7 +78,8 @@ interface Props {
   shoppingList: ShoppingItem[]
   onShoppingListChange: (list: ShoppingItem[]) => Promise<void>
   onFreezerChange: (items: FreezerItem[]) => void
-  attendanceSignal?: number
+  initialView?: 'home' | 'attendance'
+  onInitialViewConsumed?: () => void
   shoppingDays?: string[]
   shoppingPersons?: Record<string, Chef>
   onShoppingPersonsChange?: (persons: Record<string, Chef>) => Promise<void>
@@ -138,7 +139,9 @@ export default function WocheScreen({
   weekPlan, mealsData, planMittag, planWE, freezerItems, pantryItems,
   wishes, currentUser, wochenchef, members, attendance, attendanceConfirmed, proposals, planConfirmed, shopDone, onWeekPlanChange, onWeekPlanAndWishesChange, onWishesChange,
   onAttendanceChange, onAttendanceConfirmedChange, onPlanConfirm, onProposalsChange, onWochenchefChange, onPlanConfirmedChange, onShopDoneChange,
-  shoppingList, onShoppingListChange, onFreezerChange, attendanceSignal,
+  shoppingList, onShoppingListChange, onFreezerChange,
+  initialView = 'home',
+  onInitialViewConsumed,
   shoppingDays = [],
   shoppingPersons = {},
   onShoppingPersonsChange,
@@ -166,11 +169,11 @@ export default function WocheScreen({
     ? `Änderungen waren nur bis ${wishDeadlineStatus.deadlineDayName} 20:00 Uhr möglich – Einkauf ist am ${wishDeadlineStatus.shoppingDayName}`
     : undefined
 
-  const [view, setView] = useState<View>('home')
-  const mountedAttendanceSignal = useRef(attendanceSignal ?? 0)
+  const [view, setView] = useState<View>(initialView)
   useEffect(() => {
-    if ((attendanceSignal ?? 0) > mountedAttendanceSignal.current) setView('attendance')
-  }, [attendanceSignal])
+    onInitialViewConsumed?.()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   const [planState, setPlanState] = useState<PlanState>('options')
   const [pendingPlan, setPendingPlan] = useState<WeekPlanEntry[]>([])
   const [pendingPlanMeals, setPendingPlanMeals] = useState<Record<string, Rezept>>({})
@@ -1443,6 +1446,11 @@ export default function WocheScreen({
           <h1>📋 Wochenplan</h1>
         </div>
         <div className="content">
+          {weekStart && (
+            <div style={{ textAlign: 'center', fontSize: 12, color: '#888', marginBottom: 8 }}>
+              KW {getKW(weekStart)} · {getWeekRange(weekStart)}
+            </div>
+          )}
           {renderWochenchefDecisions()}
           {plannedDays.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '40px 0' }}>
@@ -2001,6 +2009,14 @@ export default function WocheScreen({
                           style={{ padding: '9px 12px', border: 'none', borderRadius: 8, background: '#1D9E75', color: 'white', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
                           🐀 Rémy fragen – Woche planen
                         </button>
+                      )}
+                      {/* Context for non-chefs when no plan exists yet */}
+                      {!nwPlanLoading && !nwPendingPlan && nwPlan.length === 0 && !isNwChef && (
+                        <div style={{ fontSize: 11, color: '#888', padding: '2px 0' }}>
+                          {nwChef
+                            ? `${personNames[nwChef] ?? nwChef} plant die nächste Woche. Der Plan wird hier angezeigt, sobald er freigegeben ist.`
+                            : 'Der Wochenchef für nächste Woche steht noch nicht fest.'}
+                        </div>
                       )}
 
                       {/* Wish input (for non-nwChef or also nwChef) */}

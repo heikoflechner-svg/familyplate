@@ -41,7 +41,7 @@ export default function FamilyPlateApp() {
   const [weekStart, setWeekStart] = useState<string | null>(null)
   const [nextWeekStart, setNextWeekStart] = useState<string | null>(null)
   const [nextWeekData, setNextWeekData] = useState<NextWeekData | null>(null)
-  const [attendanceSignal, setAttendanceSignal] = useState(0)
+  const [wocheInitView, setWocheInitView] = useState<'home' | 'attendance'>('home')
   const [activeTab, setActiveTab] = useState<Tab>('woche')
   const [profileSaveError, setProfileSaveError] = useState<string | null>(null)
 
@@ -315,7 +315,8 @@ export default function FamilyPlateApp() {
             shoppingList={shoppingList}
             onShoppingListChange={handleShoppingListChange}
             onFreezerChange={setFreezerItems}
-            attendanceSignal={attendanceSignal}
+            initialView={wocheInitView}
+            onInitialViewConsumed={() => setWocheInitView('home')}
             shoppingDays={shoppingDays}
             shoppingPersons={shoppingPersons}
             onShoppingPersonsChange={handleShoppingPersonsChange}
@@ -379,7 +380,7 @@ export default function FamilyPlateApp() {
             onShoppingPersonsChange={handleShoppingPersonsChange}
             onShoppingProposalSubmit={handleShoppingProposalSubmit}
             onGoToAttendance={() => {
-              setAttendanceSignal(prev => prev + 1)
+              setWocheInitView('attendance')
               setActiveTab('woche')
             }}
           />
