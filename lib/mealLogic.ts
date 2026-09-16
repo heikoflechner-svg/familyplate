@@ -333,8 +333,16 @@ export async function generateWeekPlan(params: {
   // Die Wochenplanung liefert nur noch Gerichtnamen + Allergie-Ersatz (schnell, Sonnet).
   // Daraus bauen wir Rezept-Stubs; volle Zutaten/Schritte werden lazy nachgeladen
   // (beim Antippen eines Gerichts oder beim Erstellen der Einkaufsliste).
+  //
+  // WICHTIG: Bei Einzel-/Tages-Rerolls enthält `plan` auch die unveränderten
+  // `behaltene`-Gerichte, aber `allergie` deckt nur die NEU geplanten Slots ab.
+  // Wir dürfen daher nur Stubs für die neu geplanten Slots erzeugen – sonst würden
+  // die Stubs beim Merge in den Aufrufern die bestehenden Rezepte + Allergie-Infos
+  // aller behaltenen Gerichte überschreiben (Allergie-Warnungen gingen verloren).
+  const behalteneKeys = new Set((params.behaltene ?? []).map(e => `${e.tag}-${e.slot}`))
   const mealsData: Record<string, Rezept> = {}
   for (const e of plan) {
+    if (behalteneKeys.has(`${e.tag}-${e.slot}`)) continue
     if (mealsData[e.gericht]) continue
     mealsData[e.gericht] = {
       name: e.gericht,
