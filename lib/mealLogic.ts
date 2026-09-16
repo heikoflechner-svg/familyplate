@@ -328,10 +328,32 @@ export async function generateWeekPlan(params: {
     body: JSON.stringify(params),
   })
   const data = await resp.json()
-  return {
-    plan: (data.woche as WeekPlanEntry[]) ?? [],
-    mealsData: (data.rezepte as Record<string, Rezept>) ?? {},
+  const plan = (data.woche as WeekPlanEntry[]) ?? []
+  const allergie = (data.allergie as Record<string, string[]>) ?? {}
+  // Die Wochenplanung liefert nur noch Gerichtnamen + Allergie-Ersatz (schnell, Sonnet).
+  // Daraus bauen wir Rezept-Stubs; volle Zutaten/Schritte werden lazy nachgeladen
+  // (beim Antippen eines Gerichts oder beim Erstellen der Einkaufsliste).
+  const mealsData: Record<string, Rezept> = {}
+  for (const e of plan) {
+    if (mealsData[e.gericht]) continue
+    mealsData[e.gericht] = {
+      name: e.gericht,
+      emoji: e.emoji,
+      zutaten: [],
+      schritte: [],
+      minuten: e.minuten ?? 0,
+      schwierigkeit: '',
+      ersetzteZutaten: allergie[e.gericht] ?? [],
+    }
   }
+  return { plan, mealsData }
+}
+
+// Ein "volles" Rezept hat Zubereitungsschritte. Ein Stub (nur Name/Emoji/Allergie
+// aus der schnellen Wochenplanung) hat leere schritte und muss vor Verwendung in
+// Rezeptansicht/Einkaufsliste per generateRecipe nachgeladen werden.
+export function isFullRecipe(r?: Rezept | null): boolean {
+  return !!r && r.schritte.length > 0
 }
 
 export async function getRemySuggestions(params: {

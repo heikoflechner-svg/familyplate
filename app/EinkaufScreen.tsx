@@ -13,7 +13,10 @@ import {
   computeNextWeekCoverage,
 } from '../lib/shoppingLogic'
 import type { ConsolidatedItem } from '../lib/shoppingLogic'
-import type { WeekPlanEntry, Rezept, ShoppingItem, Chef, NextWeekData } from '../lib/state'
+import { generateRecipe, isFullRecipe } from '../lib/mealLogic'
+import { getFreezerListString, getPantryListString } from '../lib/freezerLogic'
+import { buildFamilyPrompt, DEFAULT_MEMBERS } from '../lib/familyLogic'
+import type { WeekPlanEntry, Rezept, ShoppingItem, Chef, NextWeekData, FreezerItem, PantryItem, FamilyMember } from '../lib/state'
 
 const WOCHENTAGE = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag']
 
@@ -22,6 +25,7 @@ interface Props {
   mealsData: Record<string, Rezept>
   shoppingList: ShoppingItem[]
   onShoppingListChange: (list: ShoppingItem[]) => void
+  onMealsDataChange: (meals: Record<string, Rezept>) => Promise<void>
   currentUser: Chef | null
   wochenchef: Chef
   shopDone: boolean
@@ -31,14 +35,18 @@ interface Props {
   onZutatenLadenChange: (mapping: Record<string, string>) => Promise<void>
   shoppingDays?: string[]
   nextWeekData?: NextWeekData | null
+  freezerItems: FreezerItem[]
+  pantryItems: PantryItem[]
+  members: FamilyMember[]
 }
 
 type ViewMode = 'tag' | 'zusammen' | 'laden'
 
-export default function EinkaufScreen({ weekPlan, mealsData, shoppingList, onShoppingListChange, currentUser, wochenchef, shopDone, onShopDoneChange, laeden, zutatenLaden, onZutatenLadenChange, shoppingDays = [], nextWeekData = null }: Props) {
+export default function EinkaufScreen({ weekPlan, mealsData, shoppingList, onShoppingListChange, onMealsDataChange, currentUser, wochenchef, shopDone, onShopDoneChange, laeden, zutatenLaden, onZutatenLadenChange, shoppingDays = [], nextWeekData = null, freezerItems, pantryItems, members }: Props) {
   const [newName, setNewName] = useState('')
   const [newMenge, setNewMenge] = useState('')
   const [dayPickerOpen, setDayPickerOpen] = useState(false)
+  const [generating, setGenerating] = useState(false)
   const [selectedDays, setSelectedDays] = useState<Set<string>>(new Set(['alle']))
   const [selectedNextWeekDays, setSelectedNextWeekDays] = useState<Set<string>>(new Set())
   const [viewMode, setViewMode] = useState<ViewMode>('tag')
@@ -74,16 +82,59 @@ export default function EinkaufScreen({ weekPlan, mealsData, shoppingList, onSho
     setDayPickerOpen(true)
   }
 
-  function confirmGenerate() {
+  async function confirmGenerate() {
     const days = selectedDays.has('alle') ? undefined : [...selectedDays]
     const nwDays = selectedNextWeekDays.size > 0 ? [...selectedNextWeekDays] : undefined
-    onShoppingListChange(generateShoppingList(
-      weekPlan, mealsData, days,
-      nwDays ? nwPlan : undefined,
-      nwDays ? nwMeals : undefined,
-      nwDays,
-    ))
-    setDayPickerOpen(false)
+
+    setGenerating(true)
+    try {
+      const freezerStr = getFreezerListString(freezerItems)
+      const pantryStr = getPantryListString(pantryItems)
+      const familyPrompt = buildFamilyPrompt(members.length ? members : DEFAULT_MEMBERS)
+
+      // Nach der schnellen Wochenplanung liegen nur Rezept-Stubs vor. Für die
+      // Einkaufsliste die vollen Zutaten der betroffenen Gerichte parallel nachladen.
+      const thisWeekEntries = days ? weekPlan.filter(e => days.includes(e.tag)) : weekPlan
+      const nwEntries = nwDays ? nwPlan.filter(e => nwDays.includes(e.tag)) : []
+
+      const thisWeekMeals = { ...mealsData }
+      const nextWeekMeals = { ...nwMeals }
+
+      async function loadInto(entries: WeekPlanEntry[], store: Record<string, Rezept>) {
+        const seen = new Set<string>()
+        const missing = entries.filter(e => {
+          if (seen.has(e.gericht) || isFullRecipe(store[e.gericht])) return false
+          seen.add(e.gericht)
+          return true
+        })
+        await Promise.all(missing.map(async e => {
+          const r = await generateRecipe(e.gericht, e.emoji, freezerStr, pantryStr, familyPrompt)
+          if (r) {
+            store[e.gericht] = {
+              ...r,
+              // Allergie-Ersatz aus der Wochenplanung bewahren, falls das Einzelrezept keinen liefert
+              ersetzteZutaten: r.ersetzteZutaten?.length ? r.ersetzteZutaten : (store[e.gericht]?.ersetzteZutaten ?? []),
+            }
+          }
+        }))
+      }
+
+      await loadInto(thisWeekEntries, thisWeekMeals)
+      if (nwDays) await loadInto(nwEntries, nextWeekMeals)
+
+      // Nachgeladene Rezepte dieser Woche persistieren, damit sie erhalten bleiben
+      await onMealsDataChange(thisWeekMeals)
+
+      onShoppingListChange(generateShoppingList(
+        weekPlan, thisWeekMeals, days,
+        nwDays ? nwPlan : undefined,
+        nwDays ? nextWeekMeals : undefined,
+        nwDays,
+      ))
+      setDayPickerOpen(false)
+    } finally {
+      setGenerating(false)
+    }
   }
 
   function toggle(id: string) { onShoppingListChange(toggleShoppingItem(shoppingList, id)) }
@@ -193,13 +244,15 @@ export default function EinkaufScreen({ weekPlan, mealsData, shoppingList, onSho
               <button
                 className="btn primary"
                 onClick={confirmGenerate}
-                style={{ flex: 1, padding: '10px' }}
+                disabled={generating}
+                style={{ flex: 1, padding: '10px', opacity: generating ? 0.6 : 1, cursor: generating ? 'default' : 'pointer' }}
               >
-                📋 Liste erstellen
+                {generating ? '🐀 Rémy holt Rezepte…' : '📋 Liste erstellen'}
               </button>
               <button
                 onClick={() => setDayPickerOpen(false)}
-                style={{ padding: '10px 16px', border: '1px solid #ddd', borderRadius: 10, background: 'white', cursor: 'pointer', color: '#888', fontSize: 13 }}
+                disabled={generating}
+                style={{ padding: '10px 16px', border: '1px solid #ddd', borderRadius: 10, background: 'white', cursor: generating ? 'default' : 'pointer', color: '#888', fontSize: 13, opacity: generating ? 0.6 : 1 }}
               >
                 ✕
               </button>
@@ -208,7 +261,10 @@ export default function EinkaufScreen({ weekPlan, mealsData, shoppingList, onSho
         )}
 
         {(() => {
-          const missing = weekPlan.filter(e => !mealsData[e.gericht])
+          // Nur nach dem Generieren warnen, wenn ein Rezept nicht geladen werden konnte
+          const missing = shoppingList.length > 0
+            ? weekPlan.filter(e => !isFullRecipe(mealsData[e.gericht]))
+            : []
           if (missing.length === 0) return null
           return (
             <div style={{ background: '#FFFBEB', border: '1px solid #FCD34D', borderRadius: 10, padding: '10px 14px', marginBottom: 12 }}>

@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
-import { generateWeekPlan, getRemySuggestions, generateRecipe, saveLastDishes } from '../lib/mealLogic'
+import { generateWeekPlan, getRemySuggestions, generateRecipe, saveLastDishes, isFullRecipe } from '../lib/mealLogic'
 import { getFreezerListString, getPantryListString, addFreezerItem, deleteFreezerItem } from '../lib/freezerLogic'
 import { buildFamilyPrompt, DEFAULT_MEMBERS } from '../lib/familyLogic'
 import type { WeekPlanEntry, Rezept, FreezerItem, PantryItem, Wish, Chef, WochenSlot, FamilyMember, DayAttendance, ChangeProposal, ShoppingItem, RemyVorschlag, NextWeekData, NextWeekWish } from '../lib/state'
@@ -264,6 +264,7 @@ export default function WocheScreen({
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [selectedMealName, setSelectedMealName] = useState<string | null>(null)
+  const [recipeLoading, setRecipeLoading] = useState<string | null>(null)
 
   const [chefAltSelection, setChefAltSelection] = useState<Record<string, string>>({})
   const [chefErgaenzungIds, setChefErgaenzungIds] = useState<string[]>([])
@@ -972,6 +973,28 @@ export default function WocheScreen({
     return `${total}${gaeste > 0 ? ` (${gaeste} Gast${gaeste > 1 ? 'e' : ''})` : ''}`
   }
 
+  // Rezept-Detail öffnen: liegt nur ein Stub vor (aus der schnellen Wochenplanung),
+  // wird das volle Rezept lazy nachgeladen und persistiert.
+  async function openRecipe(gericht: string, emoji: string) {
+    setSelectedMealName(gericht)
+    const existing = mealsData[gericht]
+    if (isFullRecipe(existing)) return
+    setRecipeLoading(gericht)
+    try {
+      const rezept = await generateRecipe(gericht, emoji, getFreezerListString(freezerItems), getPantryListString(pantryItems), familyPrompt)
+      if (rezept) {
+        const merged: Rezept = {
+          ...rezept,
+          // Allergie-Ersatz aus der Wochenplanung bewahren, falls das Einzelrezept keinen liefert
+          ersetzteZutaten: rezept.ersetzteZutaten?.length ? rezept.ersetzteZutaten : (existing?.ersetzteZutaten ?? []),
+        }
+        await onWeekPlanChange(weekPlan, { ...mealsData, [gericht]: merged })
+      }
+    } finally {
+      setRecipeLoading(null)
+    }
+  }
+
   async function startPlanning() {
     setView('plan')
     setPlanState('loading')
@@ -1480,7 +1503,7 @@ export default function WocheScreen({
     return (
       <div className="screen active" style={{ position: 'relative' }}>
         {selectedMealName && (
-          <RecipeModal name={selectedMealName} rezept={mealsData[selectedMealName] ?? null} onClose={() => setSelectedMealName(null)} />
+          <RecipeModal name={selectedMealName} rezept={mealsData[selectedMealName] ?? null} loading={recipeLoading === selectedMealName} onClose={() => setSelectedMealName(null)} />
         )}
         <div className="topbar">
           <button className="back" onClick={() => setView('home')}>‹</button>
@@ -1619,18 +1642,15 @@ export default function WocheScreen({
                           </div>
                         )}
                         <div
-                          onClick={() => mealsData[e.gericht] ? setSelectedMealName(e.gericht) : undefined}
-                          style={{ padding: '3px 12px 10px', display: 'flex', alignItems: 'center', gap: 8, cursor: mealsData[e.gericht] ? 'pointer' : 'default' }}
+                          onClick={() => openRecipe(e.gericht, e.emoji)}
+                          style={{ padding: '3px 12px 10px', display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}
                         >
                           <span style={{ fontSize: 18 }}>{e.emoji}</span>
                           <div style={{ flex: 1 }}>
                             <div style={{ fontSize: 13, fontWeight: 700, color: '#111', display: 'flex', alignItems: 'center', gap: 4 }}>
-                              {e.gericht}{mealsData[e.gericht] ? <span style={{ fontSize: 10, color: '#bbb' }}>›</span> : null}
+                              {e.gericht}<span style={{ fontSize: 10, color: '#bbb' }}>›</span>
                               {(mealsData[e.gericht]?.ersetzteZutaten?.length ?? 0) > 0 && (
                                 <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 14, height: 14, borderRadius: '50%', background: '#EF4444', color: 'white', fontSize: 9, fontWeight: 700, flexShrink: 0 }}>!</span>
-                              )}
-                              {planConfirmed && !mealsData[e.gericht] && (
-                                <span title="Kein Rezept – fehlt in der Einkaufsliste" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 14, height: 14, borderRadius: '50%', background: '#F59E0B', color: 'white', fontSize: 9, fontWeight: 700, flexShrink: 0, cursor: 'default' }}>?</span>
                               )}
                             </div>
                             {(mealsData[e.gericht]?.ersetzteZutaten?.length ?? 0) > 0 && (
@@ -2147,7 +2167,6 @@ export default function WocheScreen({
     const key = `${tag}-${slot}`
     const isEditing = editMealKey === key
     const isAttendanceEdit = attendanceEditKey === key
-    const hasRecipe = !!mealsData[entry.gericht]
     const canEdit = !planConfirmed || currentUser === wochenchef
     const canProposeChef = !shopDone
     const slotAnwesend = getSlotAnwesend(tag, slot)
@@ -2264,18 +2283,15 @@ export default function WocheScreen({
           </div>
         )}
         <div
-          onClick={hasRecipe ? () => setSelectedMealName(entry.gericht) : undefined}
-          style={{ padding: '3px 12px 10px', display: 'flex', alignItems: 'center', gap: 8, cursor: hasRecipe ? 'pointer' : 'default' }}
+          onClick={() => openRecipe(entry.gericht, entry.emoji)}
+          style={{ padding: '3px 12px 10px', display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}
         >
           <span style={{ fontSize: 18 }}>{entry.emoji}</span>
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 13, fontWeight: 700, color: '#111', display: 'flex', alignItems: 'center', gap: 4 }}>
-              {entry.gericht}{hasRecipe ? <span style={{ fontSize: 10, color: '#bbb' }}>›</span> : null}
+              {entry.gericht}<span style={{ fontSize: 10, color: '#bbb' }}>›</span>
               {(mealsData[entry.gericht]?.ersetzteZutaten?.length ?? 0) > 0 && (
                 <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 14, height: 14, borderRadius: '50%', background: '#EF4444', color: 'white', fontSize: 9, fontWeight: 700, flexShrink: 0 }}>!</span>
-              )}
-              {planConfirmed && !mealsData[entry.gericht] && (
-                <span title="Kein Rezept – fehlt in der Einkaufsliste" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 14, height: 14, borderRadius: '50%', background: '#F59E0B', color: 'white', fontSize: 9, fontWeight: 700, flexShrink: 0, cursor: 'default' }}>?</span>
               )}
             </div>
             {(mealsData[entry.gericht]?.ersetzteZutaten?.length ?? 0) > 0 && (
@@ -2864,7 +2880,8 @@ function WishesSection({
   )
 }
 
-function RecipeModal({ name, rezept, onClose }: { name: string; rezept: import('../lib/state').Rezept | null; onClose: () => void }) {
+function RecipeModal({ name, rezept, loading, onClose }: { name: string; rezept: import('../lib/state').Rezept | null; loading?: boolean; onClose: () => void }) {
+  const hatRezept = !!rezept && rezept.schritte.length > 0
   return (
     <div style={{ position: 'absolute', inset: 0, zIndex: 50, background: 'white', overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
       <div className="topbar">
@@ -2872,11 +2889,15 @@ function RecipeModal({ name, rezept, onClose }: { name: string; rezept: import('
         <h1 style={{ fontSize: 15 }}>{rezept?.emoji ?? '🍽'} {name}</h1>
       </div>
       <div className="content">
-        {!rezept ? (
-          <div style={{ textAlign: 'center', padding: '40px 0', color: '#aaa', fontSize: 13 }}>
-            Kein Rezept verfügbar – beim nächsten Plan von Rémy wird es generiert.
+        {loading ? (
+          <div style={{ textAlign: 'center', padding: '40px 0', color: '#888', fontSize: 13 }}>
+            🐀 Rémy schreibt das Rezept…
           </div>
-        ) : (
+        ) : !hatRezept ? (
+          <div style={{ textAlign: 'center', padding: '40px 0', color: '#aaa', fontSize: 13 }}>
+            Kein Rezept verfügbar – bitte erneut antippen.
+          </div>
+        ) : rezept && (
           <>
             <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
               <span style={{ fontSize: 11, background: '#f0f0f0', borderRadius: 6, padding: '3px 8px', color: '#666' }}>{rezept.schwierigkeit}</span>

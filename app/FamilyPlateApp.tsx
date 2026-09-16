@@ -117,6 +117,11 @@ export default function FamilyPlateApp() {
     await saveWeekPlan(plan, meals, newWishes)
   }
 
+  async function handleMealsDataChange(meals: Record<string, Rezept>) {
+    setMealsData(meals)
+    await saveWeekPlan(weekPlan, meals, wishes)
+  }
+
   async function handleWishesChange(newWishes: Wish[]) {
     setWishes(newWishes)
     await saveWeekPlan(weekPlan, mealsData, newWishes)
@@ -342,6 +347,7 @@ export default function FamilyPlateApp() {
             mealsData={mealsData}
             shoppingList={shoppingList}
             onShoppingListChange={handleShoppingListChange}
+            onMealsDataChange={handleMealsDataChange}
             currentUser={currentUser}
             wochenchef={activeWochenchef}
             shopDone={shopDone}
@@ -351,6 +357,9 @@ export default function FamilyPlateApp() {
             onZutatenLadenChange={handleZutatenLadenChange}
             shoppingDays={shoppingDays}
             nextWeekData={nextWeekData}
+            freezerItems={freezerItems}
+            pantryItems={pantryItems}
+            members={members}
           />
         )}
         {activeTab === 'rezepte' && (

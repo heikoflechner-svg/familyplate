@@ -21,94 +21,6 @@ const FB_ABEND = [
   { e: '🍝', g: 'Spaghetti Bolognese', m: 35, q: 'frisch' },
 ]
 
-type Zutat = { menge: string; name: string; typ: string }
-type RezeptData = { name: string; emoji: string; zutaten: Zutat[]; schritte: string[]; minuten: number; schwierigkeit: string }
-
-const FB_REZEPTE: Record<string, RezeptData> = {
-  'Reste vom Vortag':   { name: 'Reste vom Vortag',  emoji: '🥗', zutaten: [], schritte: ['Reste aus dem Kühlschrank aufwärmen.'], minuten: 10, schwierigkeit: 'Einfach' },
-  'Eintopf aufgewärmt': { name: 'Eintopf aufgewärmt', emoji: '🥣', zutaten: [], schritte: ['Eintopf erhitzen.'], minuten: 10, schwierigkeit: 'Einfach' },
-  'Belegte Brote': { name: 'Belegte Brote', emoji: '🥪', zutaten: [
-    { menge: '1 Packung', name: 'Toast oder Brot', typ: 'frisch' },
-    { menge: 'nach Bedarf', name: 'Aufschnitt', typ: 'frisch' },
-    { menge: 'nach Bedarf', name: 'Käse', typ: 'frisch' },
-  ], schritte: ['Brot belegen und servieren.'], minuten: 10, schwierigkeit: 'Einfach' },
-  'Nudelsuppe': { name: 'Nudelsuppe', emoji: '🍜', zutaten: [
-    { menge: '1 Liter', name: 'Gemüsebrühe', typ: 'speisekammer' },
-    { menge: '100g', name: 'Suppennudeln', typ: 'speisekammer' },
-    { menge: '2', name: 'Möhren', typ: 'frisch' },
-  ], schritte: ['Brühe aufkochen, Nudeln und Möhren ca. 10 Min. kochen.'], minuten: 15, schwierigkeit: 'Einfach' },
-  'Wraps': { name: 'Wraps', emoji: '🥙', zutaten: [
-    { menge: '4', name: 'Wraps', typ: 'frisch' },
-    { menge: '200g', name: 'Hähnchenbrust', typ: 'frisch' },
-    { menge: '1', name: 'Paprika', typ: 'frisch' },
-    { menge: '100g', name: 'Salatblätter', typ: 'frisch' },
-  ], schritte: ['Hähnchen würzen und braten, mit Gemüse in Wraps rollen.'], minuten: 15, schwierigkeit: 'Einfach' },
-  'Salat': { name: 'Salat', emoji: '🥗', zutaten: [
-    { menge: '1 Kopf', name: 'Kopfsalat', typ: 'frisch' },
-    { menge: '2', name: 'Tomaten', typ: 'frisch' },
-    { menge: '1/2', name: 'Gurke', typ: 'frisch' },
-    { menge: '3 EL', name: 'Olivenöl', typ: 'frisch' },
-  ], schritte: ['Gemüse waschen, schneiden und mit Öl und Essig dressieren.'], minuten: 10, schwierigkeit: 'Einfach' },
-  'Eierspeise': { name: 'Eierspeise', emoji: '🍳', zutaten: [
-    { menge: '4', name: 'Eier', typ: 'frisch' },
-    { menge: '50ml', name: 'Milch', typ: 'frisch' },
-    { menge: '1 EL', name: 'Butter', typ: 'frisch' },
-  ], schritte: ['Eier mit Milch verquirlen, in Butter stocken lassen.'], minuten: 10, schwierigkeit: 'Einfach' },
-  'Lasagne': { name: 'Lasagne', emoji: '🥗', zutaten: [
-    { menge: '500g', name: 'Hackfleisch', typ: 'frisch' },
-    { menge: '1 Packung', name: 'Lasagneblätter', typ: 'speisekammer' },
-    { menge: '500ml', name: 'Tomatensauce (Glas)', typ: 'speisekammer' },
-    { menge: '250ml', name: 'Bechamelsauce', typ: 'frisch' },
-    { menge: '100g', name: 'Parmesan', typ: 'frisch' },
-  ], schritte: ['Hack anbraten, mit Tomatensauce schichten, Bechamel drauf, backen.'], minuten: 45, schwierigkeit: 'Mittel' },
-  'Hähnchen-Pasta': { name: 'Hähnchen-Pasta', emoji: '🍗', zutaten: [
-    { menge: '400g', name: 'Hähnchenfilets', typ: 'tiefkühl' },
-    { menge: '250g', name: 'Spaghetti', typ: 'speisekammer' },
-    { menge: '1 Dose', name: 'Tomaten (stückig)', typ: 'speisekammer' },
-    { menge: '2 Zehen', name: 'Knoblauch', typ: 'frisch' },
-  ], schritte: ['Hähnchen anbraten, Sauce kochen, mit Pasta servieren.'], minuten: 30, schwierigkeit: 'Einfach' },
-  'Gemüsecurry': { name: 'Gemüsecurry', emoji: '🍲', zutaten: [
-    { menge: '1 Dose', name: 'Kokosmilch', typ: 'speisekammer' },
-    { menge: '2 EL', name: 'Currypaste', typ: 'speisekammer' },
-    { menge: '300g', name: 'Gemüsemix (TK)', typ: 'tiefkühl' },
-    { menge: '200g', name: 'Basmatireis', typ: 'speisekammer' },
-  ], schritte: ['Currypaste kurz anrösten, Kokosmilch und Gemüse dazugeben, mit Reis servieren.'], minuten: 20, schwierigkeit: 'Einfach' },
-  'Selbstgemachte Pizza': { name: 'Selbstgemachte Pizza', emoji: '🍕', zutaten: [
-    { menge: '1 Packung', name: 'Pizzateig (fertig)', typ: 'frisch' },
-    { menge: '200ml', name: 'Tomatensauce', typ: 'speisekammer' },
-    { menge: '200g', name: 'Mozzarella', typ: 'frisch' },
-    { menge: 'nach Wunsch', name: 'Pizzabelag', typ: 'frisch' },
-  ], schritte: ['Teig ausrollen, belegen, bei 220°C ca. 15 Min. backen.'], minuten: 40, schwierigkeit: 'Einfach' },
-  'Lachs mit Reis': { name: 'Lachs mit Reis', emoji: '🐟', zutaten: [
-    { menge: '2 Stück', name: 'Lachsfilet', typ: 'tiefkühl' },
-    { menge: '200g', name: 'Basmatireis', typ: 'speisekammer' },
-    { menge: '1', name: 'Zitrone', typ: 'frisch' },
-  ], schritte: ['Lachs in der Pfanne braten, Reis kochen, mit Zitronensaft servieren.'], minuten: 25, schwierigkeit: 'Einfach' },
-  'Tacos': { name: 'Tacos', emoji: '🌮', zutaten: [
-    { menge: '8', name: 'Taco-Shells', typ: 'speisekammer' },
-    { menge: '300g', name: 'Hackfleisch', typ: 'frisch' },
-    { menge: '1', name: 'Zwiebel', typ: 'frisch' },
-    { menge: '1 Dose', name: 'Kidneybohnen', typ: 'speisekammer' },
-    { menge: '100g', name: 'Salatblätter', typ: 'frisch' },
-  ], schritte: ['Hack mit Gewürzen und Bohnen braten, Tacos befüllen.'], minuten: 25, schwierigkeit: 'Einfach' },
-  'Spaghetti Bolognese': { name: 'Spaghetti Bolognese', emoji: '🍝', zutaten: [
-    { menge: '500g', name: 'Hackfleisch', typ: 'frisch' },
-    { menge: '250g', name: 'Spaghetti', typ: 'speisekammer' },
-    { menge: '1 Dose', name: 'Tomaten (stückig)', typ: 'speisekammer' },
-    { menge: '1', name: 'Zwiebel', typ: 'frisch' },
-    { menge: '2 Zehen', name: 'Knoblauch', typ: 'frisch' },
-  ], schritte: ['Hack mit Zwiebel und Knoblauch anbraten, Sauce kochen, mit Spaghetti servieren.'], minuten: 35, schwierigkeit: 'Einfach' },
-}
-
-function buildFallbackRezepte(entries: { gericht: string; emoji: string }[]): Record<string, RezeptData> {
-  const rezepte: Record<string, RezeptData> = {}
-  for (const e of entries) {
-    if (FB_REZEPTE[e.gericht]) {
-      rezepte[e.gericht] = FB_REZEPTE[e.gericht]
-    }
-  }
-  return rezepte
-}
 
 type WishJSON = { person: string; tag: string; slot: string; type: string; text?: string; dishName?: string; emoji?: string }
 
@@ -136,7 +48,7 @@ export async function POST(req: NextRequest) {
       fallback.push({ tag: t, slot: 'Abend', emoji: fa.e, gericht: fa.g, minuten: fa.m, quelle: fa.q, chef: chefRota[(i + 1) % 4] })
     })
     const result = [...(behaltene || []), ...fallback]
-    return NextResponse.json({ woche: result, rezepte: buildFallbackRezepte(fallback as { gericht: string; emoji: string }[]) })
+    return NextResponse.json({ woche: result, allergie: {} })
   }
 
   const beispiele: string[] = []
@@ -161,9 +73,8 @@ export async function POST(req: NextRequest) {
   const familienProfil = familyPrompt || 'Sabine (MA) keine Nüsse mag Fisch, Heiko (PA) laktosefrei mag Pasta, Tim (TI) kein Fisch mag Nudeln'
   console.log('[week-plan] familyPrompt:', familienProfil)
   console.log('[week-plan] lastDishes:', lastDishesList.length, 'Einträge')
-  const rezeptBeispiel = `{"zutaten":[{"menge":"200g","name":"Zutat A","typ":"frisch"},{"menge":"1 EL","name":"Zutat B","typ":"speisekammer"}],"schritte":["Schritt mit Menge und Technik.","Weiterer Schritt."],"minuten":30,"schwierigkeit":"Einfach","ersetzteZutaten":["1 Packung glutenfreier Pizzateig (für Heiko)"]}`
-  const allergenCheck = 'SCHRITT 2 – Allergen-Check (nach der Auswahl): Prüfe für jedes gewählte Gericht, ob Zutaten eine Unverträglichkeit aus dem Profil verletzen. Quellen: Gluten=Mehl/Pasta/Brot/Pizzateig/Paniermehl. Kasein=Milch/Käse/Butter/Sahne/Joghurt/Quark/Schmand/Sahnesaucen/Bechamel. Laktose=Milch/Käse/Butter/Sahne/Joghurt. Nüsse=Mandeln/Walnüsse/Cashews/Erdnüsse. Wenn eine Zutat eine Unverträglichkeit verletzt, trag die Ersatz-Zutat NUR für die betroffene Person in ersetzteZutaten ein als "Menge Produkt (für Person)", z.B. "1 Packung glutenfreier Pizzateig (für Heiko)" oder "laktosefreie Milch (für Heiko)". Die anderen Familienmitglieder essen das normale Gericht unverändert. Wenn keine Unverträglichkeit betroffen ist, setze ersetzteZutaten auf [].'
-  const prompt = `Du bist Rémy. Plane ${slotHinweis} für ${planTage.join(', ')} für Familie Flechner. Profil: ${familienProfil}.${wishHinweis}${historyHinweis}${behalteneHinweis} Gefriertruhe: ${freezerList}. Speisekammer: ${pantryList}. Nutze Gefriertruhe/Speisekammer wenn sinnvoll – Artikel mit [DRINGEND] müssen diese Woche eingeplant werden. Weise pro Tag+Slot Küchenchef zu (MA PA TI) nach Fairness. SCHRITT 1 – Gerichtsauswahl: Wähle immer normale, typische Familiengerichte für die ganze Familie – niemals vorsorglich glutenfreie, laktosefreie oder anderweitig angepasste Varianten, auch wenn Unverträglichkeiten im Profil stehen. Das normale Gericht wird für alle gekocht. Ändere Gerichtsnamen nie. ${allergenCheck} Rezepte: 5–8 Zutaten, 4–6 knappe Schritte mit Mengenangaben. Antworte NUR als reines JSON ohne Markdown-Codeblock: {"woche":[${beispiele.join(',')}],"rezepte":{"GerichtName":${rezeptBeispiel}}} — Für jedes Gericht in woche muss ein Eintrag in rezepte stehen. typ: frisch, tiefkühl, speisekammer oder gefriertruhe.`
+  const allergenCheck = 'SCHRITT 2 – Allergen-Check (nach der Auswahl): Prüfe für jedes gewählte Gericht, ob Zutaten eine Unverträglichkeit aus dem Profil verletzen. Quellen: Gluten=Mehl/Pasta/Brot/Pizzateig/Paniermehl. Kasein=Milch/Käse/Butter/Sahne/Joghurt/Quark/Schmand/Sahnesaucen/Bechamel. Laktose=Milch/Käse/Butter/Sahne/Joghurt. Nüsse=Mandeln/Walnüsse/Cashews/Erdnüsse. Wenn eine Zutat eine Unverträglichkeit verletzt, trag die Ersatz-Zutat NUR für die betroffene Person in allergie[GerichtName] ein als "Menge Produkt (für Person)", z.B. "1 Packung glutenfreier Pizzateig (für Heiko)". Die anderen Familienmitglieder essen das normale Gericht. Wenn keine Unverträglichkeit betroffen ist, setze allergie[GerichtName] auf [].'
+  const prompt = `Du bist Rémy. Plane ${slotHinweis} für ${planTage.join(', ')} für Familie Flechner. Profil: ${familienProfil}.${wishHinweis}${historyHinweis}${behalteneHinweis} Gefriertruhe: ${freezerList}. Speisekammer: ${pantryList}. Nutze Gefriertruhe/Speisekammer wenn sinnvoll – Artikel mit [DRINGEND] müssen diese Woche eingeplant werden. Weise pro Tag+Slot Küchenchef zu (MA PA TI) nach Fairness. SCHRITT 1 – Gerichtsauswahl: Wähle immer normale, typische Familiengerichte für die ganze Familie – niemals vorsorglich glutenfreie, laktosefreie oder anderweitig angepasste Varianten, auch wenn Unverträglichkeiten im Profil stehen. Das normale Gericht wird für alle gekocht. Ändere Gerichtsnamen nie. ${allergenCheck} Antworte NUR als reines JSON ohne Markdown-Codeblock: {"woche":[${beispiele.join(',')}],"allergie":{"GerichtName":["Menge Ersatz (für Person)"],"GerichtName2":[]}} — allergie enthält für JEDES Gericht in woche einen Eintrag (leeres Array wenn keine Anpassung nötig).`
 
   try {
     const resp = await fetch('https://api.anthropic.com/v1/messages', {
@@ -174,8 +85,8 @@ export async function POST(req: NextRequest) {
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: 'claude-haiku-4-5',
-        max_tokens: 8000,
+        model: 'claude-sonnet-4-6',
+        max_tokens: 2000,
         messages: [{ role: 'user', content: prompt }],
       }),
     })
@@ -192,20 +103,9 @@ export async function POST(req: NextRequest) {
     if (jsonStart === -1 || jsonEnd === -1) throw new Error('No JSON object found in response')
     const parsed = JSON.parse(raw.slice(jsonStart, jsonEnd + 1))
 
-    // Build complete rezepte: add name+emoji from woche, fall back to FB_REZEPTE for missing entries
-    const rezepte: Record<string, RezeptData> = {}
-    for (const [gericht, recipe] of Object.entries(parsed.rezepte ?? {})) {
-      const entry = (parsed.woche as { gericht: string; emoji: string }[]).find(e => e.gericht === gericht)
-      rezepte[gericht] = { name: gericht, emoji: entry?.emoji ?? '🍽', ...(recipe as object) } as RezeptData
-    }
-    for (const entry of (parsed.woche as { gericht: string; emoji: string }[])) {
-      if (!rezepte[entry.gericht] && FB_REZEPTE[entry.gericht]) {
-        rezepte[entry.gericht] = FB_REZEPTE[entry.gericht]
-      }
-    }
-
+    const allergie = (parsed.allergie ?? {}) as Record<string, string[]>
     const result = [...(behaltene || []), ...parsed.woche]
-    return NextResponse.json({ woche: result, rezepte })
+    return NextResponse.json({ woche: result, allergie })
   } catch (e) {
     console.error('[week-plan] Caught error, returning fallback:', e instanceof Error ? e.message : String(e))
     const fallback: object[] = []
@@ -217,6 +117,6 @@ export async function POST(req: NextRequest) {
       const fa = FB_ABEND[i % FB_ABEND.length]
       fallback.push({ tag: t, slot: 'Abend', emoji: fa.e, gericht: fa.g, minuten: fa.m, quelle: fa.q, chef: chefRota[(i + 1) % 4] })
     })
-    return NextResponse.json({ woche: [...(behaltene || []), ...fallback], rezepte: buildFallbackRezepte(fallback as { gericht: string; emoji: string }[]) })
+    return NextResponse.json({ woche: [...(behaltene || []), ...fallback], allergie: {} })
   }
 }
