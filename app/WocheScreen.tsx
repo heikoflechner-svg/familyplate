@@ -1528,7 +1528,7 @@ export default function WocheScreen({
                 </button>
                 <button
                   className="btn"
-                  onClick={() => { setPendingPlan([]); setPendingPlanMeals({}); setPlanState('options'); closeMealPanel() }}
+                  onClick={() => { closeMealPanel(); void startPlanning() }}
                   style={{ width: 'auto', padding: '13px 14px', fontSize: 12 }}
                 >
                   ↺ Gesamte Woche neu planen
