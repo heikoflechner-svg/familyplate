@@ -995,6 +995,50 @@ export default function WocheScreen({
     }
   }
 
+  // Nächste-Woche-Vorschlag (lokal, noch nicht gespeichert): Rezept lazy nachladen
+  async function openNwPendingRecipe(gericht: string, emoji: string) {
+    setSelectedMealName(gericht)
+    const existing = nwPendingMeals[gericht]
+    if (isFullRecipe(existing)) return
+    setRecipeLoading(gericht)
+    try {
+      const rezept = await generateRecipe(gericht, emoji, getFreezerListString(freezerItems), getPantryListString(pantryItems), familyPrompt)
+      if (rezept) {
+        setNwPendingMeals(prev => ({
+          ...prev,
+          [gericht]: { ...rezept, ersetzteZutaten: rezept.ersetzteZutaten?.length ? rezept.ersetzteZutaten : (prev[gericht]?.ersetzteZutaten ?? []) },
+        }))
+      }
+    } finally {
+      setRecipeLoading(null)
+    }
+  }
+
+  // Nächste-Woche-Plan (gespeichert): Rezept lazy nachladen und persistieren
+  async function openNwSavedRecipe(gericht: string, emoji: string) {
+    setSelectedMealName(gericht)
+    const existing = nextWeekData?.mealsData?.[gericht]
+    if (isFullRecipe(existing)) return
+    if (!onNextWeekDataChange) return
+    setRecipeLoading(gericht)
+    try {
+      const rezept = await generateRecipe(gericht, emoji, getFreezerListString(freezerItems), getPantryListString(pantryItems), familyPrompt)
+      if (rezept) {
+        const nextMonday = nextWeekStart ?? getNextMondayIso()
+        const merged: Rezept = { ...rezept, ersetzteZutaten: rezept.ersetzteZutaten?.length ? rezept.ersetzteZutaten : (existing?.ersetzteZutaten ?? []) }
+        await onNextWeekDataChange({ mealsData: { ...(nextWeekData?.mealsData ?? {}), [gericht]: merged } }, nextMonday)
+      }
+    } finally {
+      setRecipeLoading(null)
+    }
+  }
+
+  // Rezept fürs Modal auflösen – über alle Stores (aktuelle Woche, NW-Vorschlag, NW-gespeichert)
+  function selectedRezept(name: string): Rezept | null {
+    const cands = [mealsData[name], nwPendingMeals[name], nextWeekData?.mealsData?.[name]]
+    return cands.find(r => isFullRecipe(r)) ?? cands.find((r): r is Rezept => !!r) ?? null
+  }
+
   async function startPlanning() {
     setView('plan')
     setPlanState('loading')
@@ -1503,7 +1547,7 @@ export default function WocheScreen({
     return (
       <div className="screen active" style={{ position: 'relative' }}>
         {selectedMealName && (
-          <RecipeModal name={selectedMealName} rezept={mealsData[selectedMealName] ?? null} loading={recipeLoading === selectedMealName} onClose={() => setSelectedMealName(null)} />
+          <RecipeModal name={selectedMealName} rezept={selectedRezept(selectedMealName)} loading={recipeLoading === selectedMealName} onClose={() => setSelectedMealName(null)} />
         )}
         <div className="topbar">
           <button className="back" onClick={() => setView('home')}>‹</button>
@@ -1924,7 +1968,17 @@ export default function WocheScreen({
                                     ) : (
                                       <>
                                         <span style={{ fontSize: 16 }}>{e!.emoji}</span>
-                                        <span style={{ flex: 1, fontSize: 12, fontWeight: 600, color: '#111' }}>{e!.gericht}</span>
+                                        <div onClick={() => openNwPendingRecipe(e!.gericht, e!.emoji)} style={{ flex: 1, cursor: 'pointer' }}>
+                                          <div style={{ fontSize: 12, fontWeight: 600, color: '#111', display: 'flex', alignItems: 'center', gap: 4 }}>
+                                            {e!.gericht}<span style={{ fontSize: 10, color: '#bbb' }}>›</span>
+                                            {(nwPendingMeals[e!.gericht]?.ersetzteZutaten?.length ?? 0) > 0 && (
+                                              <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 14, height: 14, borderRadius: '50%', background: '#EF4444', color: 'white', fontSize: 9, fontWeight: 700, flexShrink: 0 }}>!</span>
+                                            )}
+                                          </div>
+                                          {(nwPendingMeals[e!.gericht]?.ersetzteZutaten?.length ?? 0) > 0 && (
+                                            <div style={{ fontSize: 10, color: '#DC2626', marginTop: 1 }}>⚠️ {nwPendingMeals[e!.gericht]!.ersetzteZutaten!.join(' · ')}</div>
+                                          )}
+                                        </div>
                                         <span style={{ fontSize: 10, color: '#bbb' }}>{e!.minuten} min</span>
                                         <button onClick={() => replanNwPendingSlot(e!.tag, e!.slot)} disabled={nwSlotLoading !== null}
                                           style={{ width: 30, height: 30, border: 'none', borderRadius: 6, background: 'transparent', cursor: 'pointer', fontSize: 14, color: '#ccc', opacity: nwSlotLoading !== null ? 0.3 : 1 }}>↺</button>
@@ -1956,14 +2010,27 @@ export default function WocheScreen({
                           return (
                             <div key={tag} style={{ borderRadius: 8, border: '1px solid #e5e7eb', marginBottom: 6, overflow: 'hidden' }}>
                               <div style={{ padding: '5px 10px', background: '#f9fafb', borderBottom: '1px solid #f0f0f0', fontSize: 10, fontWeight: 700, color: '#666', textTransform: 'uppercase', letterSpacing: '.5px' }}>{tag}</div>
-                              {[mittag, abend].filter(Boolean).map(e => (
+                              {[mittag, abend].filter(Boolean).map(e => {
+                                const nwr = nextWeekData?.mealsData?.[e!.gericht]
+                                return (
                                 <div key={`${e!.slot}`} style={{ padding: '5px 10px', display: 'flex', alignItems: 'center', gap: 8, borderTop: '1px solid #f5f5f5' }}>
                                   <SlotPill slot={e!.slot} />
                                   <span style={{ fontSize: 15 }}>{e!.emoji}</span>
-                                  <span style={{ flex: 1, fontSize: 12, color: '#333' }}>{e!.gericht}</span>
+                                  <div onClick={() => openNwSavedRecipe(e!.gericht, e!.emoji)} style={{ flex: 1, cursor: 'pointer' }}>
+                                    <div style={{ fontSize: 12, color: '#333', display: 'flex', alignItems: 'center', gap: 4 }}>
+                                      {e!.gericht}<span style={{ fontSize: 10, color: '#bbb' }}>›</span>
+                                      {(nwr?.ersetzteZutaten?.length ?? 0) > 0 && (
+                                        <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 14, height: 14, borderRadius: '50%', background: '#EF4444', color: 'white', fontSize: 9, fontWeight: 700, flexShrink: 0 }}>!</span>
+                                      )}
+                                    </div>
+                                    {(nwr?.ersetzteZutaten?.length ?? 0) > 0 && (
+                                      <div style={{ fontSize: 10, color: '#DC2626', marginTop: 1 }}>⚠️ {nwr!.ersetzteZutaten!.join(' · ')}</div>
+                                    )}
+                                  </div>
                                   <span style={{ fontSize: 10, color: '#bbb' }}>{e!.minuten} min</span>
                                 </div>
-                              ))}
+                                )
+                              })}
                             </div>
                           )
                         })}
@@ -2065,10 +2132,18 @@ export default function WocheScreen({
                                     </div>
                                   )
                                 })()}
-                                <div style={{ padding: '3px 12px 10px', display: 'flex', alignItems: 'center', gap: 8 }}>
+                                <div onClick={() => openNwSavedRecipe(e.gericht, e.emoji)} style={{ padding: '3px 12px 10px', display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
                                   <span style={{ fontSize: 18 }}>{e.emoji}</span>
                                   <div style={{ flex: 1 }}>
-                                    <div style={{ fontSize: 13, fontWeight: 700, color: '#111' }}>{e.gericht}</div>
+                                    <div style={{ fontSize: 13, fontWeight: 700, color: '#111', display: 'flex', alignItems: 'center', gap: 4 }}>
+                                      {e.gericht}<span style={{ fontSize: 10, color: '#bbb' }}>›</span>
+                                      {(nextWeekData?.mealsData?.[e.gericht]?.ersetzteZutaten?.length ?? 0) > 0 && (
+                                        <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 14, height: 14, borderRadius: '50%', background: '#EF4444', color: 'white', fontSize: 9, fontWeight: 700, flexShrink: 0 }}>!</span>
+                                      )}
+                                    </div>
+                                    {(nextWeekData?.mealsData?.[e.gericht]?.ersetzteZutaten?.length ?? 0) > 0 && (
+                                      <div style={{ fontSize: 10, color: '#DC2626', marginTop: 1 }}>⚠️ {nextWeekData!.mealsData![e.gericht]!.ersetzteZutaten!.join(' · ')}</div>
+                                    )}
                                     <div style={{ fontSize: 11, color: '#aaa' }}>{e.minuten} min</div>
                                   </div>
                                 </div>
