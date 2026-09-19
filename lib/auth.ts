@@ -1,36 +1,44 @@
-import { supabase } from './supabase'
-import type { Chef } from './state'
+import { supabase, setFamilyId } from './supabase'
 import { stagingLog } from '../app/ErrorOverlay'
 
-export const EMAIL_BY_CHEF: Record<Chef, string> = {
-  PA: 'heiko@flechner-family.de',
-  MA: 'sabine@flechner-family.de',
-  TI: 'tim@flechner-family.de',
-}
-
-const CHEF_BY_EMAIL: Record<string, Chef> = Object.fromEntries(
-  (Object.entries(EMAIL_BY_CHEF) as [Chef, string][]).map(([chef, email]) => [email, chef])
-)
-
-export async function signIn(chef: Chef, password: string): Promise<{ error: string | null }> {
-  stagingLog('SIGN_IN_START chef=' + chef)
-  const { error } = await supabase.auth.signInWithPassword({
-    email: EMAIL_BY_CHEF[chef],
-    password,
-  })
+export async function signIn(email: string, password: string): Promise<{ error: string | null }> {
+  stagingLog('SIGN_IN_START email=' + email)
+  const { error } = await supabase.auth.signInWithPassword({ email, password })
   stagingLog('SIGN_IN_DONE error=' + (error?.message ?? 'none'))
   return { error: error?.message ?? null }
 }
 
 export async function signOut(): Promise<void> {
+  setFamilyId('')
   await supabase.auth.signOut()
 }
 
-export function onAuthChange(callback: (chef: Chef | null) => void): () => void {
-  const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-    const email = session?.user?.email ?? null
-    stagingLog('AUTH_EVENT event=' + event + ' email=' + (email ?? 'null'))
-    callback(email ? (CHEF_BY_EMAIL[email] ?? null) : null)
+export function onAuthChange(callback: (chef: string | null) => void): () => void {
+  const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+    stagingLog('AUTH_EVENT event=' + event + ' uid=' + (session?.user?.id ?? 'null'))
+    if (!session?.user) {
+      setFamilyId('')
+      callback(null)
+      return
+    }
+    try {
+      const { data } = await supabase
+        .from('family_members')
+        .select('family_id, slot')
+        .eq('user_id', session.user.id)
+        .single()
+      if (!data) {
+        stagingLog('AUTH_NO_FAMILY uid=' + session.user.id)
+        callback(null)
+        return
+      }
+      setFamilyId(data.family_id as string)
+      stagingLog('AUTH_FAMILY family=' + data.family_id + ' slot=' + data.slot)
+      callback(data.slot as string)
+    } catch (err) {
+      stagingLog('AUTH_ERR ' + String(err))
+      callback(null)
+    }
   })
   return () => subscription.unsubscribe()
 }

@@ -10,4 +10,6 @@ if (!supabaseUrl || !supabaseAnonKey) {
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
-export const FAMILY_ID = 'flechner'
+let _familyId = ''
+export function setFamilyId(id: string): void { _familyId = id }
+export function getFamilyId(): string { return _familyId }

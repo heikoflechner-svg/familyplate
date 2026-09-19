@@ -15,10 +15,15 @@ const TAG_SHORT: Record<string, string> = {
   Freitag: 'Fr', Samstag: 'Sa', Sonntag: 'So',
 }
 
+const MEMBER_PALETTE = [
+  { bg: '#E6F1FB', c: '#0C447C' },
+  { bg: '#E1F5EE', c: '#0F6E56' },
+  { bg: '#FBEAF0', c: '#72243E' },
+  { bg: '#FEF3C7', c: '#92400E' },
+]
 const CFG: Record<string, { bg: string; c: string }> = {
-  PA: { bg: '#E6F1FB', c: '#0C447C' },
-  MA: { bg: '#E1F5EE', c: '#0F6E56' },
-  TI: { bg: '#FBEAF0', c: '#72243E' },
+  PA: MEMBER_PALETTE[0], MA: MEMBER_PALETTE[1], TI: MEMBER_PALETTE[2],
+  M1: MEMBER_PALETTE[0], M2: MEMBER_PALETTE[1], M3: MEMBER_PALETTE[2], M4: MEMBER_PALETTE[3],
 }
 
 type View = 'overview' | 'einkauf' | 'wochenchef'
@@ -51,7 +56,7 @@ export default function MehrScreen({
 
   const isChef = currentUser === wochenchef
   const personNames = Object.fromEntries(members.map(m => [m.id, m.name])) as Record<Chef, string>
-  const activeMembers = members.filter(m => ['PA', 'MA', 'TI'].includes(m.id))
+  const activeMembers = members
 
   // Rémy Fairplay: person with fewest/oldest chef turns, excluding current chef
   const suggestedNextChef: Chef = ([...activeMembers].sort((a, b) => {
@@ -59,7 +64,7 @@ export default function MehrScreen({
     const bDate = b.chefStat?.lastCook ?? ''
     if (aDate !== bDate) return aDate < bDate ? -1 : 1
     return (a.chefStat?.count ?? 0) - (b.chefStat?.count ?? 0)
-  }).find(m => m.id !== wochenchef)?.id ?? activeMembers.find(m => m.id !== wochenchef)?.id ?? 'PA') as Chef
+  }).find(m => m.id !== wochenchef)?.id ?? activeMembers.find(m => m.id !== wochenchef)?.id ?? activeMembers[0]?.id ?? '') as Chef
 
   function cookingConflict(tag: string, person: Chef): boolean {
     return weekPlan.some(e => e.tag === tag && e.chef === person)

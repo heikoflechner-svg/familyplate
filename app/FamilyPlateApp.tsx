@@ -32,7 +32,7 @@ export default function FamilyPlateApp() {
   const [wishes, setWishes] = useState<Wish[]>([])
   const [shoppingList, setShoppingList] = useState<ShoppingItem[]>([])
   const [proposals, setProposals] = useState<ChangeProposal[]>([])
-  const [activeWochenchef, setActiveWochenchef] = useState<Chef>('PA')
+  const [activeWochenchef, setActiveWochenchef] = useState<Chef>('')
   const [planConfirmed, setPlanConfirmed] = useState(false)
   const [shopDone, setShopDone] = useState(false)
   const [shoppingDays, setShoppingDays] = useState<string[]>([])
@@ -67,7 +67,7 @@ export default function FamilyPlateApp() {
         setShoppingList([])
         setFamilyProfile(null)
         setProposals([])
-        setActiveWochenchef('PA')
+        setActiveWochenchef('')
         setPlanConfirmed(false)
         setShopDone(false)
       }
@@ -222,7 +222,7 @@ export default function FamilyPlateApp() {
   }
 
   async function handleNextWeekDataChange(data: Partial<NextWeekData>, nextMonday: string) {
-    const merged: NextWeekData = { wishes: [], ...nextWeekData, ...data, wochenchef: data.wochenchef ?? nextWeekData?.wochenchef ?? 'PA' }
+    const merged: NextWeekData = { wishes: [], ...nextWeekData, ...data, wochenchef: data.wochenchef ?? nextWeekData?.wochenchef ?? activeWochenchef }
     setNextWeekData(merged)
     setNextWeekStart(nextMonday)
     await saveNextWeekData(nextMonday, merged)
