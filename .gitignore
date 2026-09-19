@@ -42,3 +42,15 @@ next-env.d.ts
 
 .vercel
 .env*
+
+# local test/debug scripts & artifacts (not part of the app)
+/test-*.mjs
+/live-test-*.mjs
+/verify-*.mjs
+/diag-*.mjs
+/debug-*.mjs
+/check-*.mjs
+/reset-*.mjs
+/pw-verify.cjs
+/*.png
+/*.log
