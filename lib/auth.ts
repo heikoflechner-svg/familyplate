@@ -1,5 +1,6 @@
 import { supabase } from './supabase'
 import type { Chef } from './state'
+import { stagingLog } from '../app/ErrorOverlay'
 
 export const EMAIL_BY_CHEF: Record<Chef, string> = {
   PA: 'heiko@flechner-family.de',
@@ -12,10 +13,12 @@ const CHEF_BY_EMAIL: Record<string, Chef> = Object.fromEntries(
 )
 
 export async function signIn(chef: Chef, password: string): Promise<{ error: string | null }> {
+  stagingLog('SIGN_IN_START chef=' + chef)
   const { error } = await supabase.auth.signInWithPassword({
     email: EMAIL_BY_CHEF[chef],
     password,
   })
+  stagingLog('SIGN_IN_DONE error=' + (error?.message ?? 'none'))
   return { error: error?.message ?? null }
 }
 
@@ -24,8 +27,9 @@ export async function signOut(): Promise<void> {
 }
 
 export function onAuthChange(callback: (chef: Chef | null) => void): () => void {
-  const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+  const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
     const email = session?.user?.email ?? null
+    stagingLog('AUTH_EVENT event=' + event + ' email=' + (email ?? 'null'))
     callback(email ? (CHEF_BY_EMAIL[email] ?? null) : null)
   })
   return () => subscription.unsubscribe()
