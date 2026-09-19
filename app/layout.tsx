@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next'
 import './globals.css'
+import ErrorOverlay from './ErrorOverlay'
 
 export const metadata: Metadata = {
   title: 'FamilyPlate',
@@ -14,7 +15,7 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="de">
-      <body>{children}</body>
+      <body>{children}<ErrorOverlay /></body>
     </html>
   )
 }
