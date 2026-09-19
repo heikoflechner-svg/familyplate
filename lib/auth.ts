@@ -1,32 +1,33 @@
-import { supabase } from './supabase'
-import type { Chef } from './state'
+import { supabase, setFamilyId } from './supabase'
 
-export const EMAIL_BY_CHEF: Record<Chef, string> = {
-  PA: 'heiko@flechner-family.de',
-  MA: 'sabine@flechner-family.de',
-  TI: 'tim@flechner-family.de',
-}
-
-const CHEF_BY_EMAIL: Record<string, Chef> = Object.fromEntries(
-  (Object.entries(EMAIL_BY_CHEF) as [Chef, string][]).map(([chef, email]) => [email, chef])
-)
-
-export async function signIn(chef: Chef, password: string): Promise<{ error: string | null }> {
-  const { error } = await supabase.auth.signInWithPassword({
-    email: EMAIL_BY_CHEF[chef],
-    password,
-  })
+export async function signIn(email: string, password: string): Promise<{ error: string | null }> {
+  const { error } = await supabase.auth.signInWithPassword({ email, password })
   return { error: error?.message ?? null }
 }
 
 export async function signOut(): Promise<void> {
+  setFamilyId('')
   await supabase.auth.signOut()
 }
 
-export function onAuthChange(callback: (chef: Chef | null) => void): () => void {
-  const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-    const email = session?.user?.email ?? null
-    callback(email ? (CHEF_BY_EMAIL[email] ?? null) : null)
+export function onAuthChange(callback: (chef: string | null) => void): () => void {
+  const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+    if (!session?.user) {
+      setFamilyId('')
+      callback(null)
+      return
+    }
+    try {
+      const meta = session.user.app_metadata as { family_id?: string; slot?: string }
+      if (meta?.family_id && meta?.slot) {
+        setFamilyId(meta.family_id)
+        callback(meta.slot)
+        return
+      }
+      callback(null)
+    } catch {
+      callback(null)
+    }
   })
   return () => subscription.unsubscribe()
 }

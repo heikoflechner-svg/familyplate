@@ -1,20 +1,20 @@
-import { supabase, FAMILY_ID } from './supabase'
+import { supabase, getFamilyId } from './supabase'
 import type { Chef, FamilyMember, FamilyProfile, WeekPlanEntry } from './state'
 import { DEFAULT_LAEDEN } from './state'
 
 export const DEFAULT_MEMBERS: FamilyMember[] = [
-  { id: 'PA', name: 'Heiko', allergien: [], vorlieben: [] },
-  { id: 'MA', name: 'Sabine', allergien: [], vorlieben: [] },
-  { id: 'TI', name: 'Tim', allergien: [], vorlieben: [] },
+  { id: 'M1', name: 'Person 1', allergien: [], vorlieben: [] },
+  { id: 'M2', name: 'Person 2', allergien: [], vorlieben: [] },
+  { id: 'M3', name: 'Person 3', allergien: [], vorlieben: [] },
 ]
 
-export const CHEF_ORDER: Chef[] = ['PA', 'MA', 'TI']
+export const CHEF_ORDER: Chef[] = DEFAULT_MEMBERS.map(m => m.id)
 
 export async function loadFamilyProfile(): Promise<FamilyProfile | null> {
   const { data } = await supabase
     .from('family_profiles')
     .select('members, onboarding_done, laeden, zutaten_laden')
-    .eq('family_id', FAMILY_ID)
+    .eq('family_id', getFamilyId())
     .single()
 
   if (!data || !data.onboarding_done) return null
@@ -30,7 +30,7 @@ export async function saveFamilyProfile(profile: FamilyProfile): Promise<void> {
     .from('family_profiles')
     .upsert(
       {
-        family_id: FAMILY_ID,
+        family_id: getFamilyId(),
         members: profile.members,
         laeden: profile.laeden,
         zutaten_laden: profile.zutatenLaden,

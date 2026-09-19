@@ -1,4 +1,4 @@
-import { supabase, FAMILY_ID } from './supabase'
+import { supabase, getFamilyId } from './supabase'
 import type { FreezerItem, PantryItem, Ampel, FreezerTyp } from './state'
 
 // ── Gefriertruhe ──────────────────────────────────────────────────────────────
@@ -7,7 +7,7 @@ export async function loadFreezerItems(): Promise<FreezerItem[]> {
   const { data, error } = await supabase
     .from('freezer_items')
     .select('*')
-    .eq('family_id', FAMILY_ID)
+    .eq('family_id', getFamilyId())
     .order('created_at', { ascending: true })
 
   if (error || !data) return []
@@ -24,7 +24,7 @@ export async function addFreezerItem(item: {
 }): Promise<FreezerItem | null> {
   const { data, error } = await supabase
     .from('freezer_items')
-    .insert({ family_id: FAMILY_ID, ...item })
+    .insert({ family_id: getFamilyId(), ...item })
     .select()
     .single()
 
@@ -40,7 +40,7 @@ export async function updateFreezerItem(
     .from('freezer_items')
     .update(updates)
     .eq('id', id)
-    .eq('family_id', FAMILY_ID)
+    .eq('family_id', getFamilyId())
 
   return !error
 }
@@ -50,7 +50,7 @@ export async function deleteFreezerItem(id: string): Promise<boolean> {
     .from('freezer_items')
     .delete()
     .eq('id', id)
-    .eq('family_id', FAMILY_ID)
+    .eq('family_id', getFamilyId())
 
   return !error
 }
@@ -61,7 +61,7 @@ export async function loadPantryItems(): Promise<PantryItem[]> {
   const { data, error } = await supabase
     .from('pantry_items')
     .select('*')
-    .eq('family_id', FAMILY_ID)
+    .eq('family_id', getFamilyId())
     .order('created_at', { ascending: true })
 
   if (error || !data) return []
@@ -76,7 +76,7 @@ export async function addPantryItem(item: {
 }): Promise<PantryItem | null> {
   const { data, error } = await supabase
     .from('pantry_items')
-    .insert({ family_id: FAMILY_ID, ...item })
+    .insert({ family_id: getFamilyId(), ...item })
     .select()
     .single()
 
@@ -92,7 +92,7 @@ export async function updatePantryItem(
     .from('pantry_items')
     .update(updates)
     .eq('id', id)
-    .eq('family_id', FAMILY_ID)
+    .eq('family_id', getFamilyId())
 
   return !error
 }
@@ -102,7 +102,7 @@ export async function deletePantryItem(id: string): Promise<boolean> {
     .from('pantry_items')
     .delete()
     .eq('id', id)
-    .eq('family_id', FAMILY_ID)
+    .eq('family_id', getFamilyId())
 
   return !error
 }

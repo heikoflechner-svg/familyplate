@@ -4,6 +4,12 @@
 
 -- ─── Tabellen ────────────────────────────────────────────────────────────────
 
+create table if not exists family_members (
+  user_id    uuid  primary key,
+  family_id  text  not null,
+  slot       text  not null
+);
+
 create table if not exists week_plans (
   id                uuid         default gen_random_uuid() primary key,
   family_id         text         not null default 'flechner',
@@ -81,48 +87,34 @@ insert into family_profiles (family_id, members, onboarding_done) values (
 
 -- ─── Row Level Security ───────────────────────────────────────────────────────
 
+alter table family_members  enable row level security;
 alter table week_plans      enable row level security;
 alter table family_profiles enable row level security;
 alter table freezer_items   enable row level security;
 alter table pantry_items    enable row level security;
 alter table saved_recipes   enable row level security;
 
+-- family_members: jeder sieht nur seinen eigenen Eintrag
+create policy "own_entry" on family_members for select
+  using (user_id = auth.uid());
+
+-- alle anderen Tabellen: Zugriff wenn family_id zur eingeloggten Familie gehört
 create policy "family_access" on week_plans for all
-  using ((auth.jwt() ->> 'email') in (
-    'heiko@flechner-family.de', 'sabine@flechner-family.de', 'tim@flechner-family.de'
-  ))
-  with check ((auth.jwt() ->> 'email') in (
-    'heiko@flechner-family.de', 'sabine@flechner-family.de', 'tim@flechner-family.de'
-  ));
+  using (family_id in (select family_id from family_members where user_id = auth.uid()))
+  with check (family_id in (select family_id from family_members where user_id = auth.uid()));
 
 create policy "family_access" on family_profiles for all
-  using ((auth.jwt() ->> 'email') in (
-    'heiko@flechner-family.de', 'sabine@flechner-family.de', 'tim@flechner-family.de'
-  ))
-  with check ((auth.jwt() ->> 'email') in (
-    'heiko@flechner-family.de', 'sabine@flechner-family.de', 'tim@flechner-family.de'
-  ));
+  using (family_id in (select family_id from family_members where user_id = auth.uid()))
+  with check (family_id in (select family_id from family_members where user_id = auth.uid()));
 
 create policy "family_access" on freezer_items for all
-  using ((auth.jwt() ->> 'email') in (
-    'heiko@flechner-family.de', 'sabine@flechner-family.de', 'tim@flechner-family.de'
-  ))
-  with check ((auth.jwt() ->> 'email') in (
-    'heiko@flechner-family.de', 'sabine@flechner-family.de', 'tim@flechner-family.de'
-  ));
+  using (family_id in (select family_id from family_members where user_id = auth.uid()))
+  with check (family_id in (select family_id from family_members where user_id = auth.uid()));
 
 create policy "family_access" on pantry_items for all
-  using ((auth.jwt() ->> 'email') in (
-    'heiko@flechner-family.de', 'sabine@flechner-family.de', 'tim@flechner-family.de'
-  ))
-  with check ((auth.jwt() ->> 'email') in (
-    'heiko@flechner-family.de', 'sabine@flechner-family.de', 'tim@flechner-family.de'
-  ));
+  using (family_id in (select family_id from family_members where user_id = auth.uid()))
+  with check (family_id in (select family_id from family_members where user_id = auth.uid()));
 
 create policy "family_access" on saved_recipes for all
-  using ((auth.jwt() ->> 'email') in (
-    'heiko@flechner-family.de', 'sabine@flechner-family.de', 'tim@flechner-family.de'
-  ))
-  with check ((auth.jwt() ->> 'email') in (
-    'heiko@flechner-family.de', 'sabine@flechner-family.de', 'tim@flechner-family.de'
-  ));
+  using (family_id in (select family_id from family_members where user_id = auth.uid()))
+  with check (family_id in (select family_id from family_members where user_id = auth.uid()));

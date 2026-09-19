@@ -2,11 +2,12 @@
 import { useState } from 'react'
 import type { Chef, FamilyProfile } from '../lib/state'
 
-const CHEF_COLORS: Record<Chef, { bg: string; c: string }> = {
-  PA: { bg: '#E6F1FB', c: '#0C447C' },
-  MA: { bg: '#E1F5EE', c: '#0F6E56' },
-  TI: { bg: '#FBEAF0', c: '#72243E' },
-}
+const MEMBER_PALETTE = [
+  { bg: '#E6F1FB', c: '#0C447C' },
+  { bg: '#E1F5EE', c: '#0F6E56' },
+  { bg: '#FBEAF0', c: '#72243E' },
+  { bg: '#FEF3C7', c: '#92400E' },
+]
 
 const WOCHENTAGE_SHORT: Record<string, string> = {
   'Montag': 'Mo', 'Dienstag': 'Di', 'Mittwoch': 'Mi',
@@ -67,8 +68,8 @@ export default function ProfilScreen({
           </button>
         </div>
 
-        {familyProfile.members.map(m => {
-          const col = CHEF_COLORS[m.id]
+        {familyProfile.members.map((m, idx) => {
+          const col = MEMBER_PALETTE[idx % MEMBER_PALETTE.length]
           const isMe = m.id === currentUser
           const allergienText = (m.allergien ?? []).length ? (m.allergien ?? []).join(', ') : null
           const vorliebText = (m.vorlieben ?? []).length ? (m.vorlieben ?? []).join(', ') : null
@@ -93,7 +94,7 @@ export default function ProfilScreen({
                     {m.name}
                     {isMe && <span style={{ fontSize: 10, color: col.c, marginLeft: 6, fontWeight: 400 }}>· eingeloggt</span>}
                   </div>
-                  <div style={{ fontSize: 11, color: '#aaa' }}>{m.id === 'PA' ? 'Wochenchef' : 'Mitglied'}</div>
+                  <div style={{ fontSize: 11, color: '#aaa' }}>Mitglied</div>
                 </div>
                 {stat && (
                   <div style={{ textAlign: 'right', flexShrink: 0 }}>

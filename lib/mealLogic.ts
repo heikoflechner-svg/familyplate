@@ -1,4 +1,4 @@
-import { supabase, FAMILY_ID } from './supabase'
+import { supabase, getFamilyId } from './supabase'
 import type { WeekPlanEntry, Rezept, Wish, RemyVorschlag, WochenSlot, DayAttendance, Chef, ShoppingItem, ChangeProposal, NextWeekData, NextWeekWish } from './state'
 
 export function getMondayIso(d: Date = new Date()): string {
@@ -19,7 +19,7 @@ export async function loadWeekPlan(): Promise<{ plan: WeekPlanEntry[]; mealsData
   const { data, error } = await supabase
     .from('week_plans')
     .select('plan_data, meals_data, wishes, attendance, shopping_list, proposals, wochenchef, plan_confirmed, shopping_done, shopping_day, shopping_persons, week_start')
-    .eq('family_id', FAMILY_ID)
+    .eq('family_id', getFamilyId())
     .order('updated_at', { ascending: false })
     .limit(1)
     .single()
@@ -58,7 +58,7 @@ export async function saveShoppingPersons(persons: Record<string, Chef>): Promis
   const { data: existing } = await supabase
     .from('week_plans')
     .select('id')
-    .eq('family_id', FAMILY_ID)
+    .eq('family_id', getFamilyId())
     .limit(1)
     .single()
 
@@ -72,7 +72,7 @@ export async function saveWeekStart(weekStart: string): Promise<void> {
   const { data: existing } = await supabase
     .from('week_plans')
     .select('id')
-    .eq('family_id', FAMILY_ID)
+    .eq('family_id', getFamilyId())
     .limit(1)
     .single()
   if (existing?.id) {
@@ -84,7 +84,7 @@ export async function loadNextWeekData(): Promise<{ nextWeekStart: string | null
   const { data, error } = await supabase
     .from('week_plans')
     .select('next_week_start, next_week_data')
-    .eq('family_id', FAMILY_ID)
+    .eq('family_id', getFamilyId())
     .limit(1)
     .single()
   if (error || !data) return { nextWeekStart: null, nextWeekData: null }
@@ -98,7 +98,7 @@ export async function saveNextWeekData(weekStart: string, data: NextWeekData): P
   const { data: existing } = await supabase
     .from('week_plans')
     .select('id')
-    .eq('family_id', FAMILY_ID)
+    .eq('family_id', getFamilyId())
     .limit(1)
     .single()
   if (existing?.id) {
@@ -112,7 +112,7 @@ export async function activateNextWeek(): Promise<{ weekStart: string | null; ne
   const { data: existing } = await supabase
     .from('week_plans')
     .select('id, next_week_start, next_week_data')
-    .eq('family_id', FAMILY_ID)
+    .eq('family_id', getFamilyId())
     .limit(1)
     .single()
 
@@ -147,7 +147,7 @@ export async function saveShopDone(done: boolean): Promise<void> {
   const { data: existing } = await supabase
     .from('week_plans')
     .select('id')
-    .eq('family_id', FAMILY_ID)
+    .eq('family_id', getFamilyId())
     .limit(1)
     .single()
 
@@ -160,7 +160,7 @@ export async function saveShoppingDays(days: string[]): Promise<void> {
   const { data: existing } = await supabase
     .from('week_plans')
     .select('id')
-    .eq('family_id', FAMILY_ID)
+    .eq('family_id', getFamilyId())
     .limit(1)
     .single()
 
@@ -168,7 +168,7 @@ export async function saveShoppingDays(days: string[]): Promise<void> {
   if (existing?.id) {
     await supabase.from('week_plans').update({ shopping_day: value }).eq('id', existing.id)
   } else {
-    await supabase.from('week_plans').insert({ family_id: FAMILY_ID, plan_data: [], meals_data: {}, wishes: [], shopping_day: value })
+    await supabase.from('week_plans').insert({ family_id: getFamilyId(), plan_data: [], meals_data: {}, wishes: [], shopping_day: value })
   }
 }
 
@@ -176,14 +176,14 @@ export async function saveProposals(proposals: ChangeProposal[]): Promise<void> 
   const { data: existing } = await supabase
     .from('week_plans')
     .select('id')
-    .eq('family_id', FAMILY_ID)
+    .eq('family_id', getFamilyId())
     .limit(1)
     .single()
 
   if (existing?.id) {
     await supabase.from('week_plans').update({ proposals }).eq('id', existing.id)
   } else {
-    await supabase.from('week_plans').insert({ family_id: FAMILY_ID, plan_data: [], meals_data: {}, wishes: [], proposals })
+    await supabase.from('week_plans').insert({ family_id: getFamilyId(), plan_data: [], meals_data: {}, wishes: [], proposals })
   }
 }
 
@@ -191,14 +191,14 @@ export async function saveWochenchef(chef: Chef): Promise<void> {
   const { data: existing } = await supabase
     .from('week_plans')
     .select('id')
-    .eq('family_id', FAMILY_ID)
+    .eq('family_id', getFamilyId())
     .limit(1)
     .single()
 
   if (existing?.id) {
     await supabase.from('week_plans').update({ wochenchef: chef }).eq('id', existing.id)
   } else {
-    await supabase.from('week_plans').insert({ family_id: FAMILY_ID, plan_data: [], meals_data: {}, wishes: [], wochenchef: chef })
+    await supabase.from('week_plans').insert({ family_id: getFamilyId(), plan_data: [], meals_data: {}, wishes: [], wochenchef: chef })
   }
 }
 
@@ -206,7 +206,7 @@ export async function savePlanConfirmed(confirmed: boolean): Promise<void> {
   const { data: existing } = await supabase
     .from('week_plans')
     .select('id')
-    .eq('family_id', FAMILY_ID)
+    .eq('family_id', getFamilyId())
     .limit(1)
     .single()
 
@@ -219,14 +219,14 @@ export async function saveShoppingList(shoppingList: ShoppingItem[]): Promise<vo
   const { data: existing } = await supabase
     .from('week_plans')
     .select('id')
-    .eq('family_id', FAMILY_ID)
+    .eq('family_id', getFamilyId())
     .limit(1)
     .single()
 
   if (existing?.id) {
     await supabase.from('week_plans').update({ shopping_list: shoppingList }).eq('id', existing.id)
   } else {
-    await supabase.from('week_plans').insert({ family_id: FAMILY_ID, plan_data: [], meals_data: {}, wishes: [], attendance: [], shopping_list: shoppingList })
+    await supabase.from('week_plans').insert({ family_id: getFamilyId(), plan_data: [], meals_data: {}, wishes: [], attendance: [], shopping_list: shoppingList })
   }
 }
 
@@ -245,14 +245,14 @@ export async function saveAttendance(days: DayAttendance[], confirmed: Chef[]): 
   const { data: existing } = await supabase
     .from('week_plans')
     .select('id')
-    .eq('family_id', FAMILY_ID)
+    .eq('family_id', getFamilyId())
     .limit(1)
     .single()
 
   if (existing?.id) {
     await supabase.from('week_plans').update({ attendance: payload }).eq('id', existing.id)
   } else {
-    await supabase.from('week_plans').insert({ family_id: FAMILY_ID, plan_data: [], meals_data: {}, wishes: [], attendance: payload })
+    await supabase.from('week_plans').insert({ family_id: getFamilyId(), plan_data: [], meals_data: {}, wishes: [], attendance: payload })
   }
 }
 
@@ -264,7 +264,7 @@ export async function saveWeekPlan(
   const { data: existing } = await supabase
     .from('week_plans')
     .select('id')
-    .eq('family_id', FAMILY_ID)
+    .eq('family_id', getFamilyId())
     .limit(1)
     .single()
 
@@ -276,7 +276,7 @@ export async function saveWeekPlan(
   } else {
     await supabase
       .from('week_plans')
-      .insert({ family_id: FAMILY_ID, plan_data: plan, meals_data: mealsData, wishes })
+      .insert({ family_id: getFamilyId(), plan_data: plan, meals_data: mealsData, wishes })
   }
 }
 
@@ -285,7 +285,7 @@ export async function loadLastDishes(): Promise<string[]> {
     const { data, error } = await supabase
       .from('week_plans')
       .select('last_dishes')
-      .eq('family_id', FAMILY_ID)
+      .eq('family_id', getFamilyId())
       .limit(1)
       .single()
     if (error || !data) return []
@@ -300,7 +300,7 @@ export async function saveLastDishes(dishes: string[]): Promise<void> {
     const { data: existing } = await supabase
       .from('week_plans')
       .select('id')
-      .eq('family_id', FAMILY_ID)
+      .eq('family_id', getFamilyId())
       .limit(1)
       .single()
     if (existing?.id) {

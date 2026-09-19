@@ -47,10 +47,15 @@ function getTagDate(mondayIso: string, tag: string): string {
   return `${d.getDate()}. ${M[d.getMonth()]}`
 }
 
+const MEMBER_PALETTE = [
+  { bg: '#E6F1FB', c: '#0C447C' },
+  { bg: '#E1F5EE', c: '#0F6E56' },
+  { bg: '#FBEAF0', c: '#72243E' },
+  { bg: '#FEF3C7', c: '#92400E' },
+]
 const CFG: Record<string, { bg: string; c: string }> = {
-  MA: { bg: '#E1F5EE', c: '#0F6E56' },
-  PA: { bg: '#E6F1FB', c: '#0C447C' },
-  TI: { bg: '#FBEAF0', c: '#72243E' },
+  PA: MEMBER_PALETTE[0], MA: MEMBER_PALETTE[1], TI: MEMBER_PALETTE[2],
+  M1: MEMBER_PALETTE[0], M2: MEMBER_PALETTE[1], M3: MEMBER_PALETTE[2], M4: MEMBER_PALETTE[3],
 }
 
 function todayGerman(): string {
@@ -176,7 +181,7 @@ export default function WocheScreen({
     const bDate = b.chefStat?.lastCook ?? ''
     if (aDate !== bDate) return aDate < bDate ? -1 : 1
     return (a.chefStat?.count ?? 0) - (b.chefStat?.count ?? 0)
-  }).find(m => m.id !== wochenchef)?.id ?? activeMembers.find(m => m.id !== wochenchef)?.id ?? 'PA') as Chef
+  }).find(m => m.id !== wochenchef)?.id ?? activeMembers.find(m => m.id !== wochenchef)?.id ?? activeMembers[0]?.id ?? '') as Chef
   const wishDeadlineStatus = getShoppingDeadlineStatus(shoppingDays)
   const wishDeadlinePassed = planConfirmed && (wishDeadlineStatus?.passed ?? false)
   const wishDeadlineHint = wishDeadlinePassed && wishDeadlineStatus
@@ -2626,21 +2631,20 @@ function SlotPill({ slot }: { slot: WochenSlot }) {
   )
 }
 
-function ChefPicker({ current, onSelect, personNames, members }: { current: Chef; onSelect: (c: Chef) => void; personNames: Record<Chef, string>; members: import('../lib/state').FamilyMember[] }) {
+function ChefPicker({ current, onSelect, personNames, members }: { current: Chef; onSelect: (c: Chef) => void; personNames: Record<string, string>; members: import('../lib/state').FamilyMember[] }) {
   return (
     <div style={{ padding: '4px 12px 8px', display: 'flex', gap: 4 }}>
-      {(['PA', 'MA', 'TI'] as Chef[]).map(p => {
-        const c = CFG[p]
-        const active = current === p
-        const stat = members.find(m => m.id === p)?.chefStat
+      {members.map((m, idx) => {
+        const c = MEMBER_PALETTE[idx % MEMBER_PALETTE.length]
+        const active = current === m.id
         return (
           <button
-            key={p}
-            onClick={() => onSelect(p)}
+            key={m.id}
+            onClick={() => onSelect(m.id)}
             style={{ padding: '4px 10px 5px', borderRadius: 8, border: '1px solid', borderColor: active ? c.c : '#ddd', background: active ? c.bg : 'white', color: active ? c.c : '#aaa', fontSize: 11, fontWeight: 700, cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}
           >
-            <span>{p} · {personNames[p]}</span>
-            {stat && <span style={{ fontSize: 9, fontWeight: 400, opacity: 0.7 }}>{stat.count}×</span>}
+            <span>{personNames[m.id] ?? m.id}</span>
+            {m.chefStat && <span style={{ fontSize: 9, fontWeight: 400, opacity: 0.7 }}>{m.chefStat.count}×</span>}
           </button>
         )
       })}
