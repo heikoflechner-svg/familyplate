@@ -72,9 +72,9 @@ insert into week_plans (family_id) values ('flechner');
 insert into family_profiles (family_id, members, onboarding_done) values (
   'flechner',
   '[
-    {"id":"PA","name":"Heiko","emoji":"👨","active":true},
-    {"id":"MA","name":"Sabine","emoji":"👩","active":true},
-    {"id":"TI","name":"Tim","emoji":"👦","active":true}
+    {"id":"PA","name":"Heiko","emoji":"👨","active":true,"allergien":[],"vorlieben":[]},
+    {"id":"MA","name":"Sabine","emoji":"👩","active":true,"allergien":[],"vorlieben":[]},
+    {"id":"TI","name":"Tim","emoji":"👦","active":true,"allergien":[],"vorlieben":[]}
   ]',
   true
 );

@@ -25,16 +25,16 @@ export default function OnboardingWizard({ onDone, initialProfile, onCancel }: P
     if (!initialProfile) return DEFAULT_MEMBERS
     return initialProfile.members.map(m => ({
       ...m,
-      allergien: m.allergien.filter(a => ALLERGIE_OPTIONS.includes(a)),
-      vorlieben: m.vorlieben.filter(v => VORLIEBE_OPTIONS.includes(v)),
+      allergien: (m.allergien ?? []).filter(a => ALLERGIE_OPTIONS.includes(a)),
+      vorlieben: (m.vorlieben ?? []).filter(v => VORLIEBE_OPTIONS.includes(v)),
     }))
   })
   const [freitext, setFreitext] = useState<Record<Chef, { a: string; v: string }>>(() => {
     if (!initialProfile) return { PA: { a: '', v: '' }, MA: { a: '', v: '' }, TI: { a: '', v: '' } }
     return Object.fromEntries(
       initialProfile.members.map(m => [m.id, {
-        a: m.allergien.filter(a => !ALLERGIE_OPTIONS.includes(a)).join(', '),
-        v: m.vorlieben.filter(v => !VORLIEBE_OPTIONS.includes(v)).join(', '),
+        a: (m.allergien ?? []).filter(a => !ALLERGIE_OPTIONS.includes(a)).join(', '),
+        v: (m.vorlieben ?? []).filter(v => !VORLIEBE_OPTIONS.includes(v)).join(', '),
       }])
     ) as Record<Chef, { a: string; v: string }>
   })

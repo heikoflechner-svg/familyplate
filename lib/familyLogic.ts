@@ -63,8 +63,10 @@ export function applyChefStats(members: FamilyMember[], confirmedEntries: WeekPl
 export function buildFamilyPrompt(members: FamilyMember[]): string {
   return members
     .map(m => {
-      const a = m.allergien.length ? `kein(e) ${m.allergien.join(', ')}` : 'keine Einschränkungen'
-      const v = m.vorlieben.length ? `mag ${m.vorlieben.join(', ')}` : ''
+      const allergien = m.allergien ?? []
+      const vorlieben = m.vorlieben ?? []
+      const a = allergien.length ? `kein(e) ${allergien.join(', ')}` : 'keine Einschränkungen'
+      const v = vorlieben.length ? `mag ${vorlieben.join(', ')}` : ''
       return `${m.name} (${m.id}): ${[a, v].filter(Boolean).join('; ')}`
     })
     .join('. ')

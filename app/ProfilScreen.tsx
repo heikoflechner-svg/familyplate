@@ -70,8 +70,8 @@ export default function ProfilScreen({
         {familyProfile.members.map(m => {
           const col = CHEF_COLORS[m.id]
           const isMe = m.id === currentUser
-          const allergienText = m.allergien.length ? m.allergien.join(', ') : null
-          const vorliebText = m.vorlieben.length ? m.vorlieben.join(', ') : null
+          const allergienText = (m.allergien ?? []).length ? (m.allergien ?? []).join(', ') : null
+          const vorliebText = (m.vorlieben ?? []).length ? (m.vorlieben ?? []).join(', ') : null
           const stat = m.chefStat
           const barPct = stat ? Math.round((stat.count / maxCount) * 100) : 0
 
