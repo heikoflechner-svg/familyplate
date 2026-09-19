@@ -42,6 +42,7 @@ export default function FamilyPlateApp() {
   const [nextWeekStart, setNextWeekStart] = useState<string | null>(null)
   const [nextWeekData, setNextWeekData] = useState<NextWeekData | null>(null)
   const [wocheInitView, setWocheInitView] = useState<'home' | 'attendance'>('home')
+  const [attendanceReturnToMehr, setAttendanceReturnToMehr] = useState(false)
   const [activeTab, setActiveTab] = useState<Tab>('woche')
   const [profileSaveError, setProfileSaveError] = useState<string | null>(null)
 
@@ -331,6 +332,7 @@ export default function FamilyPlateApp() {
             nextWeekData={nextWeekData}
             onNextWeekDataChange={handleNextWeekDataChange}
             onActivateNextWeek={handleActivateNextWeek}
+            onAttendanceBack={attendanceReturnToMehr ? () => { setAttendanceReturnToMehr(false); setActiveTab('mehr') } : undefined}
           />
         )}
         {activeTab === 'gefriertruhe' && (
@@ -390,6 +392,7 @@ export default function FamilyPlateApp() {
             onShoppingProposalSubmit={handleShoppingProposalSubmit}
             onGoToAttendance={() => {
               setWocheInitView('attendance')
+              setAttendanceReturnToMehr(true)
               setActiveTab('woche')
             }}
             nextWeekData={nextWeekData}

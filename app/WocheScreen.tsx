@@ -101,6 +101,7 @@ interface Props {
   nextWeekData?: NextWeekData | null
   onNextWeekDataChange?: (data: Partial<NextWeekData>, nextMonday: string) => Promise<void>
   onActivateNextWeek?: () => Promise<void>
+  onAttendanceBack?: () => void
 }
 
 type View = 'home' | 'week' | 'plan' | 'attendance'
@@ -163,6 +164,7 @@ export default function WocheScreen({
   nextWeekData = null,
   onNextWeekDataChange,
   onActivateNextWeek,
+  onAttendanceBack,
 }: Props) {
   const personNames: Record<Chef, string> = Object.fromEntries(
     (members.length ? members : DEFAULT_MEMBERS).map(m => [m.id, m.name])
@@ -1285,7 +1287,7 @@ export default function WocheScreen({
     return (
       <div className="screen active">
         <div className="topbar">
-          <button className="back" onClick={() => setView('home')}>‹</button>
+          <button className="back" onClick={() => onAttendanceBack ? onAttendanceBack() : setView('home')}>‹</button>
           <h1>👥 Wer ist wann da?</h1>
         </div>
         <div className="content">
