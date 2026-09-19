@@ -64,19 +64,17 @@ on conflict (user_id) do nothing;
 -- Falls noch nicht passiert (Fix aus vorherigem Commit)
 
 update family_profiles
-set members = jsonb_agg(
-  case
-    when member->>'allergien' is null
-    then member || '{"allergien":[],"vorlieben":[]}'::jsonb
-    else member
-  end
+set members = (
+  select jsonb_agg(
+    case
+      when elem->>'allergien' is null
+      then elem || '{"allergien":[],"vorlieben":[]}'::jsonb
+      else elem
+    end
+  )
+  from jsonb_array_elements(members) as elem
 )
-from jsonb_array_elements(members) as member
-where family_id = 'flechner'
-  and exists (
-    select 1 from jsonb_array_elements(members) as m
-    where m->>'allergien' is null
-  );
+where family_id = 'flechner';
 
 -- ─── 6. Mueller-Testfamilie anlegen ──────────────────────────────────────────
 
