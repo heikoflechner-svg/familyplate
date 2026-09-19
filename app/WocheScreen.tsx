@@ -24,8 +24,11 @@ function getKW(isoDate: string): number {
   const d = new Date(isoDate + 'T00:00:00')
   const thu = new Date(d)
   thu.setDate(d.getDate() + 3 - (d.getDay() + 6) % 7)
-  const yearStart = new Date(thu.getFullYear(), 0, 4)
-  return Math.ceil((((thu.getTime() - yearStart.getTime()) / 86400000) + 1) / 7)
+  // ISO-Kalenderwoche: gezählt ab dem 1. Januar (nicht dem 4.). Tagesdifferenz
+  // runden, damit DST-Übergänge keine ±1h-Bruchteile in die Wochenzahl tragen.
+  const yearStart = new Date(thu.getFullYear(), 0, 1)
+  const days = Math.round((thu.getTime() - yearStart.getTime()) / 86400000)
+  return Math.ceil((days + 1) / 7)
 }
 function getWeekRange(mondayIso: string): string {
   const mon = new Date(mondayIso + 'T00:00:00')
@@ -1555,7 +1558,7 @@ export default function WocheScreen({
         </div>
         <div className="content">
           {(() => {
-            const ws = weekStart ?? getMondayIso()
+            const ws = weekStart || getMondayIso()
             return (
               <div style={{ textAlign: 'center', fontSize: 12, color: '#888', marginBottom: 8 }}>
                 KW {getKW(ws)} · {getWeekRange(ws)}
@@ -1779,7 +1782,7 @@ export default function WocheScreen({
 
           {/* ── Nächste Woche ────────────────────────────────────────── */}
           {planConfirmed && (() => {
-            const nextMonday = nextWeekStart ?? getNextMondayIso()
+            const nextMonday = nextWeekStart || getNextMondayIso()
             const nwKw = getKW(nextMonday)
             const nwRange = getWeekRange(nextMonday)
             const nwChef = nextWeekData?.wochenchef
@@ -2500,7 +2503,7 @@ export default function WocheScreen({
             ) : (
               <>
                 <div style={{ fontSize: 12, fontWeight: 600, color: '#0F6E56', marginBottom: 3 }}>
-                  ✅ Woche bestätigt · KW {getKW(weekStart ?? getMondayIso())}
+                  ✅ Woche bestätigt · KW {getKW(weekStart || getMondayIso())}
                 </div>
                 <div style={{ fontSize: 12, color: '#444', marginBottom: shoppingDays.length > 0 ? 4 : 0 }}>
                   Du bist diese Woche Wochenchef – du organisierst die Woche und kochst mit.
