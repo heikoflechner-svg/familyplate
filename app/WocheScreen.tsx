@@ -183,6 +183,14 @@ export default function WocheScreen({
     ? `Änderungen waren nur bis ${wishDeadlineStatus.deadlineDayName} 20:00 Uhr möglich – Einkauf ist am ${wishDeadlineStatus.shoppingDayName}`
     : undefined
 
+  // Hinweis: NW-Plan noch nicht freigegeben, aber Einkaufsfrist nähert sich
+  const nwPlanChef = nextWeekData?.wochenchef ?? wochenchef
+  const nwAlertDeadline = (
+    shoppingDays.length > 0 &&
+    currentUser === nwPlanChef &&
+    !(nextWeekData?.planConfirmed ?? false)
+  ) ? getShoppingDeadlineStatus(shoppingDays) : null
+
   const [view, setView] = useState<View>(initialView)
   useEffect(() => {
     onInitialViewConsumed?.()
@@ -2478,6 +2486,26 @@ export default function WocheScreen({
           </div>
         )}
         {renderWochenchefDecisions()}
+        {nwAlertDeadline && (
+          <div style={{
+            background: nwAlertDeadline.passed ? '#FEF2F2' : '#FFFBEB',
+            border: `1px solid ${nwAlertDeadline.passed ? '#FECACA' : '#FCD34D'}`,
+            borderRadius: 10, padding: '10px 14px', marginBottom: 14,
+            display: 'flex', alignItems: 'flex-start', gap: 10,
+          }}>
+            <span style={{ fontSize: 16, flexShrink: 0 }}>{nwAlertDeadline.passed ? '🔴' : '⚠️'}</span>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: nwAlertDeadline.passed ? '#991B1B' : '#92400E', marginBottom: 2 }}>
+                Nächste Woche noch nicht freigegeben{nwAlertDeadline.passed ? ' – Einkaufsfrist abgelaufen!' : ''}
+              </div>
+              <div style={{ fontSize: 11, color: nwAlertDeadline.passed ? '#B91C1C' : '#78350F' }}>
+                {nwAlertDeadline.passed
+                  ? `Einkauf war am ${nwAlertDeadline.shoppingDayName} – bitte jetzt trotzdem planen.`
+                  : `Bitte bis ${nwAlertDeadline.deadlineDayName} 20:00 Uhr planen – Einkauf ist am ${nwAlertDeadline.shoppingDayName}.`}
+              </div>
+            </div>
+          </div>
+        )}
         {!planConfirmed && weekPlan.length > 0 && currentUser !== wochenchef && (
           <div style={{ background: '#FFFBEB', border: '1px solid #FCD34D', borderRadius: 10, padding: '10px 14px', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 10 }}>
             <span style={{ fontSize: 16, flexShrink: 0 }}>⏳</span>

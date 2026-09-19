@@ -76,33 +76,43 @@ export default function FamilyPlateApp() {
 
   useEffect(() => {
     if (!currentUser) return
-    Promise.all([loadWeekPlan(), loadFreezerItems(), loadPantryItems(), loadFamilyProfile(), loadNextWeekData()])
-      .then(([{ plan, mealsData: md, wishes: w, attendance: att, attendanceConfirmed: ac, shoppingList: sl, proposals: pr, wochenchef: wc, planConfirmed: pc, shopDone: sd, shoppingDays: sd2, shoppingPersons: sp, weekStart: ws }, freezer, pantry, profile, { nextWeekStart: nws, nextWeekData: nwd }]) => {
-        setWeekPlan(plan)
-        setMealsData(md)
-        setWishes(w)
-        setAttendance(att)
-        setAttendanceConfirmed(ac)
-        setShoppingList(sl)
-        setProposals(pr)
-        setActiveWochenchef(wc)
-        setPlanConfirmed(pc)
-        setShopDone(sd)
-        setShoppingDays(sd2)
-        setShoppingPersons(sp)
-        setWeekStart(ws)
-        setNextWeekStart(nws)
-        setNextWeekData(nwd)
-        setFreezerItems(freezer)
-        setPantryItems(pantry)
-        setFamilyProfile(profile)
-        setDataLoading(false)
-        loadLastDishes().then(setLastDishes).catch(() => {})
-      })
-      .catch(err => {
-        console.error('Ladefehler:', err)
-        setDataLoading(false)
-      })
+    const doLoad = async () => {
+      const [loaded, freezer, pantry, profile, nwLoaded] = await Promise.all([
+        loadWeekPlan(), loadFreezerItems(), loadPantryItems(), loadFamilyProfile(), loadNextWeekData(),
+      ])
+      let planData = loaded
+      let nwData = nwLoaded
+      // Auto-activate next week when the stored weekStart is from a past week
+      if (loaded.weekStart && loaded.weekStart < getMondayIso()) {
+        await activateNextWeek()
+        const [reloaded, nwReloaded] = await Promise.all([loadWeekPlan(), loadNextWeekData()])
+        planData = reloaded
+        nwData = nwReloaded
+      }
+      const { plan, mealsData: md, wishes: w, attendance: att, attendanceConfirmed: ac, shoppingList: sl, proposals: pr, wochenchef: wc, planConfirmed: pc, shopDone: sd, shoppingDays: sd2, shoppingPersons: sp, weekStart: ws } = planData
+      const { nextWeekStart: nws, nextWeekData: nwd } = nwData
+      setWeekPlan(plan)
+      setMealsData(md)
+      setWishes(w)
+      setAttendance(att)
+      setAttendanceConfirmed(ac)
+      setShoppingList(sl)
+      setProposals(pr)
+      setActiveWochenchef(wc)
+      setPlanConfirmed(pc)
+      setShopDone(sd)
+      setShoppingDays(sd2)
+      setShoppingPersons(sp)
+      setWeekStart(ws)
+      setNextWeekStart(nws)
+      setNextWeekData(nwd)
+      setFreezerItems(freezer)
+      setPantryItems(pantry)
+      setFamilyProfile(profile)
+      setDataLoading(false)
+      loadLastDishes().then(setLastDishes).catch(() => {})
+    }
+    doLoad().catch(err => { console.error('Ladefehler:', err); setDataLoading(false) })
   }, [currentUser])
 
   async function handleWeekPlanChange(plan: WeekPlanEntry[], meals: Record<string, Rezept>) {
