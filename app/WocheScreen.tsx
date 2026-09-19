@@ -37,6 +37,15 @@ function getWeekRange(mondayIso: string): string {
   const M = ['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez']
   return `${mon.getDate()}.–${sun.getDate()}. ${M[sun.getMonth()]}`
 }
+// Konkretes Datum eines Wochentags innerhalb der Woche (Montag = Index 0), z.B. "14. Sep"
+function getTagDate(mondayIso: string, tag: string): string {
+  const idx = WOCHENTAGE.indexOf(tag)
+  if (idx < 0) return ''
+  const d = new Date(mondayIso + 'T00:00:00')
+  d.setDate(d.getDate() + idx)
+  const M = ['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez']
+  return `${d.getDate()}. ${M[d.getMonth()]}`
+}
 
 const CFG: Record<string, { bg: string; c: string }> = {
   MA: { bg: '#E1F5EE', c: '#0F6E56' },
@@ -948,6 +957,7 @@ export default function WocheScreen({
   }
 
   const today = todayGerman()
+  const weekMonday = weekStart || getMondayIso()
   const activeDays = planWE ? WOCHENTAGE : WOCHENTAGE.slice(0, 5)
   const plannedDays = WOCHENTAGE.filter(t => weekPlan.some(e => e.tag === t))
   const todayIdx = activeDays.indexOf(today)
@@ -1410,7 +1420,7 @@ export default function WocheScreen({
                 <div key={tag} style={{ borderRadius: 12, border: '1px solid #e5e7eb', marginBottom: 14, overflow: 'hidden' }}>
                   <div style={{ padding: '8px 12px', background: '#f9fafb', borderBottom: '1px solid #f0f0f0' }}>
                     <span style={{ fontSize: 11, fontWeight: 700, color: '#aaa', textTransform: 'uppercase', letterSpacing: '.5px' }}>
-                      {tag}
+                      {tag}<span style={{ textTransform: 'none', fontWeight: 400, letterSpacing: 0, color: '#bbb' }}>, {getTagDate(weekMonday, tag)}</span>
                     </span>
                   </div>
                   {dayLoading === tag && (
@@ -1581,7 +1591,7 @@ export default function WocheScreen({
                 <div key={tag} style={{ borderRadius: 12, border: '1px solid #e5e7eb', marginBottom: 14, overflow: 'hidden' }}>
                   <div style={{ padding: '8px 12px', background: '#f9fafb', borderBottom: '1px solid #f0f0f0', display: 'flex', alignItems: 'center' }}>
                     <span style={{ flex: 1, fontSize: 12, fontWeight: 700, color: tag === today ? '#085041' : '#666', textTransform: 'uppercase', letterSpacing: '.5px' }}>
-                      {tag}
+                      {tag}<span style={{ textTransform: 'none', fontWeight: 400, letterSpacing: 0, color: tag === today ? '#4a9a82' : '#aaa' }}>, {getTagDate(weekMonday, tag)}</span>
                     </span>
                     {tag === today && <span className="pill today">Heute</span>}
                     {!isLoading && !isPending && (
@@ -1960,7 +1970,7 @@ export default function WocheScreen({
                           if (!mittag && !abend) return null
                           return (
                             <div key={tag} style={{ borderRadius: 8, border: '1px solid #e5e7eb', marginBottom: 8, overflow: 'hidden' }}>
-                              <div style={{ padding: '5px 10px', background: '#f9fafb', borderBottom: '1px solid #f0f0f0', fontSize: 10, fontWeight: 700, color: '#666', textTransform: 'uppercase', letterSpacing: '.5px' }}>{tag}</div>
+                              <div style={{ padding: '5px 10px', background: '#f9fafb', borderBottom: '1px solid #f0f0f0', fontSize: 10, fontWeight: 700, color: '#666', textTransform: 'uppercase', letterSpacing: '.5px' }}>{tag}<span style={{ textTransform: 'none', fontWeight: 400, letterSpacing: 0, color: '#aaa' }}>, {getTagDate(nextMonday, tag)}</span></div>
                               {[mittag, abend].filter(Boolean).map(e => {
                                 const key = `nwp-${e!.tag}-${e!.slot}`
                                 return (
@@ -2012,7 +2022,7 @@ export default function WocheScreen({
                           if (!mittag && !abend) return null
                           return (
                             <div key={tag} style={{ borderRadius: 8, border: '1px solid #e5e7eb', marginBottom: 6, overflow: 'hidden' }}>
-                              <div style={{ padding: '5px 10px', background: '#f9fafb', borderBottom: '1px solid #f0f0f0', fontSize: 10, fontWeight: 700, color: '#666', textTransform: 'uppercase', letterSpacing: '.5px' }}>{tag}</div>
+                              <div style={{ padding: '5px 10px', background: '#f9fafb', borderBottom: '1px solid #f0f0f0', fontSize: 10, fontWeight: 700, color: '#666', textTransform: 'uppercase', letterSpacing: '.5px' }}>{tag}<span style={{ textTransform: 'none', fontWeight: 400, letterSpacing: 0, color: '#aaa' }}>, {getTagDate(nextMonday, tag)}</span></div>
                               {[mittag, abend].filter(Boolean).map(e => {
                                 const nwr = nextWeekData?.mealsData?.[e!.gericht]
                                 return (
@@ -2060,7 +2070,7 @@ export default function WocheScreen({
                       return (
                         <div key={tag} style={{ borderTop: '1px solid #f0f0f0' }}>
                           <div style={{ padding: '7px 12px', background: '#f9fafb', borderBottom: '1px solid #f0f0f0', display: 'flex', alignItems: 'center' }}>
-                            <span style={{ flex: 1, fontSize: 11, fontWeight: 700, color: '#666', textTransform: 'uppercase', letterSpacing: '.5px' }}>{tag}</span>
+                            <span style={{ flex: 1, fontSize: 11, fontWeight: 700, color: '#666', textTransform: 'uppercase', letterSpacing: '.5px' }}>{tag}<span style={{ textTransform: 'none', fontWeight: 400, letterSpacing: 0, color: '#aaa' }}>, {getTagDate(nextMonday, tag)}</span></span>
                           </div>
                           {([mittag, abend] as const).map(e => {
                             if (!e) return null
@@ -2540,7 +2550,7 @@ export default function WocheScreen({
           return (
             <div key={tag} style={{ borderRadius: 12, border: '1px solid #e5e7eb', marginBottom: 14, overflow: 'hidden' }}>
               <div style={{ padding: '8px 12px', background: '#f9fafb', borderBottom: '1px solid #f0f0f0' }}>
-                <span style={{ fontSize: 12, fontWeight: 700, color: '#444' }}>{tag}</span>
+                <span style={{ fontSize: 12, fontWeight: 700, color: '#444' }}>{tag}<span style={{ fontWeight: 400, color: '#aaa' }}>, {getTagDate(weekMonday, tag)}</span></span>
               </div>
               {planMittag && renderHomeSlot(tag, 'Mittag', nextMittag)}
               {renderHomeSlot(tag, 'Abend', nextAbend)}
