@@ -22,19 +22,15 @@ export function onAuthChange(callback: (chef: string | null) => void): () => voi
       return
     }
     try {
-      const { data } = await supabase
-        .from('family_members')
-        .select('family_id, slot')
-        .eq('user_id', session.user.id)
-        .single()
-      if (!data) {
-        stagingLog('AUTH_NO_FAMILY uid=' + session.user.id)
-        callback(null)
+      const meta = session.user.app_metadata as { family_id?: string; slot?: string }
+      if (meta?.family_id && meta?.slot) {
+        setFamilyId(meta.family_id)
+        stagingLog('AUTH_FAMILY family=' + meta.family_id + ' slot=' + meta.slot)
+        callback(meta.slot)
         return
       }
-      setFamilyId(data.family_id as string)
-      stagingLog('AUTH_FAMILY family=' + data.family_id + ' slot=' + data.slot)
-      callback(data.slot as string)
+      stagingLog('AUTH_NO_FAMILY uid=' + session.user.id + ' meta=' + JSON.stringify(meta))
+      callback(null)
     } catch (err) {
       stagingLog('AUTH_ERR ' + String(err))
       callback(null)
