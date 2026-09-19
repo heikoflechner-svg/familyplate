@@ -392,6 +392,10 @@ export default function FamilyPlateApp() {
               setWocheInitView('attendance')
               setActiveTab('woche')
             }}
+            nextWeekData={nextWeekData}
+            nextWeekStart={nextWeekStart}
+            onWochenchefChange={handleWochenchefChange}
+            onNextWeekDataChange={handleNextWeekDataChange}
           />
         )}
       </div>
