@@ -321,6 +321,7 @@ export async function generateWeekPlan(params: {
   wishes?: Wish[]
   familyPrompt?: string
   lastDishes?: string[]
+  gaesteProTag?: { tag: string; gaeste: number }[]
 }): Promise<{ plan: WeekPlanEntry[]; mealsData: Record<string, Rezept> }> {
   const resp = await fetch('/api/week-plan', {
     method: 'POST',

@@ -176,6 +176,7 @@ export default function WocheScreen({
     (members.length ? members : DEFAULT_MEMBERS).map(m => [m.id, m.name])
   ) as Record<Chef, string>
   const familyPrompt = buildFamilyPrompt(members.length ? members : DEFAULT_MEMBERS)
+  const gaesteProTag = attendance.filter(a => (a.gaeste ?? 0) > 0).map(a => ({ tag: a.tag, gaeste: a.gaeste }))
   const activeMembers = members.length ? members : DEFAULT_MEMBERS
   const suggestedNextChef: Chef = ([...activeMembers].sort((a, b) => {
     const aDate = a.chefStat?.lastCook ?? ''
@@ -514,6 +515,7 @@ export default function WocheScreen({
         behaltene: weekPlan.filter(e => !(e.tag === tag && e.slot === slot)),
         neuTage: [tag],
         familyPrompt,
+        gaesteProTag: gaesteProTag.filter(g => g.tag === tag).length > 0 ? gaesteProTag.filter(g => g.tag === tag) : undefined,
       })
       const newEntry = result.find(e => e.tag === tag && e.slot === slot)
       if (newEntry) {
@@ -916,6 +918,7 @@ export default function WocheScreen({
         neuTage: [tag],
         wishes: wishes.filter(w => w.tag === tag && w.slot === slot),
         familyPrompt,
+        gaesteProTag: gaesteProTag.filter(g => g.tag === tag).length > 0 ? gaesteProTag.filter(g => g.tag === tag) : undefined,
       })
       const newEntry = result.find(e => e.tag === tag && e.slot === slot)
       if (newEntry) {
@@ -941,6 +944,7 @@ export default function WocheScreen({
         neuTage: [tag],
         wishes: wishes.filter(w => w.tag === tag),
         familyPrompt,
+        gaesteProTag: gaesteProTag.filter(g => g.tag === tag).length > 0 ? gaesteProTag.filter(g => g.tag === tag) : undefined,
       })
       setPendingPlan(prev => [...prev.filter(e => e.tag !== tag), ...result.filter(e => e.tag === tag)])
       setPendingPlanMeals(prev => ({ ...prev, ...newMeals }))
@@ -966,6 +970,7 @@ export default function WocheScreen({
         neuTage: [tag],
         wishes: wishes.filter(w => w.tag === tag),
         familyPrompt,
+        gaesteProTag: gaesteProTag.filter(g => g.tag === tag).length > 0 ? gaesteProTag.filter(g => g.tag === tag) : undefined,
       })
       setPendingDay({ tag, entries: result.filter(e => e.tag === tag) })
       setPendingDayMeals(newMeals)
@@ -1105,6 +1110,7 @@ export default function WocheScreen({
         wishes,
         familyPrompt,
         lastDishes,
+        gaesteProTag: gaesteProTag.length > 0 ? gaesteProTag : undefined,
       })
       setPendingPlan(newPlan)
       setPendingPlanMeals(newMeals)
