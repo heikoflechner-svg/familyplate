@@ -1329,7 +1329,7 @@ export default function WocheScreen({
     return (
       <div className="screen active">
         <div className="topbar">
-          <button className="back" onClick={() => onAttendanceBack ? onAttendanceBack() : setView('home')}>‹</button>
+          <button className="back" onClick={() => { setView('home'); onAttendanceBack?.() }}>‹</button>
           <h1>👥 Wer ist wann da?</h1>
         </div>
         <div className="content">
