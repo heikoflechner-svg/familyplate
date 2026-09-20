@@ -1394,6 +1394,43 @@ export default function WocheScreen({
             )
           })}
 
+          <div style={{ borderRadius: 12, border: '1px solid #e5e7eb', marginBottom: 14, overflow: 'hidden' }}>
+            <div style={{ padding: '8px 12px', background: '#f9fafb', borderBottom: '1px solid #f0f0f0' }}>
+              <span style={{ fontSize: 12, fontWeight: 700, color: '#888' }}>🧑‍🤝‍🧑 Gäste zum Essen</span>
+            </div>
+            <div style={{ padding: '8px 12px', overflowX: 'auto' }}>
+              <div style={{ display: 'flex', gap: 4, minWidth: 'max-content' }}>
+                <div style={{ width: 20, flexShrink: 0 }} />
+                {displayDays.map(tag => {
+                  const dayAtt = attendance.find(a => a.tag === tag) as unknown as Record<string, unknown> | undefined
+                  const g = (dayAtt?.gaeste as number | undefined) ?? 0
+                  const canEdit = currentUser === wochenchef
+                  return (
+                    <div key={tag} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0, width: 26 }}>
+                      <span style={{ fontSize: 9, color: '#bbb', height: 14, lineHeight: '14px' }}>{tag.slice(0, 2)}</span>
+                      <button
+                        onClick={() => canEdit && changeGaeste(tag, 1)}
+                        disabled={!canEdit}
+                        style={{ width: 26, height: 18, borderRadius: '4px 4px 0 0', border: '1px solid #ddd', borderBottom: 'none', background: canEdit ? 'white' : '#f9f9f9', cursor: canEdit ? 'pointer' : 'default', fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: canEdit ? 1 : 0.4 }}
+                      >+</button>
+                      <span style={{ fontSize: 12, fontWeight: 700, width: 26, textAlign: 'center', color: g > 0 ? '#1D9E75' : '#ccc', border: '1px solid #ddd', borderTop: 'none', borderBottom: 'none', lineHeight: '16px', display: 'block' }}>{g}</span>
+                      <button
+                        onClick={() => canEdit && g > 0 && changeGaeste(tag, -1)}
+                        disabled={!canEdit || g === 0}
+                        style={{ width: 26, height: 18, borderRadius: '0 0 4px 4px', border: '1px solid #ddd', borderTop: 'none', background: canEdit ? 'white' : '#f9f9f9', cursor: canEdit && g > 0 ? 'pointer' : 'default', fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: canEdit && g > 0 ? 1 : 0.3 }}
+                      >−</button>
+                    </div>
+                  )
+                })}
+              </div>
+              {currentUser !== wochenchef && wochenchef && (
+                <div style={{ marginTop: 6, fontSize: 10, color: '#bbb', textAlign: 'center' }}>
+                  Nur {members.find(m => m.id === wochenchef)?.name ?? wochenchef} (Wochenchef) kann Gäste eintragen
+                </div>
+              )}
+            </div>
+          </div>
+
           <div style={{ textAlign: 'center', padding: '8px 0 4px', fontSize: 12, fontWeight: 500, color: confirmedCount < allChefIds.length ? '#92400E' : '#0F6E56' }}>
             {confirmedCount < allChefIds.length ? '⚠️' : '✅'} {confirmedCount} von {allChefIds.length} bestätigt
           </div>
