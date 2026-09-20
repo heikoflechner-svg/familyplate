@@ -11,13 +11,18 @@ export const DEFAULT_MEMBERS: FamilyMember[] = [
 export const CHEF_ORDER: Chef[] = DEFAULT_MEMBERS.map(m => m.id)
 
 export async function loadFamilyProfile(): Promise<FamilyProfile | null> {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('family_profiles')
     .select('members, onboarding_done, laeden, zutaten_laden')
     .eq('family_id', getFamilyId())
     .single()
 
-  if (!data || !data.onboarding_done) return null
+  if (error) {
+    // PGRST116 = "0 rows returned by .single()" → genuinely no profile yet, not an error
+    if ((error as { code?: string }).code === 'PGRST116') return null
+    throw error  // network, auth, timeout, etc. → caller handles as load failure
+  }
+  if (!data.onboarding_done) return null
   return {
     members: data.members as FamilyMember[],
     laeden: (data.laeden as string[] | null) ?? DEFAULT_LAEDEN,

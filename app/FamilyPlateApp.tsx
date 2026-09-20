@@ -45,6 +45,8 @@ export default function FamilyPlateApp() {
   const [attendanceReturnToMehr, setAttendanceReturnToMehr] = useState(false)
   const [activeTab, setActiveTab] = useState<Tab>('woche')
   const [profileSaveError, setProfileSaveError] = useState<string | null>(null)
+  const [profileLoadError, setProfileLoadError] = useState(false)
+  const [loadTrigger, setLoadTrigger] = useState(0)
 
   useEffect(() => {
     return onAuthChange(chef => {
@@ -77,6 +79,7 @@ export default function FamilyPlateApp() {
   useEffect(() => {
     if (!currentUser) return
     const doLoad = async () => {
+      setProfileLoadError(false)
       const [loaded, freezer, pantry, profile, nwLoaded] = await Promise.all([
         loadWeekPlan(), loadFreezerItems(), loadPantryItems(), loadFamilyProfile(), loadNextWeekData(),
       ])
@@ -112,8 +115,14 @@ export default function FamilyPlateApp() {
       setDataLoading(false)
       loadLastDishes().then(setLastDishes).catch(() => {})
     }
-    doLoad().catch(err => { console.error('Ladefehler:', err); setDataLoading(false) })
-  }, [currentUser])
+    doLoad().catch(err => {
+      console.error('Ladefehler:', err)
+      setProfileLoadError(true)
+      setDataLoading(false)
+    })
+  // loadTrigger: incremented by retry button to re-run this effect without user change
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser, loadTrigger])
 
   useEffect(() => {
     try {
@@ -285,6 +294,24 @@ export default function FamilyPlateApp() {
 
   if (!currentUser) {
     return <LoginScreen />
+  }
+
+  if (profileLoadError) {
+    return (
+      <div className="phone" style={{ alignItems: 'center', justifyContent: 'center', gap: 14, padding: '0 28px', textAlign: 'center' }}>
+        <div style={{ fontSize: 44 }}>⚠️</div>
+        <div style={{ fontSize: 16, fontWeight: 700, color: '#991B1B' }}>Ladefehler</div>
+        <div style={{ fontSize: 13, color: '#666', lineHeight: 1.5 }}>
+          FamilyPlate konnte nicht geladen werden — möglicherweise ein Verbindungsproblem oder ein laufendes Update.
+        </div>
+        <button
+          onClick={() => { setDataLoading(true); setLoadTrigger(t => t + 1) }}
+          style={{ marginTop: 4, padding: '11px 28px', background: '#1D9E75', color: 'white', border: 'none', borderRadius: 12, fontSize: 14, fontWeight: 600, cursor: 'pointer' }}
+        >
+          Erneut versuchen
+        </button>
+      </div>
+    )
   }
 
   if (!familyProfile) {

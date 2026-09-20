@@ -1,6 +1,6 @@
 'use client'
 import { useState } from 'react'
-import { saveFamilyProfile, DEFAULT_MEMBERS } from '../lib/familyLogic'
+import { saveFamilyProfile, loadFamilyProfile, DEFAULT_MEMBERS } from '../lib/familyLogic'
 import type { FamilyMember, FamilyProfile } from '../lib/state'
 import { DEFAULT_LAEDEN } from '../lib/state'
 
@@ -58,6 +58,25 @@ export default function OnboardingWizard({ onDone, initialProfile, onCancel }: P
   async function finish() {
     setSaving(true)
     setSaveError(null)
+
+    // Guard: if shown without initialProfile (= "new user" flow), verify no real
+    // profile exists in DB before writing. A network error during load can cause
+    // this wizard to appear over existing data; saving here would overwrite it.
+    if (!initialProfile) {
+      try {
+        const existing = await loadFamilyProfile()
+        if (existing) {
+          setSaveError('Es existiert bereits ein gespeichertes Profil. Bitte die Seite neu laden – deine Daten sind noch vorhanden.')
+          setSaving(false)
+          return
+        }
+      } catch {
+        setSaveError('Verbindungsfehler – bitte Seite neu laden und erneut versuchen.')
+        setSaving(false)
+        return
+      }
+    }
+
     const finalMembers = members.map(m => ({
       ...m,
       allergien: [
