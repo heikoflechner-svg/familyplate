@@ -11,6 +11,7 @@ export const DEFAULT_MEMBERS: FamilyMember[] = [
 export const CHEF_ORDER: Chef[] = DEFAULT_MEMBERS.map(m => m.id)
 
 export async function loadFamilyProfile(): Promise<FamilyProfile | null> {
+  if (new Date().getFullYear() > 0) throw new Error('TEST – Ladefehler simuliert') // TEMPORÄR – wird sofort entfernt
   const { data, error } = await supabase
     .from('family_profiles')
     .select('members, onboarding_done, laeden, zutaten_laden')
@@ -22,6 +23,7 @@ export async function loadFamilyProfile(): Promise<FamilyProfile | null> {
     if ((error as { code?: string }).code === 'PGRST116') return null
     throw error  // network, auth, timeout, etc. → caller handles as load failure
   }
+  if (!data) return null
   if (!data.onboarding_done) return null
   return {
     members: data.members as FamilyMember[],
