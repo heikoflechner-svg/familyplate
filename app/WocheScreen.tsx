@@ -2481,7 +2481,7 @@ export default function WocheScreen({
   return (
     <div className="screen active" style={{ position: 'relative' }}>
       {selectedMealName && (
-        <RecipeModal name={selectedMealName} rezept={mealsData[selectedMealName] ?? null} onClose={() => setSelectedMealName(null)} />
+        <RecipeModal name={selectedMealName} rezept={selectedRezept(selectedMealName)} loading={recipeLoading === selectedMealName} onClose={() => setSelectedMealName(null)} />
       )}
       <div className="topbar"><h1>🍽 FamilyPlate</h1></div>
       <div className="content">
