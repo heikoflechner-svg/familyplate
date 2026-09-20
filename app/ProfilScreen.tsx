@@ -215,7 +215,7 @@ export default function ProfilScreen({
                     type="password"
                     placeholder="Aktuelles Passwort"
                     value={currentPw}
-                    onChange={e => setCurrentPw(e.target.value)}
+                    onChange={e => { setCurrentPw(e.target.value); setPwError(null) }}
                     autoComplete="current-password"
                     style={{ border: '1px solid #ddd', borderRadius: 10, padding: '9px 12px', fontSize: 13, outline: 'none' }}
                   />
@@ -223,7 +223,7 @@ export default function ProfilScreen({
                     type="password"
                     placeholder="Neues Passwort (min. 8 Zeichen)"
                     value={newPw}
-                    onChange={e => setNewPw(e.target.value)}
+                    onChange={e => { setNewPw(e.target.value); setPwError(null) }}
                     autoComplete="new-password"
                     style={{ border: '1px solid #ddd', borderRadius: 10, padding: '9px 12px', fontSize: 13, outline: 'none' }}
                   />
@@ -231,8 +231,8 @@ export default function ProfilScreen({
                     type="password"
                     placeholder="Neues Passwort wiederholen"
                     value={confirmPw}
-                    onChange={e => setConfirmPw(e.target.value)}
-                    autoComplete="new-password"
+                    onChange={e => { setConfirmPw(e.target.value); setPwError(null) }}
+                    autoComplete="off"
                     style={{ border: '1px solid #ddd', borderRadius: 10, padding: '9px 12px', fontSize: 13, outline: 'none' }}
                   />
                   {pwError && (
