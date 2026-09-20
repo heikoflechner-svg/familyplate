@@ -107,8 +107,6 @@ interface Props {
   onNextWeekDataChange?: (data: Partial<NextWeekData>, nextMonday: string) => Promise<void>
   onActivateNextWeek?: () => Promise<void>
   onAttendanceBack?: () => void
-  onViewChange?: (view: 'home' | 'week' | 'plan' | 'attendance') => void
-  attendanceRestoreView?: 'home' | 'week' | 'plan'
 }
 
 type View = 'home' | 'week' | 'plan' | 'attendance'
@@ -172,8 +170,6 @@ export default function WocheScreen({
   onNextWeekDataChange,
   onActivateNextWeek,
   onAttendanceBack,
-  onViewChange,
-  attendanceRestoreView,
 }: Props) {
   const hasMittag = (tag: string) => !mittagsloseTage.includes(tag)
   const personNames: Record<Chef, string> = Object.fromEntries(
@@ -203,17 +199,15 @@ export default function WocheScreen({
   ) ? getShoppingDeadlineStatus(shoppingDays) : null
 
   const [view, setView] = useState<View>(initialView)
+  const [restoreView, setRestoreView] = useState<'home' | 'week' | 'plan'>('home')
   useEffect(() => {
     if (initialView === 'attendance') {
+      setRestoreView(view === 'home' || view === 'week' || view === 'plan' ? view : 'home')
       setView('attendance')
       onInitialViewConsumed?.()
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialView])
-  useEffect(() => {
-    onViewChange?.(view)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [view])
   const [planState, setPlanState] = useState<PlanState>('options')
   const [pendingPlan, setPendingPlan] = useState<WeekPlanEntry[]>([])
   const [pendingPlanMeals, setPendingPlanMeals] = useState<Record<string, Rezept>>({})
@@ -1337,7 +1331,7 @@ export default function WocheScreen({
     return (
       <div className="screen active">
         <div className="topbar">
-          <button className="back" onClick={() => { setView(attendanceRestoreView ?? 'home'); onAttendanceBack?.() }}>‹</button>
+          <button className="back" onClick={() => { setView(onAttendanceBack ? restoreView : 'home'); onAttendanceBack?.() }}>‹</button>
           <h1>👥 Wer ist wann da?</h1>
         </div>
         <div className="content">
