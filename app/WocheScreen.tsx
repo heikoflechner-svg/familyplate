@@ -69,7 +69,7 @@ function getSlot(weekPlan: WeekPlanEntry[], tag: string, slot: 'Mittag' | 'Abend
 interface Props {
   weekPlan: WeekPlanEntry[]
   mealsData: Record<string, Rezept>
-  planMittag: boolean
+  mittagsloseTage: string[]
   planWE: boolean
   freezerItems: FreezerItem[]
   pantryItems: PantryItem[]
@@ -154,7 +154,7 @@ function getShoppingDeadlineStatus(shoppingDays: string[], now = new Date()):
 }
 
 export default function WocheScreen({
-  weekPlan, mealsData, planMittag, planWE, freezerItems, pantryItems,
+  weekPlan, mealsData, mittagsloseTage, planWE, freezerItems, pantryItems,
   wishes, currentUser, wochenchef, members, attendance, attendanceConfirmed, proposals, planConfirmed, shopDone, onWeekPlanChange, onWeekPlanAndWishesChange, onWishesChange,
   onAttendanceChange, onAttendanceConfirmedChange, onPlanConfirm, onProposalsChange, onWochenchefChange, onPlanConfirmedChange, onShopDoneChange,
   shoppingList, onShoppingListChange, onFreezerChange,
@@ -171,6 +171,7 @@ export default function WocheScreen({
   onActivateNextWeek,
   onAttendanceBack,
 }: Props) {
+  const hasMittag = (tag: string) => !mittagsloseTage.includes(tag)
   const personNames: Record<Chef, string> = Object.fromEntries(
     (members.length ? members : DEFAULT_MEMBERS).map(m => [m.id, m.name])
   ) as Record<Chef, string>
@@ -376,7 +377,7 @@ export default function WocheScreen({
     setNwPendingPlan(null)
     try {
       const { plan: result, mealsData: newMeals } = await generateWeekPlan({
-        planMittag,
+        mittagsloseTage,
         planWE,
         freezerList: getFreezerListString(freezerItems),
         pantryList: getPantryListString(pantryItems),
@@ -402,7 +403,7 @@ export default function WocheScreen({
     setNwSlotLoading(key)
     try {
       const { plan: result, mealsData: newMeals } = await generateWeekPlan({
-        planMittag: slot === 'Abend' ? false : planMittag,
+        mittagsloseTage: slot === 'Abend' ? [...new Set([...mittagsloseTage, tag])] : mittagsloseTage.filter(t => t !== tag),
         planWE,
         freezerList: getFreezerListString(freezerItems),
         pantryList: getPantryListString(pantryItems),
@@ -445,7 +446,7 @@ export default function WocheScreen({
     setNwSlotLoading(key)
     try {
       const { plan: result, mealsData: newMeals } = await generateWeekPlan({
-        planMittag: slot === 'Abend' ? false : planMittag,
+        mittagsloseTage: slot === 'Abend' ? [...new Set([...mittagsloseTage, tag])] : mittagsloseTage.filter(t => t !== tag),
         planWE,
         freezerList: getFreezerListString(freezerItems),
         pantryList: getPantryListString(pantryItems),
@@ -503,7 +504,7 @@ export default function WocheScreen({
     setSlotLoading(key)
     try {
       const { plan: result, mealsData: newMeals } = await generateWeekPlan({
-        planMittag: slot === 'Abend' ? false : planMittag,
+        mittagsloseTage: slot === 'Abend' ? [...new Set([...mittagsloseTage, tag])] : mittagsloseTage.filter(t => t !== tag),
         planWE,
         freezerList: getFreezerListString(freezerItems),
         pantryList: getPantryListString(pantryItems),
@@ -904,7 +905,7 @@ export default function WocheScreen({
     setSlotLoading(key)
     try {
       const { plan: result, mealsData: newMeals } = await generateWeekPlan({
-        planMittag: slot === 'Abend' ? false : planMittag,
+        mittagsloseTage: slot === 'Abend' ? [...new Set([...mittagsloseTage, tag])] : mittagsloseTage.filter(t => t !== tag),
         planWE,
         freezerList: getFreezerListString(freezerItems),
         pantryList: getPantryListString(pantryItems),
@@ -929,7 +930,7 @@ export default function WocheScreen({
     setDayLoading(tag)
     try {
       const { plan: result, mealsData: newMeals } = await generateWeekPlan({
-        planMittag,
+        mittagsloseTage,
         planWE,
         freezerList: getFreezerListString(freezerItems),
         pantryList: getPantryListString(pantryItems),
@@ -954,7 +955,7 @@ export default function WocheScreen({
     setDayLoading(tag)
     try {
       const { plan: result, mealsData: newMeals } = await generateWeekPlan({
-        planMittag,
+        mittagsloseTage,
         planWE,
         freezerList: getFreezerListString(freezerItems),
         pantryList: getPantryListString(pantryItems),
@@ -1092,7 +1093,7 @@ export default function WocheScreen({
     setError('')
     try {
       const { plan: newPlan, mealsData: newMeals } = await generateWeekPlan({
-        planMittag,
+        mittagsloseTage,
         planWE,
         freezerList: getFreezerListString(freezerItems),
         pantryList: getPantryListString(pantryItems),
@@ -1294,7 +1295,7 @@ export default function WocheScreen({
     const tagIdx = WOCHENTAGE.indexOf(tag)
     const nextTag = WOCHENTAGE[tagIdx + 1]
     if (nextTag) {
-      const neuerSlot: WochenSlot = planMittag ? 'Mittag' : 'Abend'
+      const neuerSlot: WochenSlot = hasMittag(nextTag) ? 'Mittag' : 'Abend'
       const resteEntry: WeekPlanEntry = {
         tag: nextTag, slot: neuerSlot, emoji: entry.emoji,
         gericht: `Reste: ${entry.gericht}`, minuten: 10, quelle: 'kuehlschrank', chef: entry.chef,
@@ -1762,7 +1763,7 @@ export default function WocheScreen({
                         />
                         <WishesSection
                           tag={tag} wishes={wishes} freezerItems={freezerItems} pantryItems={pantryItems}
-                          personNames={personNames} planMittag={planMittag} lockedSlot={slot} showExisting={false}
+                          personNames={personNames} mittagsloseTage={mittagsloseTage} lockedSlot={slot} showExisting={false}
                           canAdd={!shopDone && !wishDeadlinePassed} deadlineHint={wishDeadlineHint}
                           isOpen={wishFormKey === `${tag}-${slot}`} initialPerson={currentUser} familyPrompt={familyPrompt}
                           onOpen={() => openWishForm(tag, slot)} onClose={closeWishForm} onSubmitWish={handleWishSubmit} onRemove={removeWish}
@@ -2427,7 +2428,7 @@ export default function WocheScreen({
         </div>
         <WishesSection
           tag={tag} wishes={wishes} freezerItems={freezerItems} pantryItems={pantryItems}
-          personNames={personNames} planMittag={planMittag} lockedSlot={slot}
+          personNames={personNames} mittagsloseTage={mittagsloseTage} lockedSlot={slot}
           canAdd={!shopDone && !wishDeadlinePassed} deadlineHint={wishDeadlineHint}
           isOpen={wishFormKey === `${tag}-${slot}`} initialPerson={currentUser} familyPrompt={familyPrompt}
           onOpen={() => openWishForm(tag, slot)} onClose={closeWishForm} onSubmitWish={handleWishSubmit} onRemove={removeWish}
@@ -2597,7 +2598,7 @@ export default function WocheScreen({
             <span style={{ flex: 1, fontSize: 12, fontWeight: 700, color: '#085041' }}>Heute · {today}</span>
             <span className="pill today">Heute</span>
           </div>
-          {planMittag && renderHomeSlot(today, 'Mittag', todayMittag)}
+          {hasMittag(today) && renderHomeSlot(today, 'Mittag', todayMittag)}
           {renderHomeSlot(today, 'Abend', todayAbend)}
         </div>
 
@@ -2609,7 +2610,7 @@ export default function WocheScreen({
               <div style={{ padding: '8px 12px', background: '#f9fafb', borderBottom: '1px solid #f0f0f0' }}>
                 <span style={{ fontSize: 12, fontWeight: 700, color: '#444' }}>{tag}<span style={{ fontWeight: 400, color: '#aaa' }}>, {getTagDate(weekMonday, tag)}</span></span>
               </div>
-              {planMittag && renderHomeSlot(tag, 'Mittag', nextMittag)}
+              {hasMittag(tag) && renderHomeSlot(tag, 'Mittag', nextMittag)}
               {renderHomeSlot(tag, 'Abend', nextAbend)}
             </div>
           )
@@ -2682,7 +2683,7 @@ interface WishesSectionProps {
   freezerItems: FreezerItem[]
   pantryItems: PantryItem[]
   personNames: Record<Chef, string>
-  planMittag: boolean
+  mittagsloseTage: string[]
   lockedSlot?: WochenSlot
   showExisting?: boolean
   canAdd?: boolean
@@ -2698,7 +2699,7 @@ interface WishesSectionProps {
 }
 
 function WishesSection({
-  tag, wishes, freezerItems, pantryItems, personNames, planMittag,
+  tag, wishes, freezerItems, pantryItems, personNames, mittagsloseTage,
   lockedSlot, showExisting = true, canAdd = true, deadlineHint, isOpen, initialPerson, familyPrompt,
   fullWidth,
   onOpen, onClose, onSubmitWish, onRemove,
@@ -2856,7 +2857,7 @@ function WishesSection({
           ? { padding: '4px 12px 8px', background: '#f9f9f9', display: 'flex', flexDirection: 'column', gap: 8 }
           : { marginTop: 8, padding: 10, background: '#f9f9f9', borderRadius: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
           {/* Slot */}
-          {planMittag && !lockedSlot && (
+          {!mittagsloseTage.includes(tag) && !lockedSlot && (
             <div style={{ display: 'flex', gap: 4 }}>
               {(['Mittag', 'Abend'] as const).map(s => (
                 <button key={s} onClick={() => handleSlotChange(s)}

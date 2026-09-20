@@ -137,7 +137,7 @@ export interface FamilyProfile {
 export interface AppState {
   weekPlan: WeekPlanEntry[]
   mealsData: Record<string, Rezept>
-  planMittag: boolean
+  mittagsloseTage: string[]
   planWE: boolean
   freezerItems: FreezerItem[]
   pantryItems: PantryItem[]
@@ -155,7 +155,7 @@ export interface AppState {
 export const INITIAL_STATE: AppState = {
   weekPlan: [],
   mealsData: {},
-  planMittag: true,
+  mittagsloseTage: [],
   planWE: false,
   freezerItems: [],
   pantryItems: [],

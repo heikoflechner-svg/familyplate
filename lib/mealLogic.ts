@@ -312,7 +312,7 @@ export async function saveLastDishes(dishes: string[]): Promise<void> {
 }
 
 export async function generateWeekPlan(params: {
-  planMittag: boolean
+  mittagsloseTage: string[]
   planWE: boolean
   freezerList: string
   pantryList: string

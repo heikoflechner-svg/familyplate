@@ -44,15 +44,24 @@ interface Props {
   nextWeekStart?: string | null
   onWochenchefChange: (chef: Chef) => Promise<void>
   onNextWeekDataChange?: (data: Partial<NextWeekData>, nextMonday: string) => Promise<void>
+  mittagsloseTage: string[]
+  planWE: boolean
+  onMittagsloseTageChange: (tage: string[]) => void
+  onPlanWEChange: (val: boolean) => void
+  laeden: string[]
+  onLaedenChange: (laeden: string[]) => Promise<void>
 }
 
 export default function MehrScreen({
   currentUser, wochenchef, members, weekPlan, shoppingDays, shoppingPersons, proposals,
   onShoppingDaysChange, onShoppingPersonsChange, onShoppingProposalSubmit, onGoToAttendance,
   nextWeekData, nextWeekStart, onWochenchefChange, onNextWeekDataChange,
+  mittagsloseTage, planWE, onMittagsloseTageChange, onPlanWEChange, laeden, onLaedenChange,
 }: Props) {
   const [view, setView] = useState<View>('overview')
   const [saving, setSaving] = useState(false)
+  const [newLaden, setNewLaden] = useState('')
+  const [laedenOpen, setLaedenOpen] = useState(false)
 
   const isChef = currentUser === wochenchef
   const personNames = Object.fromEntries(members.map(m => [m.id, m.name])) as Record<Chef, string>
@@ -112,10 +121,53 @@ export default function MehrScreen({
   // ── Overview ────────────────────────────────────────────────────────────────
   if (view === 'overview') {
     const nwChef = nextWeekData?.wochenchef ?? null
+    const activeDays = planWE ? WOCHENTAGE : WOCHENTAGE.slice(0, 5)
     return (
       <div className="screen active" style={{ overflowY: 'auto' }}>
         <div className="topbar"><h1>⋯ Mehr</h1></div>
         <div className="content" style={{ padding: '0 16px 24px' }}>
+
+          <div className="lbl" style={{ marginTop: 20 }}>Planungseinstellungen</div>
+          <div className="card" style={{ marginBottom: 20 }}>
+            <div
+              onClick={() => {
+                const newVal = !planWE
+                if (!newVal) onMittagsloseTageChange(mittagsloseTage.filter(t => t !== 'Samstag' && t !== 'Sonntag'))
+                onPlanWEChange(newVal)
+              }}
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '10px 0', borderBottom: '1px solid #f5f5f5' }}
+            >
+              <span style={{ fontSize: 13, color: '#111' }}>📅 Wochenende einplanen (Sa + So)</span>
+              <div style={{ width: 40, height: 22, borderRadius: 11, flexShrink: 0, background: planWE ? '#1D9E75' : '#ddd', position: 'relative', transition: 'background .2s' }}>
+                <div style={{ position: 'absolute', top: 2, left: planWE ? 20 : 2, width: 18, height: 18, borderRadius: 9, background: '#fff', transition: 'left .2s', boxShadow: '0 1px 3px rgba(0,0,0,.2)' }} />
+              </div>
+            </div>
+            <div style={{ paddingTop: 12, paddingBottom: 4 }}>
+              <div style={{ fontSize: 11, color: '#aaa', marginBottom: 8 }}>Kein Mittag an diesen Tagen:</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {activeDays.map(tag => {
+                  const isOptedOut = mittagsloseTage.includes(tag)
+                  return (
+                    <button
+                      key={tag}
+                      onClick={() => onMittagsloseTageChange(isOptedOut ? mittagsloseTage.filter(t => t !== tag) : [...mittagsloseTage, tag])}
+                      style={{
+                        padding: '5px 12px', borderRadius: 16, border: `1px solid ${isOptedOut ? '#9CA3AF' : '#e5e7eb'}`,
+                        cursor: 'pointer', fontSize: 12, fontWeight: isOptedOut ? 700 : 400,
+                        background: isOptedOut ? '#E5E7EB' : 'white',
+                        color: isOptedOut ? '#374151' : '#9CA3AF',
+                      }}
+                    >
+                      {TAG_SHORT[tag]}
+                    </button>
+                  )
+                })}
+              </div>
+              {mittagsloseTage.filter(t => activeDays.includes(t)).length === 0 && (
+                <div style={{ fontSize: 11, color: '#ccc', marginTop: 6 }}>Mittag wird jeden Tag eingeplant</div>
+              )}
+            </div>
+          </div>
 
           <button
             onClick={onGoToAttendance}
@@ -331,6 +383,50 @@ export default function MehrScreen({
               )}
             </div>
           )}
+
+          {/* Einkaufsläden */}
+          <div className="card" style={{ marginTop: 24 }}>
+            <button
+              onClick={() => setLaedenOpen(o => !o)}
+              style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+            >
+              <span style={{ fontSize: 12, fontWeight: 700, color: '#888', textTransform: 'uppercase', letterSpacing: '.5px' }}>Einkaufsläden ({laeden.length})</span>
+              <span style={{ fontSize: 16, color: '#bbb', lineHeight: 1 }}>{laedenOpen ? '▲' : '▼'}</span>
+            </button>
+            {laedenOpen && (
+              <div style={{ marginTop: 12 }}>
+                {laeden.map((l, i) => (
+                  <div key={l} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '9px 0', borderBottom: i < laeden.length - 1 ? '1px solid #f5f5f5' : 'none' }}>
+                    <span style={{ fontSize: 13, color: '#111' }}>{l}</span>
+                    <button onClick={() => void onLaedenChange(laeden.filter(x => x !== l))} style={{ border: 'none', background: 'none', color: '#ccc', fontSize: 18, cursor: 'pointer', lineHeight: 1 }}>×</button>
+                  </div>
+                ))}
+                <div style={{ display: 'flex', gap: 8, marginTop: laeden.length > 0 ? 10 : 0 }}>
+                  <input
+                    value={newLaden}
+                    onChange={e => setNewLaden(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter' && newLaden.trim() && !laeden.includes(newLaden.trim())) {
+                        void onLaedenChange([...laeden, newLaden.trim()])
+                        setNewLaden('')
+                      }
+                    }}
+                    placeholder="Laden hinzufügen"
+                    style={{ flex: 1, border: '1px solid #ddd', borderRadius: 10, padding: '8px 12px', fontSize: 13, outline: 'none' }}
+                  />
+                  <button
+                    onClick={() => {
+                      if (newLaden.trim() && !laeden.includes(newLaden.trim())) {
+                        void onLaedenChange([...laeden, newLaden.trim()])
+                        setNewLaden('')
+                      }
+                    }}
+                    style={{ border: 'none', background: '#1D9E75', color: '#fff', borderRadius: 10, padding: '8px 14px', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}
+                  >+</button>
+                </div>
+              </div>
+            )}
+          </div>
 
         </div>
       </div>

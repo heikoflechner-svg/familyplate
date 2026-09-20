@@ -25,7 +25,7 @@ export default function FamilyPlateApp() {
   const [attendanceConfirmed, setAttendanceConfirmed] = useState<Chef[]>([])
   const [weekPlan, setWeekPlan] = useState<WeekPlanEntry[]>([])
   const [mealsData, setMealsData] = useState<Record<string, Rezept>>({})
-  const [planMittag, setPlanMittag] = useState(true)
+  const [mittagsloseTage, setMittagsloseTage] = useState<string[]>([])
   const [planWE, setPlanWE] = useState(true)
   const [freezerItems, setFreezerItems] = useState<FreezerItem[]>([])
   const [pantryItems, setPantryItems] = useState<PantryItem[]>([])
@@ -114,6 +114,25 @@ export default function FamilyPlateApp() {
     }
     doLoad().catch(err => { console.error('Ladefehler:', err); setDataLoading(false) })
   }, [currentUser])
+
+  useEffect(() => {
+    try {
+      const m = localStorage.getItem('fp_mittagsloseTage')
+      if (m) setMittagsloseTage(JSON.parse(m))
+    } catch {}
+    try {
+      const w = localStorage.getItem('fp_planWE')
+      if (w !== null) setPlanWE(w !== 'false')
+    } catch {}
+  }, [])
+
+  useEffect(() => {
+    try { localStorage.setItem('fp_mittagsloseTage', JSON.stringify(mittagsloseTage)) } catch {}
+  }, [mittagsloseTage])
+
+  useEffect(() => {
+    try { localStorage.setItem('fp_planWE', planWE ? 'true' : 'false') } catch {}
+  }, [planWE])
 
   async function handleWeekPlanChange(plan: WeekPlanEntry[], meals: Record<string, Rezept>) {
     setWeekPlan(plan)
@@ -305,7 +324,7 @@ export default function FamilyPlateApp() {
           <WocheScreen
             weekPlan={weekPlan}
             mealsData={mealsData}
-            planMittag={planMittag}
+            mittagsloseTage={mittagsloseTage}
             planWE={planWE}
             freezerItems={freezerItems}
             pantryItems={pantryItems}
@@ -376,16 +395,10 @@ export default function FamilyPlateApp() {
         )}
         {activeTab === 'rezepte' && (
           <ProfilScreen
-            planMittag={planMittag}
-            planWE={planWE}
             currentUser={currentUser}
             familyProfile={familyProfile}
-            onPlanMittagChange={setPlanMittag}
-            onPlanWEChange={setPlanWE}
             onSignOut={signOut}
             onEditProfile={() => setEditingProfile(true)}
-            laeden={familyProfile.laeden}
-            onLaedenChange={handleLaedenChange}
           />
         )}
         {activeTab === 'mehr' && (
@@ -409,6 +422,12 @@ export default function FamilyPlateApp() {
             nextWeekStart={nextWeekStart}
             onWochenchefChange={handleWochenchefChange}
             onNextWeekDataChange={handleNextWeekDataChange}
+            mittagsloseTage={mittagsloseTage}
+            planWE={planWE}
+            onMittagsloseTageChange={setMittagsloseTage}
+            onPlanWEChange={setPlanWE}
+            laeden={familyProfile.laeden}
+            onLaedenChange={handleLaedenChange}
           />
         )}
       </div>

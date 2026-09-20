@@ -25,7 +25,7 @@ const FB_ABEND = [
 type WishJSON = { person: string; tag: string; slot: string; type: string; text?: string; dishName?: string; emoji?: string }
 
 export async function POST(req: NextRequest) {
-  const { planMittag, planWE, freezerList, pantryList, behaltene, neuTage, wishes, familyPrompt, lastDishes } = await req.json()
+  const { mittagsloseTage, planWE, freezerList, pantryList, behaltene, neuTage, wishes, familyPrompt, lastDishes } = await req.json()
 
   const apiKey = process.env.ANTHROPIC_API_KEY
   console.log('[week-plan] apiKey present:', !!apiKey, '| length:', apiKey?.length ?? 0)
@@ -34,13 +34,20 @@ export async function POST(req: NextRequest) {
     ? ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag']
     : ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag']
   const planTage = neuTage?.length ? neuTage : tage
-  const slotHinweis = planMittag ? 'Mittag UND Abend' : 'nur Abend'
+  const mittagslosSet = new Set<string>(mittagsloseTage ?? [])
+  const hasMittag = (tag: string) => !mittagslosSet.has(tag)
+  const mittagTage = planTage.filter((t: string) => hasMittag(t))
+  const slotHinweis = mittagTage.length === 0
+    ? 'nur Abend'
+    : mittagTage.length === planTage.length
+      ? 'Mittag UND Abend'
+      : `Mittag UND Abend (Mittag nur an: ${mittagTage.join(', ')})`
   const chefRota = ['PA', 'MA', 'TI', 'TI']
 
   if (!apiKey) {
     const fallback: object[] = []
     planTage.forEach((t: string, i: number) => {
-      if (planMittag) {
+      if (hasMittag(t)) {
         const fm = FB_MITTAG[i % FB_MITTAG.length]
         fallback.push({ tag: t, slot: 'Mittag', emoji: fm.e, gericht: fm.g, minuten: fm.m, quelle: fm.q, chef: chefRota[i % 4] })
       }
@@ -53,7 +60,7 @@ export async function POST(req: NextRequest) {
 
   const beispiele: string[] = []
   planTage.forEach((t: string, i: number) => {
-    if (planMittag) beispiele.push(`{"tag":"${t}","slot":"Mittag","emoji":"...","gericht":"...","minuten":20,"quelle":"frisch","chef":"${chefRota[i % 4]}"}`)
+    if (hasMittag(t)) beispiele.push(`{"tag":"${t}","slot":"Mittag","emoji":"...","gericht":"...","minuten":20,"quelle":"frisch","chef":"${chefRota[i % 4]}"}`)
     beispiele.push(`{"tag":"${t}","slot":"Abend","emoji":"...","gericht":"...","minuten":30,"quelle":"frisch","chef":"${chefRota[(i + 1) % 4]}"}`)
   })
 
@@ -110,7 +117,7 @@ export async function POST(req: NextRequest) {
     console.error('[week-plan] Caught error, returning fallback:', e instanceof Error ? e.message : String(e))
     const fallback: object[] = []
     planTage.forEach((t: string, i: number) => {
-      if (planMittag) {
+      if (hasMittag(t)) {
         const fm = FB_MITTAG[i % FB_MITTAG.length]
         fallback.push({ tag: t, slot: 'Mittag', emoji: fm.e, gericht: fm.g, minuten: fm.m, quelle: fm.q, chef: chefRota[i % 4] })
       }

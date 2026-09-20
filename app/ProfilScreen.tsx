@@ -10,11 +10,6 @@ const MEMBER_PALETTE = [
   { bg: '#FEF3C7', c: '#92400E' },
 ]
 
-const WOCHENTAGE_SHORT: Record<string, string> = {
-  'Montag': 'Mo', 'Dienstag': 'Di', 'Mittwoch': 'Mi',
-  'Donnerstag': 'Do', 'Freitag': 'Fr', 'Samstag': 'Sa', 'Sonntag': 'So',
-}
-
 function formatLastCook(iso: string | null | undefined): string {
   if (!iso) return 'noch nie'
   const date = new Date(iso)
@@ -27,25 +22,16 @@ function formatLastCook(iso: string | null | undefined): string {
 }
 
 interface Props {
-  planMittag: boolean
-  planWE: boolean
   currentUser: Chef
   familyProfile: FamilyProfile
-  onPlanMittagChange: (val: boolean) => void
-  onPlanWEChange: (val: boolean) => void
   onSignOut: () => Promise<void>
   onEditProfile: () => void
-  laeden: string[]
-  onLaedenChange: (laeden: string[]) => Promise<void>
 }
 
 export default function ProfilScreen({
-  planMittag, planWE, currentUser, familyProfile,
-  onPlanMittagChange, onPlanWEChange, onSignOut, onEditProfile,
-  laeden, onLaedenChange,
+  currentUser, familyProfile,
+  onSignOut, onEditProfile,
 }: Props) {
-  const [newLaden, setNewLaden] = useState('')
-  const [laedenOpen, setLaedenOpen] = useState(false)
   const [pwOpen, setPwOpen] = useState(false)
   const [currentPw, setCurrentPw] = useState('')
   const [newPw, setNewPw] = useState('')
@@ -63,12 +49,6 @@ export default function ProfilScreen({
     <div className="screen active">
       <div className="topbar"><h1>👤 Profil</h1></div>
       <div className="content">
-
-        <div className="lbl">Wochenplanung</div>
-        <div className="card" style={{ marginBottom: 20 }}>
-          <Toggle label="☀️ Mittagessen einplanen" checked={planMittag} onChange={onPlanMittagChange} />
-          <Toggle label="📅 Wochenende einplanen (Sa + So)" checked={planWE} onChange={onPlanWEChange} last />
-        </div>
 
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
           <div className="lbl" style={{ marginBottom: 0 }}>Familie</div>
@@ -143,59 +123,7 @@ export default function ProfilScreen({
           )
         })}
 
-        <div className="card" style={{ marginBottom: 20, marginTop: 24 }}>
-          <button
-            onClick={() => setLaedenOpen(o => !o)}
-            style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
-          >
-            <span style={{ fontSize: 12, fontWeight: 700, color: '#888', textTransform: 'uppercase', letterSpacing: '.5px' }}>Einkaufsläden ({laeden.length})</span>
-            <span style={{ fontSize: 16, color: '#bbb', lineHeight: 1 }}>{laedenOpen ? '▲' : '▼'}</span>
-          </button>
-          {laedenOpen && (
-            <div style={{ marginTop: 12 }}>
-              {laeden.map((l, i) => (
-                <div
-                  key={l}
-                  style={{
-                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                    padding: '9px 0', borderBottom: i < laeden.length - 1 ? '1px solid #f5f5f5' : 'none',
-                  }}
-                >
-                  <span style={{ fontSize: 13, color: '#111' }}>{l}</span>
-                  <button
-                    onClick={() => onLaedenChange(laeden.filter(x => x !== l))}
-                    style={{ border: 'none', background: 'none', color: '#ccc', fontSize: 18, cursor: 'pointer', lineHeight: 1 }}
-                  >×</button>
-                </div>
-              ))}
-              <div style={{ display: 'flex', gap: 8, marginTop: laeden.length > 0 ? 10 : 0 }}>
-                <input
-                  value={newLaden}
-                  onChange={e => setNewLaden(e.target.value)}
-                  onKeyDown={e => {
-                    if (e.key === 'Enter' && newLaden.trim() && !laeden.includes(newLaden.trim())) {
-                      onLaedenChange([...laeden, newLaden.trim()])
-                      setNewLaden('')
-                    }
-                  }}
-                  placeholder="Laden hinzufügen"
-                  style={{ flex: 1, border: '1px solid #ddd', borderRadius: 10, padding: '8px 12px', fontSize: 13, outline: 'none' }}
-                />
-                <button
-                  onClick={() => {
-                    if (newLaden.trim() && !laeden.includes(newLaden.trim())) {
-                      onLaedenChange([...laeden, newLaden.trim()])
-                      setNewLaden('')
-                    }
-                  }}
-                  style={{ border: 'none', background: '#1D9E75', color: '#fff', borderRadius: 10, padding: '8px 14px', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}
-                >+</button>
-              </div>
-            </div>
-          )}
-        </div>
-
-        <div className="card" style={{ marginBottom: 12 }}>
+        <div className="card" style={{ marginBottom: 12, marginTop: 24 }}>
           <button
             onClick={() => { setPwOpen(o => !o); resetPwForm() }}
             style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
@@ -278,36 +206,6 @@ export default function ProfilScreen({
           FamilyPlate · Powered by Rémy 🐀
         </div>
 
-      </div>
-    </div>
-  )
-}
-
-function Toggle({
-  label, checked, onChange, last = false,
-}: {
-  label: string; checked: boolean; onChange: (val: boolean) => void; last?: boolean
-}) {
-  return (
-    <div
-      onClick={() => onChange(!checked)}
-      style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        cursor: 'pointer', padding: '10px 0',
-        borderBottom: last ? 'none' : '1px solid #f5f5f5',
-      }}
-    >
-      <span style={{ fontSize: 13, color: '#111' }}>{label}</span>
-      <div style={{
-        width: 40, height: 22, borderRadius: 11, flexShrink: 0,
-        background: checked ? '#1D9E75' : '#ddd',
-        position: 'relative', transition: 'background .2s',
-      }}>
-        <div style={{
-          position: 'absolute', top: 2, left: checked ? 20 : 2,
-          width: 18, height: 18, borderRadius: 9, background: '#fff',
-          transition: 'left .2s', boxShadow: '0 1px 3px rgba(0,0,0,.2)',
-        }} />
       </div>
     </div>
   )
