@@ -115,11 +115,7 @@ export async function POST(req: NextRequest) {
       body: JSON.stringify({
         model: 'claude-sonnet-4-6',
         max_tokens: 2000,
-        // Prefill: Modell beginnt direkt mit '{', kein Preamble-/Denktext möglich (Option C)
-        messages: [
-          { role: 'user', content: prompt },
-          { role: 'assistant', content: '{' },
-        ],
+        messages: [{ role: 'user', content: prompt }],
       }),
     })
     const data = await resp.json()
@@ -128,8 +124,7 @@ export async function POST(req: NextRequest) {
       console.error('[week-plan] Unexpected API response:', JSON.stringify(data).slice(0, 300))
       throw new Error('No content in response')
     }
-    // Prefill-'{' wieder voranstellen (API liefert nur die Fortsetzung, nicht den Prefill selbst)
-    const raw = '{' + (data.content[0].text as string)
+    const raw = data.content[0].text as string
     console.log('[week-plan] raw response (first 600):', raw.slice(0, 600))
     const jsonStr = extractFirstJson(raw)
     if (!jsonStr) throw new Error('No JSON object found in response')
