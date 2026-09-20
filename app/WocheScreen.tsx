@@ -1455,7 +1455,7 @@ export default function WocheScreen({
                   🐀 Rémy schlägt {slotLoading.replace(/-(?:Mittag|Abend)$/, '')} {slotLoading.endsWith('Mittag') ? '☀️ Mittag' : '🌙 Abend'} neu vor… andere ↺ kurz warten
                 </div>
               ) : (
-                <div style={{ fontSize: 11, color: '#bbb', marginBottom: 14 }}>Koch antippen zum Ändern · ↺ Slot neu würfeln</div>
+                <div style={{ fontSize: 11, color: '#bbb', marginBottom: 14 }}>↺ antippen zum Ändern · Rémy, Eigenes oder Vorrat</div>
               )}
               {WOCHENTAGE.filter(t => pendingPlan.some(e => e.tag === t)).map(tag => (
                 <div key={tag} style={{ borderRadius: 12, border: '1px solid #e5e7eb', marginBottom: 14, overflow: 'hidden' }}>
@@ -1497,17 +1497,15 @@ export default function WocheScreen({
                             <div style={{ fontSize: 11, color: '#aaa' }}>{e.minuten} min</div>
                           </div>
                           <button
-                            onClick={() => replanPendingSlot(tag, slot)}
-                            disabled={slotLoading !== null || dayLoading !== null}
+                            onClick={() => { if (slotLoading === key || dayLoading !== null) return; toggleEditMeal(key) }}
                             style={{
                               width: 44, height: 44, flexShrink: 0,
                               border: 'none', borderRadius: 10,
-                              background: 'transparent',
-                              cursor: (slotLoading !== null || dayLoading !== null) ? 'default' : 'pointer',
+                              background: isEditing ? '#F0FAF5' : 'transparent',
+                              cursor: slotLoading === key || dayLoading !== null ? 'default' : 'pointer',
                               fontSize: 20,
-                              color: slotLoading === key ? '#1D9E75' : '#ccc',
+                              color: slotLoading === key ? '#1D9E75' : isEditing ? '#1D9E75' : '#ccc',
                               display: 'flex', alignItems: 'center', justifyContent: 'center',
-                              opacity: (slotLoading !== null && slotLoading !== key) || dayLoading !== null ? 0.3 : 1,
                             }}
                           >
                             {slotLoading === key ? '⏳' : '↺'}
@@ -1520,7 +1518,7 @@ export default function WocheScreen({
                             <div style={{ fontSize: 11, fontWeight: 600, color: '#aaa', paddingTop: 4, borderTop: '1px solid #e5e5e5' }}>Gericht ändern</div>
                             <div style={{ display: 'flex', gap: 4 }}>
                               <button
-                                onClick={() => replanPendingDay(tag)}
+                                onClick={() => replanPendingSlot(tag, slot)}
                                 style={{ flex: 1, padding: '6px 4px', border: '1px solid #ddd', borderRadius: 8, background: 'white', cursor: 'pointer', fontSize: 11, color: '#555' }}
                               >↺ Rémy</button>
                               <button
