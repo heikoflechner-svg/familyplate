@@ -24,6 +24,27 @@ const FB_ABEND = [
 
 type WishJSON = { person: string; tag: string; slot: string; type: string; text?: string; dishName?: string; emoji?: string }
 
+// Findet das erste vollständige {…}-Objekt im Text (Klammer-Tiefenzähler).
+// Robuster als indexOf/lastIndexOf: stoppt sobald die Tiefe wieder 0 erreicht,
+// ignoriert damit Denktext der NACH dem JSON erscheint.
+function extractFirstJson(raw: string): string | null {
+  const start = raw.indexOf('{')
+  if (start === -1) return null
+  let depth = 0
+  let inString = false
+  let escaped = false
+  for (let i = start; i < raw.length; i++) {
+    const c = raw[i]
+    if (escaped) { escaped = false; continue }
+    if (c === '\\' && inString) { escaped = true; continue }
+    if (c === '"') { inString = !inString; continue }
+    if (inString) continue
+    if (c === '{') depth++
+    else if (c === '}') { depth--; if (depth === 0) return raw.slice(start, i + 1) }
+  }
+  return null
+}
+
 export async function POST(req: NextRequest) {
   const { mittagsloseTage, planWE, freezerList, pantryList, behaltene, neuTage, wishes, familyPrompt, lastDishes } = await req.json()
 
@@ -94,7 +115,11 @@ export async function POST(req: NextRequest) {
       body: JSON.stringify({
         model: 'claude-sonnet-4-6',
         max_tokens: 2000,
-        messages: [{ role: 'user', content: prompt }],
+        // Prefill: Modell beginnt direkt mit '{', kein Preamble-/Denktext möglich (Option C)
+        messages: [
+          { role: 'user', content: prompt },
+          { role: 'assistant', content: '{' },
+        ],
       }),
     })
     const data = await resp.json()
@@ -103,12 +128,12 @@ export async function POST(req: NextRequest) {
       console.error('[week-plan] Unexpected API response:', JSON.stringify(data).slice(0, 300))
       throw new Error('No content in response')
     }
-    const raw = data.content[0].text as string
+    // Prefill-'{' wieder voranstellen (API liefert nur die Fortsetzung, nicht den Prefill selbst)
+    const raw = '{' + (data.content[0].text as string)
     console.log('[week-plan] raw response (first 600):', raw.slice(0, 600))
-    const jsonStart = raw.indexOf('{')
-    const jsonEnd = raw.lastIndexOf('}')
-    if (jsonStart === -1 || jsonEnd === -1) throw new Error('No JSON object found in response')
-    const parsed = JSON.parse(raw.slice(jsonStart, jsonEnd + 1))
+    const jsonStr = extractFirstJson(raw)
+    if (!jsonStr) throw new Error('No JSON object found in response')
+    const parsed = JSON.parse(jsonStr)
 
     const allergie = (parsed.allergie ?? {}) as Record<string, string[]>
     const result = [...(behaltene || []), ...parsed.woche]
