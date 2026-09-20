@@ -1,6 +1,7 @@
 'use client'
 import { useState } from 'react'
 import type { Chef, FamilyProfile } from '../lib/state'
+import { changePassword } from '../lib/auth'
 
 const MEMBER_PALETTE = [
   { bg: '#E6F1FB', c: '#0C447C' },
@@ -45,7 +46,18 @@ export default function ProfilScreen({
 }: Props) {
   const [newLaden, setNewLaden] = useState('')
   const [laedenOpen, setLaedenOpen] = useState(false)
+  const [pwOpen, setPwOpen] = useState(false)
+  const [currentPw, setCurrentPw] = useState('')
+  const [newPw, setNewPw] = useState('')
+  const [confirmPw, setConfirmPw] = useState('')
+  const [pwSaving, setPwSaving] = useState(false)
+  const [pwError, setPwError] = useState<string | null>(null)
+  const [pwSuccess, setPwSuccess] = useState(false)
   const maxCount = Math.max(...familyProfile.members.map(m => m.chefStat?.count ?? 0), 1)
+
+  function resetPwForm() {
+    setCurrentPw(''); setNewPw(''); setConfirmPw(''); setPwError(null); setPwSuccess(false)
+  }
 
   return (
     <div className="screen active">
@@ -183,9 +195,81 @@ export default function ProfilScreen({
           )}
         </div>
 
+        <div className="card" style={{ marginBottom: 12 }}>
+          <button
+            onClick={() => { setPwOpen(o => !o); resetPwForm() }}
+            style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+          >
+            <span style={{ fontSize: 12, fontWeight: 700, color: '#888', textTransform: 'uppercase', letterSpacing: '.5px' }}>🔑 Passwort ändern</span>
+            <span style={{ fontSize: 16, color: '#bbb', lineHeight: 1 }}>{pwOpen ? '▲' : '▼'}</span>
+          </button>
+          {pwOpen && (
+            <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {pwSuccess ? (
+                <div style={{ color: '#1D9E75', fontSize: 13, textAlign: 'center', padding: '8px 0' }}>
+                  ✓ Passwort wurde geändert
+                </div>
+              ) : (
+                <>
+                  <input
+                    type="password"
+                    placeholder="Aktuelles Passwort"
+                    value={currentPw}
+                    onChange={e => setCurrentPw(e.target.value)}
+                    autoComplete="current-password"
+                    style={{ border: '1px solid #ddd', borderRadius: 10, padding: '9px 12px', fontSize: 13, outline: 'none' }}
+                  />
+                  <input
+                    type="password"
+                    placeholder="Neues Passwort (min. 8 Zeichen)"
+                    value={newPw}
+                    onChange={e => setNewPw(e.target.value)}
+                    autoComplete="new-password"
+                    style={{ border: '1px solid #ddd', borderRadius: 10, padding: '9px 12px', fontSize: 13, outline: 'none' }}
+                  />
+                  <input
+                    type="password"
+                    placeholder="Neues Passwort wiederholen"
+                    value={confirmPw}
+                    onChange={e => setConfirmPw(e.target.value)}
+                    autoComplete="new-password"
+                    style={{ border: '1px solid #ddd', borderRadius: 10, padding: '9px 12px', fontSize: 13, outline: 'none' }}
+                  />
+                  {pwError && (
+                    <div style={{ color: '#c0392b', fontSize: 12 }}>{pwError}</div>
+                  )}
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button
+                      disabled={pwSaving}
+                      onClick={async () => {
+                        if (!currentPw) { setPwError('Bitte aktuelles Passwort eingeben'); return }
+                        if (newPw.length < 8) { setPwError('Neues Passwort muss mindestens 8 Zeichen haben'); return }
+                        if (newPw !== confirmPw) { setPwError('Neue Passwörter stimmen nicht überein'); return }
+                        setPwSaving(true); setPwError(null)
+                        const { error } = await changePassword(currentPw, newPw)
+                        setPwSaving(false)
+                        if (error) { setPwError(error) } else { setPwSuccess(true); setCurrentPw(''); setNewPw(''); setConfirmPw('') }
+                      }}
+                      style={{ flex: 1, padding: '10px', background: pwSaving ? '#ccc' : '#0C447C', color: '#fff', border: 'none', borderRadius: 10, fontSize: 13, cursor: pwSaving ? 'default' : 'pointer' }}
+                    >
+                      {pwSaving ? '…' : 'Passwort ändern'}
+                    </button>
+                    <button
+                      onClick={() => { setPwOpen(false); resetPwForm() }}
+                      style={{ padding: '10px 14px', background: 'none', border: '1px solid #eee', borderRadius: 10, fontSize: 13, color: '#888', cursor: 'pointer' }}
+                    >
+                      Abbrechen
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+
         <button
           onClick={onSignOut}
-          style={{ marginTop: 20, width: '100%', padding: '11px', background: 'white', border: '1px solid #eee', borderRadius: 10, fontSize: 13, color: '#888', cursor: 'pointer' }}
+          style={{ marginTop: 8, width: '100%', padding: '11px', background: 'white', border: '1px solid #eee', borderRadius: 10, fontSize: 13, color: '#888', cursor: 'pointer' }}
         >
           Abmelden
         </button>

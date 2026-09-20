@@ -10,6 +10,16 @@ export async function signOut(): Promise<void> {
   await supabase.auth.signOut()
 }
 
+export async function changePassword(currentPw: string, newPw: string): Promise<{ error: string | null }> {
+  const { data: { session } } = await supabase.auth.getSession()
+  const email = session?.user?.email
+  if (!email) return { error: 'Nicht eingeloggt' }
+  const { error: authError } = await supabase.auth.signInWithPassword({ email, password: currentPw })
+  if (authError) return { error: 'Aktuelles Passwort ist falsch' }
+  const { error: updateError } = await supabase.auth.updateUser({ password: newPw })
+  return { error: updateError?.message ?? null }
+}
+
 export function onAuthChange(callback: (chef: string | null) => void): () => void {
   const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
     if (!session?.user) {
