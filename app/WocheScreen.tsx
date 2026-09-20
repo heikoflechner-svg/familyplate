@@ -1042,6 +1042,25 @@ export default function WocheScreen({
     }
   }
 
+  // Plan-Vorschau (aktuelle Woche, noch nicht übernommen): Rezept lazy nachladen
+  async function openPendingPlanRecipe(gericht: string, emoji: string) {
+    setSelectedMealName(gericht)
+    const existing = pendingPlanMeals[gericht]
+    if (isFullRecipe(existing)) return
+    setRecipeLoading(gericht)
+    try {
+      const rezept = await generateRecipe(gericht, emoji, getFreezerListString(freezerItems), getPantryListString(pantryItems), familyPrompt)
+      if (rezept) {
+        setPendingPlanMeals(prev => ({
+          ...prev,
+          [gericht]: { ...rezept, ersetzteZutaten: rezept.ersetzteZutaten?.length ? rezept.ersetzteZutaten : (prev[gericht]?.ersetzteZutaten ?? []) },
+        }))
+      }
+    } finally {
+      setRecipeLoading(null)
+    }
+  }
+
   // Nächste-Woche-Plan (gespeichert): Rezept lazy nachladen und persistieren
   async function openNwSavedRecipe(gericht: string, emoji: string) {
     setSelectedMealName(gericht)
@@ -1061,9 +1080,9 @@ export default function WocheScreen({
     }
   }
 
-  // Rezept fürs Modal auflösen – über alle Stores (aktuelle Woche, NW-Vorschlag, NW-gespeichert)
+  // Rezept fürs Modal auflösen – über alle Stores (Plan-Vorschau, aktuelle Woche, NW-Vorschlag, NW-gespeichert)
   function selectedRezept(name: string): Rezept | null {
-    const cands = [mealsData[name], nwPendingMeals[name], nextWeekData?.mealsData?.[name]]
+    const cands = [pendingPlanMeals[name], mealsData[name], nwPendingMeals[name], nextWeekData?.mealsData?.[name]]
     return cands.find(r => isFullRecipe(r)) ?? cands.find((r): r is Rezept => !!r) ?? null
   }
 
@@ -1392,7 +1411,10 @@ export default function WocheScreen({
   // ── Plan view ─────────────────────────────────────────────────────────────
   if (view === 'plan') {
     return (
-      <div className="screen active">
+      <div className="screen active" style={{ position: 'relative' }}>
+        {selectedMealName && (
+          <RecipeModal name={selectedMealName} rezept={selectedRezept(selectedMealName)} loading={recipeLoading === selectedMealName} onClose={() => setSelectedMealName(null)} />
+        )}
         <div className="topbar">
           {planState !== 'loading' && (
             <button className="back" onClick={() => setView(weekPlan.length > 0 ? 'home' : 'home')}>‹</button>
@@ -1458,9 +1480,9 @@ export default function WocheScreen({
                         </div>
                         <div style={{ padding: '3px 12px 10px', display: 'flex', alignItems: 'center', gap: 8 }}>
                           <span style={{ fontSize: 18 }}>{e.emoji}</span>
-                          <div style={{ flex: 1 }}>
+                          <div onClick={() => openPendingPlanRecipe(e.gericht, e.emoji)} style={{ flex: 1, cursor: 'pointer' }}>
                             <div style={{ fontSize: 13, fontWeight: 700, color: '#111', display: 'flex', alignItems: 'center', gap: 4 }}>
-                              {e.gericht}
+                              {e.gericht}<span style={{ fontSize: 10, color: '#bbb' }}>›</span>
                               {(pendingPlanMeals[e.gericht]?.ersetzteZutaten?.length ?? 0) > 0 && (
                                 <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 14, height: 14, borderRadius: '50%', background: '#EF4444', color: 'white', fontSize: 9, fontWeight: 700, flexShrink: 0 }}>!</span>
                               )}
