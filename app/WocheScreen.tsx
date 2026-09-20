@@ -202,10 +202,6 @@ export default function WocheScreen({
     if (initialView === 'attendance') setView('attendance')
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialView])
-  useEffect(() => {
-    onInitialViewConsumed?.()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
   const [planState, setPlanState] = useState<PlanState>('options')
   const [pendingPlan, setPendingPlan] = useState<WeekPlanEntry[]>([])
   const [pendingPlanMeals, setPendingPlanMeals] = useState<Record<string, Rezept>>({})

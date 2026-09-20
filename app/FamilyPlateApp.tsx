@@ -270,6 +270,7 @@ export default function FamilyPlateApp() {
   }
 
   function handleTabChange(tab: Tab) {
+    if (tab !== 'woche') setWocheInitView('home')
     setActiveTab(tab)
   }
 
@@ -351,7 +352,6 @@ export default function FamilyPlateApp() {
             onShoppingListChange={handleShoppingListChange}
             onFreezerChange={setFreezerItems}
             initialView={wocheInitView}
-            onInitialViewConsumed={() => setWocheInitView('home')}
             shoppingDays={shoppingDays}
             shoppingPersons={shoppingPersons}
             onShoppingPersonsChange={handleShoppingPersonsChange}
@@ -361,7 +361,7 @@ export default function FamilyPlateApp() {
             nextWeekData={nextWeekData}
             onNextWeekDataChange={handleNextWeekDataChange}
             onActivateNextWeek={handleActivateNextWeek}
-            onAttendanceBack={attendanceReturnToMehr ? () => { setAttendanceReturnToMehr(false); setActiveTab('mehr') } : undefined}
+            onAttendanceBack={attendanceReturnToMehr ? () => { setAttendanceReturnToMehr(false); setWocheInitView('home'); setActiveTab('mehr') } : undefined}
           />
         )}
         {activeTab === 'gefriertruhe' && (
