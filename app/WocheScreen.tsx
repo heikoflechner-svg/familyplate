@@ -199,7 +199,10 @@ export default function WocheScreen({
 
   const [view, setView] = useState<View>(initialView)
   useEffect(() => {
-    if (initialView === 'attendance') setView('attendance')
+    if (initialView === 'attendance') {
+      setView('attendance')
+      onInitialViewConsumed?.()
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialView])
   const [planState, setPlanState] = useState<PlanState>('options')

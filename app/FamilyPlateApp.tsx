@@ -321,7 +321,7 @@ export default function FamilyPlateApp() {
         <span style={{ fontSize: 10, color: '#aaa' }}>{currentName}</span>
       </div>
       <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-        {activeTab === 'woche' && (
+        <div style={{ display: activeTab === 'woche' ? 'flex' : 'none', flex: 1, flexDirection: 'column', overflow: 'hidden', minHeight: 0 }}>
           <WocheScreen
             weekPlan={weekPlan}
             mealsData={mealsData}
@@ -352,6 +352,7 @@ export default function FamilyPlateApp() {
             onShoppingListChange={handleShoppingListChange}
             onFreezerChange={setFreezerItems}
             initialView={wocheInitView}
+            onInitialViewConsumed={() => setWocheInitView('home')}
             shoppingDays={shoppingDays}
             shoppingPersons={shoppingPersons}
             onShoppingPersonsChange={handleShoppingPersonsChange}
@@ -363,7 +364,7 @@ export default function FamilyPlateApp() {
             onActivateNextWeek={handleActivateNextWeek}
             onAttendanceBack={attendanceReturnToMehr ? () => { setAttendanceReturnToMehr(false); setWocheInitView('home'); setActiveTab('mehr') } : undefined}
           />
-        )}
+        </div>
         {activeTab === 'gefriertruhe' && (
           <VorraeteScreen
             freezerItems={freezerItems}
