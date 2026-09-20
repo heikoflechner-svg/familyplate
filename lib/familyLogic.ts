@@ -11,10 +11,6 @@ export const DEFAULT_MEMBERS: FamilyMember[] = [
 export const CHEF_ORDER: Chef[] = DEFAULT_MEMBERS.map(m => m.id)
 
 export async function loadFamilyProfile(): Promise<FamilyProfile | null> {
-  if (new Date().getFullYear() > 0) { // TEMPORÄR – wird sofort entfernt
-    await new Promise(resolve => setTimeout(resolve, 1500))
-    throw new Error('TEST – Ladefehler simuliert')
-  }
   const { data, error } = await supabase
     .from('family_profiles')
     .select('members, onboarding_done, laeden, zutaten_laden')
