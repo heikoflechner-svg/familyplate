@@ -1515,6 +1515,8 @@ export default function WocheScreen({
                     if (!e) return null
                     const key = `${tag}-${slot}`
                     const isEditing = editMealKey === key
+                    const isAttendanceEdit = attendanceEditKey === key
+                    const slotAnwesend = getSlotAnwesend(tag, slot)
                     const stockItems = [...freezerItems, ...pantryItems]
                     return (
                       <div key={slot} style={{ borderTop: '1px solid #f0f0f0' }}>
@@ -1524,7 +1526,38 @@ export default function WocheScreen({
                             onClick={() => toggleEditMeal(key)}
                             style={{ fontSize: 11, color: '#555', cursor: 'pointer', textDecoration: 'underline', textDecorationStyle: 'dashed', textDecorationColor: '#bbb' }}
                           >{personNames[e.chef]}</span>
+                          <span style={{ fontSize: 10, color: '#ddd' }}>·</span>
+                          <span
+                            onClick={() => setAttendanceEditKey(isAttendanceEdit ? null : key)}
+                            style={{ fontSize: 11, color: '#555', cursor: 'pointer', textDecoration: 'underline', textDecorationStyle: 'dashed', textDecorationColor: '#bbb' }}
+                          >Essen: {slotEssenLabel(tag, slot)}</span>
                         </div>
+                        {isAttendanceEdit && (
+                          <div style={{ padding: '6px 12px 8px', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6, background: '#f9f9f9', borderTop: '1px solid #f0f0f0' }}>
+                            <span style={{ fontSize: 11, color: '#888', width: '100%' }}>Wer isst mit?</span>
+                            {allChefIds.map(c => {
+                              const on = slotAnwesend.includes(c)
+                              const cc = CFG[c] ?? CFG.MA
+                              return (
+                                <button key={c} onClick={() => toggleSlotAttendance(tag, slot, c)}
+                                  style={{ padding: '4px 10px', borderRadius: 8, border: `1px solid ${on ? cc.c : '#ddd'}`, background: on ? cc.bg : 'white', color: on ? cc.c : '#aaa', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
+                                >{personNames[c] ?? c}</button>
+                              )
+                            })}
+                            {(() => {
+                              const g = attendance.find(a => a.tag === tag)?.gaeste ?? 0
+                              return (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                  <span style={{ fontSize: 11, color: '#888' }}>Gäste:</span>
+                                  <button onClick={() => changeGaeste(tag, -1)} disabled={g === 0} style={{ width: 22, height: 22, borderRadius: 6, border: '1px solid #ddd', background: 'white', fontSize: 14, cursor: g > 0 ? 'pointer' : 'default', opacity: g > 0 ? 1 : 0.4, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>−</button>
+                                  <span style={{ fontSize: 12, minWidth: 16, textAlign: 'center', fontWeight: 600 }}>{g}</span>
+                                  <button onClick={() => changeGaeste(tag, 1)} style={{ width: 22, height: 22, borderRadius: 6, border: '1px solid #ddd', background: 'white', fontSize: 14, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
+                                </div>
+                              )
+                            })()}
+                            <button onClick={() => setAttendanceEditKey(null)} style={{ marginLeft: 'auto', padding: '4px 10px', border: '1px solid #ddd', borderRadius: 8, background: 'white', color: '#888', fontSize: 11, cursor: 'pointer' }}>Fertig</button>
+                          </div>
+                        )}
                         <div style={{ padding: '3px 12px 10px', display: 'flex', alignItems: 'center', gap: 8 }}>
                           <span style={{ fontSize: 18 }}>{e.emoji}</span>
                           <div onClick={() => openPendingPlanRecipe(e.gericht, e.emoji)} style={{ flex: 1, cursor: 'pointer' }}>
