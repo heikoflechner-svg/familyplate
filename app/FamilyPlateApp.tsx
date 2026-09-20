@@ -43,8 +43,8 @@ export default function FamilyPlateApp() {
   const [nextWeekData, setNextWeekData] = useState<NextWeekData | null>(null)
   const [wocheInitView, setWocheInitView] = useState<'home' | 'attendance'>('home')
   const [attendanceReturnToMehr, setAttendanceReturnToMehr] = useState(false)
-  const [wocheCurrentView, setWocheCurrentView] = useState<'home' | 'week'>('home')
-  const [wocheSavedView, setWocheSavedView] = useState<'home' | 'week'>('home')
+  const [wocheCurrentView, setWocheCurrentView] = useState<'home' | 'week' | 'plan'>('home')
+  const [wocheSavedView, setWocheSavedView] = useState<'home' | 'week' | 'plan'>('home')
   const [activeTab, setActiveTab] = useState<Tab>('woche')
   const [profileSaveError, setProfileSaveError] = useState<string | null>(null)
   const [profileLoadError, setProfileLoadError] = useState(false)
@@ -392,7 +392,7 @@ export default function FamilyPlateApp() {
             onNextWeekDataChange={handleNextWeekDataChange}
             onActivateNextWeek={handleActivateNextWeek}
             onAttendanceBack={attendanceReturnToMehr ? () => { setAttendanceReturnToMehr(false); setWocheInitView('home'); setActiveTab('mehr') } : undefined}
-            onViewChange={(v) => { if (v === 'home' || v === 'week') setWocheCurrentView(v as 'home' | 'week') }}
+            onViewChange={(v) => { if (v === 'home' || v === 'week' || v === 'plan') setWocheCurrentView(v as 'home' | 'week' | 'plan') }}
             attendanceRestoreView={attendanceReturnToMehr ? wocheSavedView : undefined}
           />
         </div>

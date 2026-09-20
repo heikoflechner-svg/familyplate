@@ -108,7 +108,7 @@ interface Props {
   onActivateNextWeek?: () => Promise<void>
   onAttendanceBack?: () => void
   onViewChange?: (view: 'home' | 'week' | 'plan' | 'attendance') => void
-  attendanceRestoreView?: 'home' | 'week'
+  attendanceRestoreView?: 'home' | 'week' | 'plan'
 }
 
 type View = 'home' | 'week' | 'plan' | 'attendance'
