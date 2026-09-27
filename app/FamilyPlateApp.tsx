@@ -3,7 +3,7 @@ import { useState, useEffect, useRef } from 'react'
 import { loadWeekPlan, saveWeekPlan, saveAttendance, saveShoppingList, saveProposals, saveWochenchef, savePlanConfirmed, saveShopDone, saveShoppingDays, saveShoppingPersons, loadLastDishes, getMondayIso, getNextMondayIso, saveWeekStart, loadNextWeekData, saveNextWeekData, activateNextWeek } from '../lib/mealLogic'
 import { loadFreezerItems, loadPantryItems } from '../lib/freezerLogic'
 import { loadFamilyProfile, saveFamilyProfile, applyChefStats, DEFAULT_MEMBERS } from '../lib/familyLogic'
-import { signOut, onAuthChange } from '../lib/auth'
+import { signOut, onAuthChange, SETUP_NEEDED } from '../lib/auth'
 import type { WeekPlanEntry, Rezept, FreezerItem, PantryItem, ShoppingItem, Tab, Wish, Chef, FamilyProfile, DayAttendance, ChangeProposal, NextWeekData, NextWeekWish } from '../lib/state'
 import LoginScreen from './LoginScreen'
 import WocheScreen from './WocheScreen'
@@ -54,11 +54,11 @@ export default function FamilyPlateApp() {
       lastAuthUser.current = chef
       setCurrentUser(chef)
       setAuthChecked(true)
-      if (chef) {
+      if (chef && chef !== SETUP_NEEDED) {
         // Only start the loading spinner when the user actually changes (avoids
         // re-firing on TOKEN_REFRESHED / SIGNED_IN after data is already loaded)
         if (prev !== chef) setDataLoading(true)
-      } else {
+      } else if (!chef) {
         setDataLoading(false)
         setActiveTab('woche')
         setWeekPlan([])
@@ -77,7 +77,7 @@ export default function FamilyPlateApp() {
   }, [])
 
   useEffect(() => {
-    if (!currentUser) return
+    if (!currentUser || currentUser === SETUP_NEEDED) return
     const doLoad = async () => {
       setProfileLoadError(false)
       const [loaded, freezer, pantry, profile, nwLoaded] = await Promise.all([
@@ -287,12 +287,14 @@ export default function FamilyPlateApp() {
     return (
       <div className="phone" style={{ alignItems: 'center', justifyContent: 'center', gap: 12 }}>
         <div style={{ fontSize: 40 }}>🐀</div>
-        <div style={{ fontSize: 13, color: '#aaa' }}>Lade FamilyPlate…</div>
+        <div style={{ fontSize: 13, color: '#aaa' }}>Lade MenuFamPlan…</div>
       </div>
     )
   }
 
-  if (!currentUser) {
+  if (!currentUser || currentUser === SETUP_NEEDED) {
+    // SETUP_NEEDED: Nutzer ist eingeloggt, hat aber noch keine Familie.
+    // Etappe 2 ersetzt dies durch einen RegisterScreen / Setup-Flow.
     return <LoginScreen />
   }
 
@@ -302,7 +304,7 @@ export default function FamilyPlateApp() {
         <div style={{ fontSize: 44 }}>⚠️</div>
         <div style={{ fontSize: 16, fontWeight: 700, color: '#991B1B' }}>Ladefehler</div>
         <div style={{ fontSize: 13, color: '#666', lineHeight: 1.5 }}>
-          FamilyPlate konnte nicht geladen werden — möglicherweise ein Verbindungsproblem oder ein laufendes Update.
+          MenuFamPlan konnte nicht geladen werden — möglicherweise ein Verbindungsproblem oder ein laufendes Update.
         </div>
         <button
           onClick={() => { setDataLoading(true); setLoadTrigger(t => t + 1) }}
@@ -344,7 +346,7 @@ export default function FamilyPlateApp() {
       )}
       <div className="statusbar">
         <span>9:41</span>
-        <span>🍽 FamilyPlate</span>
+        <span>🍽 MenuFamPlan</span>
         <span style={{ fontSize: 10, color: '#aaa' }}>{currentName}</span>
       </div>
       <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>

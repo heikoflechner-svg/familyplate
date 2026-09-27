@@ -2510,7 +2510,7 @@ export default function WocheScreen({
   if (weekPlan.length === 0) {
     return (
       <div className="screen active">
-        <div className="topbar"><h1>🍽 FamilyPlate</h1></div>
+        <div className="topbar"><h1>🍽 MenuFamPlan</h1></div>
         <div className="content">
           {error && (
             <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 8, padding: '10px 14px', marginBottom: 12, fontSize: 12, color: '#991B1B' }}>
@@ -2576,7 +2576,7 @@ export default function WocheScreen({
       {selectedMealName && (
         <RecipeModal name={selectedMealName} rezept={selectedRezept(selectedMealName)} loading={recipeLoading === selectedMealName} onClose={() => setSelectedMealName(null)} />
       )}
-      <div className="topbar"><h1>🍽 FamilyPlate</h1></div>
+      <div className="topbar"><h1>🍽 MenuFamPlan</h1></div>
       <div className="content">
         {error && (
           <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 8, padding: '10px 14px', marginBottom: 12, fontSize: 12, color: '#991B1B' }}>

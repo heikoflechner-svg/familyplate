@@ -203,7 +203,7 @@ export default function ProfilScreen({
         </button>
 
         <div style={{ marginTop: 16, fontSize: 11, color: '#ccc', textAlign: 'center' }}>
-          FamilyPlate · Powered by Rémy 🐀
+          MenuFamPlan · Powered by Rémy 🐀
         </div>
 
       </div>

@@ -23,7 +23,7 @@ export default function LoginScreen() {
     <div className="phone" style={{ alignItems: 'center', justifyContent: 'center', gap: 28, padding: '0 28px' }}>
       <div style={{ textAlign: 'center' }}>
         <div style={{ fontSize: 52, marginBottom: 10 }}>🍽</div>
-        <div style={{ fontSize: 22, fontWeight: 700, color: '#111' }}>FamilyPlate</div>
+        <div style={{ fontSize: 22, fontWeight: 700, color: '#111' }}>MenuFamPlan</div>
         <div style={{ fontSize: 13, color: '#aaa', marginTop: 6 }}>Bitte anmelden</div>
       </div>
 
