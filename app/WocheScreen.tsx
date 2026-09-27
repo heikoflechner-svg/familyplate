@@ -1443,15 +1443,6 @@ export default function WocheScreen({
             {confirmedCount < allChefIds.length ? '⚠️' : '✅'} {confirmedCount} von {allChefIds.length} bestätigt
           </div>
 
-          {currentUser === wochenchef && (
-            <button className="btn primary" onClick={() => {
-              if (pendingPlan.length > 0) setView('plan')
-              else if (weekPlan.length > 0) setView('home')
-              else startPlanning()
-            }} style={{ marginTop: 8, background: '#1D9E75' }}>
-              🗓 Zur Wochenplanung →
-            </button>
-          )}
         </div>
       </div>
     )
