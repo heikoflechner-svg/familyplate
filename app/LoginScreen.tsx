@@ -2,7 +2,11 @@
 import { useState } from 'react'
 import { signIn } from '../lib/auth'
 
-export default function LoginScreen() {
+interface Props {
+  onRegister: () => void
+}
+
+export default function LoginScreen({ onRegister }: Props) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
@@ -62,6 +66,15 @@ export default function LoginScreen() {
           style={{ opacity: !email || !password || loading ? 0.5 : 1 }}
         >
           {loading ? '⏳ Anmelden…' : 'Anmelden'}
+        </button>
+      </div>
+
+      <div style={{ textAlign: 'center' }}>
+        <button
+          onClick={onRegister}
+          style={{ background: 'none', border: 'none', fontSize: 13, color: '#aaa', cursor: 'pointer', padding: '4px 0' }}
+        >
+          Noch kein Konto? Registrieren
         </button>
       </div>
     </div>

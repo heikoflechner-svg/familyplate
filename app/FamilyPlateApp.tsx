@@ -6,6 +6,8 @@ import { loadFamilyProfile, saveFamilyProfile, applyChefStats, DEFAULT_MEMBERS }
 import { signOut, onAuthChange, SETUP_NEEDED } from '../lib/auth'
 import type { WeekPlanEntry, Rezept, FreezerItem, PantryItem, ShoppingItem, Tab, Wish, Chef, FamilyProfile, DayAttendance, ChangeProposal, NextWeekData, NextWeekWish } from '../lib/state'
 import LoginScreen from './LoginScreen'
+import RegisterScreen from './RegisterScreen'
+import SetupScreen from './SetupScreen'
 import WocheScreen from './WocheScreen'
 import VorraeteScreen from './VorraeteScreen'
 import EinkaufScreen from './EinkaufScreen'
@@ -44,6 +46,7 @@ export default function FamilyPlateApp() {
   const [wocheInitView, setWocheInitView] = useState<'home' | 'attendance'>('home')
   const [attendanceReturnToMehr, setAttendanceReturnToMehr] = useState(false)
   const [activeTab, setActiveTab] = useState<Tab>('woche')
+  const [authView, setAuthView] = useState<'login' | 'register'>('login')
   const [profileSaveError, setProfileSaveError] = useState<string | null>(null)
   const [profileLoadError, setProfileLoadError] = useState(false)
   const [loadTrigger, setLoadTrigger] = useState(0)
@@ -61,6 +64,7 @@ export default function FamilyPlateApp() {
       } else if (!chef) {
         setDataLoading(false)
         setActiveTab('woche')
+        setAuthView('login')
         setWeekPlan([])
         setMealsData({})
         setWishes([])
@@ -292,10 +296,15 @@ export default function FamilyPlateApp() {
     )
   }
 
-  if (!currentUser || currentUser === SETUP_NEEDED) {
-    // SETUP_NEEDED: Nutzer ist eingeloggt, hat aber noch keine Familie.
-    // Etappe 2 ersetzt dies durch einen RegisterScreen / Setup-Flow.
-    return <LoginScreen />
+  if (!currentUser) {
+    if (authView === 'register') {
+      return <RegisterScreen onBack={() => setAuthView('login')} />
+    }
+    return <LoginScreen onRegister={() => setAuthView('register')} />
+  }
+
+  if (currentUser === SETUP_NEEDED) {
+    return <SetupScreen />
   }
 
   if (profileLoadError) {
