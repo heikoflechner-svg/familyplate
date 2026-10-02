@@ -37,8 +37,9 @@ export async function POST(req: NextRequest) {
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: captchaBody.toString(),
   })
-  const captchaData = await captchaRes.json() as { success: boolean }
+  const captchaData = await captchaRes.json() as { success: boolean; 'error-codes'?: string[] }
   if (!captchaData.success) {
+    console.error('[hCaptcha] siteverify failed. error-codes:', captchaData['error-codes'] ?? '(none)')
     return NextResponse.json({ error: 'Captcha ungültig. Bitte erneut versuchen.' }, { status: 400 })
   }
 
