@@ -74,7 +74,7 @@ export async function POST(req: NextRequest) {
     .eq('id', familyId)
     .maybeSingle()
   if (existingFamily) {
-    familyId = `${baseSlug}-${Math.random().toString(36).slice(2, 7)}`
+    familyId = `${baseSlug}-${user.id.replace(/-/g, '').slice(0, 8)}`
   }
 
   const kuerzel = makeKuerzel(displayName)

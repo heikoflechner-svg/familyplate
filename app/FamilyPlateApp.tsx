@@ -326,7 +326,15 @@ export default function FamilyPlateApp() {
   }
 
   if (!familyProfile) {
-    return <OnboardingWizard key="onboarding" onDone={profile => setFamilyProfile(profile)} />
+    return (
+      <OnboardingWizard
+        key="onboarding"
+        onDone={profile => {
+          setFamilyProfile(profile)
+          if (!activeWochenchef) void handleWochenchefChange(profile.members[0].id)
+        }}
+      />
+    )
   }
 
   if (editingProfile) {

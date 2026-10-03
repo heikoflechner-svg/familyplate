@@ -1,6 +1,7 @@
 'use client'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { saveFamilyProfile, loadFamilyProfile, DEFAULT_MEMBERS } from '../lib/familyLogic'
+import { supabase } from '../lib/supabase'
 import type { FamilyMember, FamilyProfile } from '../lib/state'
 import { DEFAULT_LAEDEN } from '../lib/state'
 
@@ -42,6 +43,14 @@ export default function OnboardingWizard({ onDone, initialProfile, onCancel }: P
   })
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (initialProfile) return
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      const name = (session?.user?.user_metadata as { display_name?: string })?.display_name
+      if (name) setMembers(ms => ms.map((m, i) => i === 0 ? { ...m, name } : m))
+    })
+  }, [initialProfile])
 
   function updateName(id: string, name: string) {
     setMembers(ms => ms.map(m => m.id === id ? { ...m, name } : m))

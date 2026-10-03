@@ -74,7 +74,7 @@ export async function POST(req: NextRequest) {
 
   // Einzige Bestätigungsmail via Resend
   const { error: emailError } = await resend.emails.send({
-    from: 'MenuFamPlan <onboarding@resend.dev>',
+    from: process.env.EMAIL_FROM ?? 'MenuFamPlan <onboarding@resend.dev>',
     to: email,
     subject: 'Konto bestätigen – MenuFamPlan',
     html: `
