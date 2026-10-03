@@ -331,7 +331,7 @@ export default function FamilyPlateApp() {
         key="onboarding"
         onDone={profile => {
           setFamilyProfile(profile)
-          if (!activeWochenchef) void handleWochenchefChange(profile.members[0].id)
+          void handleWochenchefChange(profile.members[0].id)
         }}
       />
     )

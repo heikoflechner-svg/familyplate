@@ -13,6 +13,7 @@ export default function SetupScreen() {
   const [displayName, setDisplayName] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [noSession, setNoSession] = useState(false)
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -29,7 +30,7 @@ export default function SetupScreen() {
     try {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session?.access_token) {
-        setError('Sitzung abgelaufen. Bitte neu anmelden.')
+        setNoSession(true)
         setLoading(false)
         return
       }
@@ -90,7 +91,18 @@ export default function SetupScreen() {
           style={inputStyle}
         />
 
-        {error && (
+        {noSession && (
+          <div style={{ fontSize: 13, color: '#B91C1C', background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 10, padding: '12px 14px' }}>
+            Kein aktives Login auf diesem Gerät. Bitte melde dich hier an, um fortzufahren.
+            <button
+              onClick={() => supabase.auth.signOut()}
+              style={{ display: 'block', marginTop: 10, background: '#1D9E75', color: '#fff', border: 'none', borderRadius: 8, padding: '9px 18px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
+            >
+              Zum Login
+            </button>
+          </div>
+        )}
+        {error && !noSession && (
           <div style={{ fontSize: 12, color: '#E24B4A' }}>{error}</div>
         )}
 

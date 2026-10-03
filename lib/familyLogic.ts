@@ -3,9 +3,9 @@ import type { Chef, FamilyMember, FamilyProfile, WeekPlanEntry } from './state'
 import { DEFAULT_LAEDEN } from './state'
 
 export const DEFAULT_MEMBERS: FamilyMember[] = [
-  { id: 'M1', name: 'Person 1', allergien: [], vorlieben: [] },
-  { id: 'M2', name: 'Person 2', allergien: [], vorlieben: [] },
-  { id: 'M3', name: 'Person 3', allergien: [], vorlieben: [] },
+  { id: 'M1', name: '', allergien: [], vorlieben: [] },
+  { id: 'M2', name: '', allergien: [], vorlieben: [] },
+  { id: 'M3', name: '', allergien: [], vorlieben: [] },
 ]
 
 export const CHEF_ORDER: Chef[] = DEFAULT_MEMBERS.map(m => m.id)

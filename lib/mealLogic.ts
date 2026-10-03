@@ -24,7 +24,7 @@ export async function loadWeekPlan(): Promise<{ plan: WeekPlanEntry[]; mealsData
     .limit(1)
     .single()
 
-  if (error || !data) return { plan: [], mealsData: {}, wishes: [], attendance: [], attendanceConfirmed: [], shoppingList: [], proposals: [], wochenchef: 'PA', planConfirmed: false, shopDone: false, shoppingDays: [], shoppingPersons: {}, weekStart: null }
+  if (error || !data) return { plan: [], mealsData: {}, wishes: [], attendance: [], attendanceConfirmed: [], shoppingList: [], proposals: [], wochenchef: '', planConfirmed: false, shopDone: false, shoppingDays: [], shoppingPersons: {}, weekStart: null }
 
   const rawAttendance = data.attendance
   let attendance: DayAttendance[] = []
@@ -45,7 +45,7 @@ export async function loadWeekPlan(): Promise<{ plan: WeekPlanEntry[]; mealsData
     attendanceConfirmed,
     shoppingList: Array.isArray(data.shopping_list) ? (data.shopping_list as ShoppingItem[]) : [],
     proposals: Array.isArray(data.proposals) ? (data.proposals as ChangeProposal[]) : [],
-    wochenchef: ((data.wochenchef as Chef | null) ?? 'PA'),
+    wochenchef: ((data.wochenchef as Chef | null) ?? ''),
     planConfirmed: (data.plan_confirmed as boolean | null) ?? false,
     shopDone: (data.shopping_done as boolean | null) ?? false,
     shoppingDays: ((data.shopping_day as string | null) ?? '').split(',').filter(Boolean),
@@ -123,7 +123,7 @@ export async function activateNextWeek(): Promise<{ weekStart: string | null; ne
 
   await supabase.from('week_plans').update({
     week_start: nextStart ?? getMondayIso(),
-    wochenchef: nextData?.wochenchef ?? 'PA',
+    wochenchef: nextData?.wochenchef ?? '',
     plan_data: nextData?.plan ?? [],
     meals_data: nextData?.mealsData ?? {},
     wishes: (nextData?.wishes ?? []) as unknown as NextWeekWish[],

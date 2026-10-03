@@ -86,8 +86,9 @@ export default function OnboardingWizard({ onDone, initialProfile, onCancel }: P
       }
     }
 
-    const finalMembers = members.map(m => ({
+    const finalMembers = members.map((m, idx) => ({
       ...m,
+      name: m.name.trim() || `Person ${idx + 1}`,
       allergien: [
         ...m.allergien,
         ...freitext[m.id].a.split(',').map(s => s.trim()).filter(Boolean),
@@ -107,9 +108,7 @@ export default function OnboardingWizard({ onDone, initialProfile, onCancel }: P
     }
   }
 
-  const canProceed = step === 1
-    ? members.every(m => m.name.trim().length > 0)
-    : true
+  const canProceed = true
 
   return (
     <div className="phone" style={{ display: 'flex', flexDirection: 'column', padding: '28px 24px 20px' }}>
@@ -146,7 +145,7 @@ export default function OnboardingWizard({ onDone, initialProfile, onCancel }: P
                   <input
                     value={m.name}
                     onChange={e => updateName(m.id, e.target.value)}
-                    placeholder="Name"
+                    placeholder={`Person ${idx + 1}`}
                     style={{ flex: 1, padding: '12px 14px', fontSize: 15, borderRadius: 10, border: '1px solid #ddd', outline: 'none', boxSizing: 'border-box' }}
                   />
                 </div>
