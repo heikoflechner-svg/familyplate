@@ -330,8 +330,15 @@ export default function FamilyPlateApp() {
       <OnboardingWizard
         key="onboarding"
         onDone={profile => {
-          setFamilyProfile(profile)
-          void handleWochenchefChange(profile.members[0].id)
+          const corrected = {
+            ...profile,
+            members: profile.members.map((m, i) =>
+              i === 0 ? { ...m, id: currentUser } : m
+            ),
+          }
+          setFamilyProfile(corrected)
+          void saveFamilyProfile(corrected)
+          void handleWochenchefChange(currentUser)
         }}
       />
     )
