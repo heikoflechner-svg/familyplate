@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { generateWeekPlan, getRemySuggestions, generateRecipe, saveLastDishes, isFullRecipe } from '../lib/mealLogic'
 import { getFreezerListString, getPantryListString, addFreezerItem, deleteFreezerItem } from '../lib/freezerLogic'
-import { buildFamilyPrompt, DEFAULT_MEMBERS } from '../lib/familyLogic'
+import { buildFamilyPrompt, buildMemberCfg, DEFAULT_MEMBERS } from '../lib/familyLogic'
 import type { WeekPlanEntry, Rezept, FreezerItem, PantryItem, Wish, Chef, WochenSlot, FamilyMember, DayAttendance, ChangeProposal, ShoppingItem, RemyVorschlag, NextWeekData, NextWeekWish } from '../lib/state'
 import SlotWunschPanel from './SlotWunschPanel'
 
@@ -47,16 +47,6 @@ function getTagDate(mondayIso: string, tag: string): string {
   return `${d.getDate()}. ${M[d.getMonth()]}`
 }
 
-const MEMBER_PALETTE = [
-  { bg: '#E6F1FB', c: '#0C447C' },
-  { bg: '#E1F5EE', c: '#0F6E56' },
-  { bg: '#FBEAF0', c: '#72243E' },
-  { bg: '#FEF3C7', c: '#92400E' },
-]
-const CFG: Record<string, { bg: string; c: string }> = {
-  PA: MEMBER_PALETTE[0], MA: MEMBER_PALETTE[1], TI: MEMBER_PALETTE[2],
-  M1: MEMBER_PALETTE[0], M2: MEMBER_PALETTE[1], M3: MEMBER_PALETTE[2], M4: MEMBER_PALETTE[3],
-}
 
 function todayGerman(): string {
   return WOCHENTAGE[(new Date().getDay() + 6) % 7]
@@ -178,6 +168,8 @@ export default function WocheScreen({
   const familyPrompt = buildFamilyPrompt(members.length ? members : DEFAULT_MEMBERS)
   const gaesteProTag = attendance.filter(a => (a.gaeste ?? 0) > 0).map(a => ({ tag: a.tag, gaeste: a.gaeste }))
   const activeMembers = members.length ? members : DEFAULT_MEMBERS
+  const CFG = buildMemberCfg(activeMembers)
+  const memberIds = activeMembers.map(m => m.id)
   const suggestedNextChef: Chef = ([...activeMembers].sort((a, b) => {
     const aDate = a.chefStat?.lastCook ?? ''
     const bDate = b.chefStat?.lastCook ?? ''
@@ -393,6 +385,7 @@ export default function WocheScreen({
           type: 'ergaenzung' as const, text: w.text, postConfirm: false,
         })),
         familyPrompt,
+        memberIds,
       })
       setNwPlanProgress(100)
       setNwPendingPlan(result)
@@ -416,6 +409,7 @@ export default function WocheScreen({
         behaltene: nwPendingPlan.filter(e => !(e.tag === tag && e.slot === slot)),
         neuTage: [tag],
         familyPrompt,
+        memberIds,
       })
       const newEntry = result.find(e => e.tag === tag && e.slot === slot)
       if (newEntry) {
@@ -459,6 +453,7 @@ export default function WocheScreen({
         behaltene: nextWeekData.plan.filter(e => !(e.tag === tag && e.slot === slot)),
         neuTage: [tag],
         familyPrompt,
+        memberIds,
       })
       const newEntry = result.find(e => e.tag === tag && e.slot === slot)
       if (newEntry) {
@@ -517,6 +512,7 @@ export default function WocheScreen({
         behaltene: weekPlan.filter(e => !(e.tag === tag && e.slot === slot)),
         neuTage: [tag],
         familyPrompt,
+        memberIds,
         gaesteProTag: gaesteProTag.filter(g => g.tag === tag).length > 0 ? gaesteProTag.filter(g => g.tag === tag) : undefined,
       })
       const newEntry = result.find(e => e.tag === tag && e.slot === slot)
@@ -789,7 +785,7 @@ export default function WocheScreen({
             <div style={{ fontSize: 11, color: '#555', marginBottom: 8 }}>Ankreuzen was du übernehmen möchtest:</div>
             {nachtragsAltWishes.map(w => {
               const checked = nachtragsAltIds.includes(w.id)
-              const c = CFG[w.person] ?? CFG.MA
+              const c = CFG[w.person] ?? Object.values(CFG)[0]
               const original = weekPlan.find(e => e.tag === w.tag && e.slot === w.slot)
               return (
                 <div key={w.id} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
@@ -821,7 +817,7 @@ export default function WocheScreen({
             <div style={{ fontSize: 11, color: '#555', marginBottom: 8 }}>Ankreuzen, was auf die Einkaufsliste soll:</div>
             {nachtragsErgWishes.map(w => {
               const checked = nachtragsIds.includes(w.id)
-              const c = CFG[w.person] ?? CFG.MA
+              const c = CFG[w.person] ?? Object.values(CFG)[0]
               return (
                 <div key={w.id} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
                   <button onClick={() => setNachtragsIds(prev => prev.includes(w.id) ? prev.filter(id => id !== w.id) : [...prev, w.id])}
@@ -920,6 +916,7 @@ export default function WocheScreen({
         neuTage: [tag],
         wishes: wishes.filter(w => w.tag === tag && w.slot === slot),
         familyPrompt,
+        memberIds,
         gaesteProTag: gaesteProTag.filter(g => g.tag === tag).length > 0 ? gaesteProTag.filter(g => g.tag === tag) : undefined,
       })
       const newEntry = result.find(e => e.tag === tag && e.slot === slot)
@@ -946,6 +943,7 @@ export default function WocheScreen({
         neuTage: [tag],
         wishes: wishes.filter(w => w.tag === tag),
         familyPrompt,
+        memberIds,
         gaesteProTag: gaesteProTag.filter(g => g.tag === tag).length > 0 ? gaesteProTag.filter(g => g.tag === tag) : undefined,
       })
       setPendingPlan(prev => [...prev.filter(e => e.tag !== tag), ...result.filter(e => e.tag === tag)])
@@ -972,6 +970,7 @@ export default function WocheScreen({
         neuTage: [tag],
         wishes: wishes.filter(w => w.tag === tag),
         familyPrompt,
+        memberIds,
         gaesteProTag: gaesteProTag.filter(g => g.tag === tag).length > 0 ? gaesteProTag.filter(g => g.tag === tag) : undefined,
       })
       setPendingDay({ tag, entries: result.filter(e => e.tag === tag) })
@@ -1111,6 +1110,7 @@ export default function WocheScreen({
         neuTage: activeDays,
         wishes,
         familyPrompt,
+        memberIds,
         lastDishes,
         gaesteProTag: gaesteProTag.length > 0 ? gaesteProTag : undefined,
       })
@@ -1340,7 +1340,7 @@ export default function WocheScreen({
             const isMine = chef === currentUser
             const isConfirmed = attendanceConfirmed.includes(chef)
             const canEdit = isMine && !isConfirmed
-            const cc = CFG[chef] ?? CFG.MA
+            const cc = CFG[chef] ?? Object.values(CFG)[0]
             return (
               <div key={chef} style={{ borderRadius: 12, border: `1px solid ${isMine ? '#B2DFCC' : '#e5e7eb'}`, marginBottom: 14, overflow: 'hidden' }}>
                 <div style={{ padding: '8px 12px', background: isMine ? '#F0FAF5' : '#f9fafb', borderBottom: '1px solid #f0f0f0', display: 'flex', alignItems: 'center' }}>
@@ -1530,7 +1530,7 @@ export default function WocheScreen({
                             <span style={{ fontSize: 11, color: '#888', width: '100%' }}>Wer isst mit?</span>
                             {allChefIds.map(c => {
                               const on = slotAnwesend.includes(c)
-                              const cc = CFG[c] ?? CFG.MA
+                              const cc = CFG[c] ?? Object.values(CFG)[0]
                               return (
                                 <button key={c} onClick={() => toggleSlotAttendance(tag, slot, c)}
                                   style={{ padding: '4px 10px', borderRadius: 8, border: `1px solid ${on ? cc.c : '#ddd'}`, background: on ? cc.bg : 'white', color: on ? cc.c : '#aaa', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
@@ -1720,7 +1720,7 @@ export default function WocheScreen({
                       <div style={{ padding: '4px 12px 2px', fontSize: 10, color: '#1D9E75', fontWeight: 600 }}>Neuer Vorschlag · Koch antippen zum Ändern</div>
                       {pendingDay.entries.map(e => {
                         const key = `pd-${tag}-${e.slot}`
-                        const c = CFG[e.chef] ?? CFG.MA
+                        const c = CFG[e.chef] ?? Object.values(CFG)[0]
                         return (
                           <div key={e.slot}>
                             <div style={{ padding: '7px 12px', borderTop: '1px solid #f5f5f5', display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -1782,7 +1782,7 @@ export default function WocheScreen({
                             <span style={{ fontSize: 11, color: '#888', width: '100%' }}>Wer isst mit?</span>
                             {allChefIds.map(c => {
                               const on = slotAnwesend.includes(c)
-                              const cc = CFG[c] ?? CFG.MA
+                              const cc = CFG[c] ?? Object.values(CFG)[0]
                               return canEdit ? (
                                 <button key={c} onClick={() => toggleSlotAttendance(tag, slot, c)}
                                   style={{ padding: '4px 10px', borderRadius: 8, border: `1px solid ${on ? cc.c : '#ddd'}`, background: on ? cc.bg : 'white', color: on ? cc.c : '#aaa', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
@@ -1826,6 +1826,7 @@ export default function WocheScreen({
                         </div>
                         <SlotWunschPanel
                           tag={tag} slot={slot} wishes={wishes} personNames={personNames} originalEntry={e}
+                          members={activeMembers}
                           isWochenchef={currentUser === wochenchef} planConfirmed={planConfirmed}
                           selectedAltId={chefAltSelection[`${tag}-${slot}`] ?? 'original'} checkedErgIds={chefErgaenzungIds}
                           onSelectAlt={(id) => setChefAltSelection(prev => ({ ...prev, [`${tag}-${slot}`]: id }))}
@@ -1833,7 +1834,7 @@ export default function WocheScreen({
                         />
                         <WishesSection
                           tag={tag} wishes={wishes} freezerItems={freezerItems} pantryItems={pantryItems}
-                          personNames={personNames} mittagsloseTage={mittagsloseTage} lockedSlot={slot} showExisting={false}
+                          personNames={personNames} members={activeMembers} mittagsloseTage={mittagsloseTage} lockedSlot={slot} showExisting={false}
                           canAdd={!shopDone && !wishDeadlinePassed} deadlineHint={wishDeadlineHint}
                           isOpen={wishFormKey === `${tag}-${slot}`} initialPerson={currentUser} familyPrompt={familyPrompt}
                           onOpen={() => openWishForm(tag, slot)} onClose={closeWishForm} onSubmitWish={handleWishSubmit} onRemove={removeWish}
@@ -1969,7 +1970,7 @@ export default function WocheScreen({
                             const nwAttConf = nextWeekData?.attendanceConfirmed ?? []
                             const isNwConfirmed = nwAttConf.includes(chef)
                             const canEditNw = isMine && !isNwConfirmed
-                            const cc = CFG[chef] ?? CFG.MA
+                            const cc = CFG[chef] ?? Object.values(CFG)[0]
                             const displayDays = planWE ? WOCHENTAGE : WOCHENTAGE.slice(0, 5)
                             return (
                               <div key={chef} style={{ borderRadius: 10, border: `1px solid ${isMine ? '#B2DFCC' : '#e5e7eb'}`, marginBottom: 8, overflow: 'hidden' }}>
@@ -2454,7 +2455,7 @@ export default function WocheScreen({
             <span style={{ fontSize: 11, color: '#888', width: '100%' }}>Wer isst mit?</span>
             {allChefIds.map(c => {
               const on = slotAnwesend.includes(c)
-              const cc = CFG[c] ?? CFG.MA
+              const cc = CFG[c] ?? Object.values(CFG)[0]
               return canEdit ? (
                 <button key={c} onClick={() => toggleSlotAttendance(tag, slot, c)}
                   style={{ padding: '4px 10px', borderRadius: 8, border: `1px solid ${on ? cc.c : '#ddd'}`, background: on ? cc.bg : 'white', color: on ? cc.c : '#aaa', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
@@ -2498,7 +2499,7 @@ export default function WocheScreen({
         </div>
         <WishesSection
           tag={tag} wishes={wishes} freezerItems={freezerItems} pantryItems={pantryItems}
-          personNames={personNames} mittagsloseTage={mittagsloseTage} lockedSlot={slot}
+          personNames={personNames} members={activeMembers} mittagsloseTage={mittagsloseTage} lockedSlot={slot}
           canAdd={!shopDone && !wishDeadlinePassed} deadlineHint={wishDeadlineHint}
           isOpen={wishFormKey === `${tag}-${slot}`} initialPerson={currentUser} familyPrompt={familyPrompt}
           onOpen={() => openWishForm(tag, slot)} onClose={closeWishForm} onSubmitWish={handleWishSubmit} onRemove={removeWish}
@@ -2725,10 +2726,11 @@ function SlotPill({ slot }: { slot: WochenSlot }) {
 }
 
 function ChefPicker({ current, onSelect, personNames, members }: { current: Chef; onSelect: (c: Chef) => void; personNames: Record<string, string>; members: import('../lib/state').FamilyMember[] }) {
+  const cfg = buildMemberCfg(members)
   return (
     <div style={{ padding: '4px 12px 8px', display: 'flex', gap: 4 }}>
-      {members.map((m, idx) => {
-        const c = MEMBER_PALETTE[idx % MEMBER_PALETTE.length]
+      {members.map((m) => {
+        const c = cfg[m.id] ?? Object.values(cfg)[0]
         const active = current === m.id
         return (
           <button
@@ -2753,6 +2755,7 @@ interface WishesSectionProps {
   freezerItems: FreezerItem[]
   pantryItems: PantryItem[]
   personNames: Record<Chef, string>
+  members?: FamilyMember[]
   mittagsloseTage: string[]
   lockedSlot?: WochenSlot
   showExisting?: boolean
@@ -2769,11 +2772,12 @@ interface WishesSectionProps {
 }
 
 function WishesSection({
-  tag, wishes, freezerItems, pantryItems, personNames, mittagsloseTage,
+  tag, wishes, freezerItems, pantryItems, personNames, members, mittagsloseTage,
   lockedSlot, showExisting = true, canAdd = true, deadlineHint, isOpen, initialPerson, familyPrompt,
   fullWidth,
   onOpen, onClose, onSubmitWish, onRemove,
 }: WishesSectionProps) {
+  const CFG = buildMemberCfg(members ?? DEFAULT_MEMBERS)
   const dayWishes = wishes.filter(w => w.tag === tag && (!lockedSlot || w.slot === lockedSlot))
 
   const [wishPerson, setWishPerson] = useState<Chef>(initialPerson)
@@ -2886,7 +2890,7 @@ function WishesSection({
       {showExisting && (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, alignItems: 'center', ...(fullWidth ? { padding: '6px 12px 0' } : {}) }}>
           {dayWishes.map(w => {
-            const c = CFG[w.person] ?? CFG.MA
+            const c = CFG[w.person] ?? Object.values(CFG)[0]
             const slotIcon = w.slot === 'Mittag' ? '🌞' : '🌙'
             const typeLabel = w.type === 'alternative' ? '🔄 ' : ''
             const content = w.type === 'ergaenzung' ? w.text : `${w.emoji} ${w.dishName}`
@@ -3165,7 +3169,8 @@ function MealRow({ entry, slot, onSelect, hasRecipe, onChefChange, onReplan, per
       </div>
     )
   }
-  const c = CFG[entry.chef] ?? CFG.MA
+  const cfg = buildMemberCfg(mems ?? DEFAULT_MEMBERS)
+  const c = cfg[entry.chef] ?? Object.values(cfg)[0]
   const canEdit = !!onChefChange && !!personNames && !!mems
   return (
     <div>

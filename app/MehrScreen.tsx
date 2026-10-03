@@ -1,6 +1,7 @@
 'use client'
 import { useState } from 'react'
 import type { Chef, FamilyMember, ChangeProposal, WeekPlanEntry, NextWeekData } from '../lib/state'
+import { buildMemberCfg, DEFAULT_MEMBERS } from '../lib/familyLogic'
 
 function getNextMondayIso(d: Date = new Date()): string {
   const date = new Date(d)
@@ -15,16 +16,6 @@ const TAG_SHORT: Record<string, string> = {
   Freitag: 'Fr', Samstag: 'Sa', Sonntag: 'So',
 }
 
-const MEMBER_PALETTE = [
-  { bg: '#E6F1FB', c: '#0C447C' },
-  { bg: '#E1F5EE', c: '#0F6E56' },
-  { bg: '#FBEAF0', c: '#72243E' },
-  { bg: '#FEF3C7', c: '#92400E' },
-]
-const CFG: Record<string, { bg: string; c: string }> = {
-  PA: MEMBER_PALETTE[0], MA: MEMBER_PALETTE[1], TI: MEMBER_PALETTE[2],
-  M1: MEMBER_PALETTE[0], M2: MEMBER_PALETTE[1], M3: MEMBER_PALETTE[2], M4: MEMBER_PALETTE[3],
-}
 
 type View = 'overview' | 'einkauf' | 'wochenchef'
 
@@ -65,7 +56,8 @@ export default function MehrScreen({
 
   const isChef = currentUser === wochenchef
   const personNames = Object.fromEntries(members.map(m => [m.id, m.name])) as Record<Chef, string>
-  const activeMembers = members
+  const activeMembers = members.length ? members : DEFAULT_MEMBERS
+  const CFG = buildMemberCfg(activeMembers)
 
   // Rémy Fairplay: person with fewest/oldest chef turns, excluding current chef
   const suggestedNextChef: Chef = ([...activeMembers].sort((a, b) => {
@@ -288,7 +280,7 @@ export default function MehrScreen({
                         <div style={{ display: 'flex', gap: 6 }}>
                           {activeMembers.map(m => {
                             const isSelected = assigned === m.id
-                            const cc = CFG[m.id] ?? CFG.MA
+                            const cc = CFG[m.id] ?? Object.values(CFG)[0]
                             const conflict = isSelected && cookingConflict(tag, m.id as Chef)
                             return (
                               <button
@@ -347,7 +339,7 @@ export default function MehrScreen({
                             <div style={{ display: 'flex', gap: 6 }}>
                               {activeMembers.map(m => {
                                 const isAssigned = assigned === m.id
-                                const cc = CFG[m.id] ?? CFG.MA
+                                const cc = CFG[m.id] ?? Object.values(CFG)[0]
                                 return (
                                   <button
                                     key={m.id}
@@ -436,7 +428,7 @@ export default function MehrScreen({
   // ── Wochenchefs ─────────────────────────────────────────────────────────────
   if (view === 'wochenchef') {
     const nwChef = nextWeekData?.wochenchef ?? null
-    const ccCurrent = CFG[wochenchef] ?? CFG.MA
+    const ccCurrent = CFG[wochenchef] ?? Object.values(CFG)[0]
 
     return (
       <div className="screen active" style={{ overflowY: 'auto' }}>
@@ -466,7 +458,7 @@ export default function MehrScreen({
                   <div style={{ display: 'flex', gap: 8 }}>
                     {activeMembers.map(m => {
                       const isSelected = wochenchef === m.id
-                      const cc = CFG[m.id] ?? CFG.MA
+                      const cc = CFG[m.id] ?? Object.values(CFG)[0]
                       return (
                         <button
                           key={m.id}
@@ -528,7 +520,7 @@ export default function MehrScreen({
                   <div style={{ display: 'flex', gap: 8 }}>
                     {activeMembers.map(m => {
                       const isSelected = nwChef === m.id
-                      const cc = CFG[m.id] ?? CFG.MA
+                      const cc = CFG[m.id] ?? Object.values(CFG)[0]
                       return (
                         <button
                           key={m.id}

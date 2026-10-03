@@ -1,17 +1,13 @@
 'use client'
-import type { Wish, WochenSlot, Chef } from '../lib/state'
-
-const CFG: Record<string, { bg: string; c: string }> = {
-  MA: { bg: '#E1F5EE', c: '#0F6E56' },
-  PA: { bg: '#E6F1FB', c: '#0C447C' },
-  TI: { bg: '#FBEAF0', c: '#72243E' },
-}
+import type { Wish, WochenSlot, Chef, FamilyMember } from '../lib/state'
+import { buildMemberCfg, DEFAULT_MEMBERS } from '../lib/familyLogic'
 
 interface Props {
   tag: string
   slot: WochenSlot
   wishes: Wish[]
   personNames: Record<Chef, string>
+  members?: FamilyMember[]
   originalEntry?: { emoji: string; gericht: string }
   isWochenchef?: boolean
   planConfirmed?: boolean
@@ -22,10 +18,11 @@ interface Props {
 }
 
 export default function SlotWunschPanel({
-  tag, slot, wishes, personNames,
+  tag, slot, wishes, personNames, members,
   originalEntry, isWochenchef, planConfirmed,
   selectedAltId = 'original', checkedErgIds, onSelectAlt, onToggleErg,
 }: Props) {
+  const CFG = buildMemberCfg(members ?? DEFAULT_MEMBERS)
   const slotWishes = wishes.filter(w => w.tag === tag && w.slot === slot)
   if (slotWishes.length === 0) return null
 
@@ -62,7 +59,7 @@ export default function SlotWunschPanel({
           )}
 
           {alternativen.map(w => {
-            const c = CFG[w.person] ?? CFG.MA
+            const c = CFG[w.person] ?? Object.values(CFG)[0]
             const selected = selectedAltId === w.id
             return showDecision ? (
               <button
@@ -103,7 +100,7 @@ export default function SlotWunschPanel({
             ➕ Ergänzungen
           </div>
           {ergaenzungen.map(w => {
-            const c = CFG[w.person] ?? CFG.MA
+            const c = CFG[w.person] ?? Object.values(CFG)[0]
             const checked = checkedErgIds?.includes(w.id) ?? false
             return (
               <div key={w.id} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>

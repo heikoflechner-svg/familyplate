@@ -2,6 +2,17 @@ import { supabase, getFamilyId } from './supabase'
 import type { Chef, FamilyMember, FamilyProfile, WeekPlanEntry } from './state'
 import { DEFAULT_LAEDEN } from './state'
 
+export const MEMBER_PALETTE = [
+  { bg: '#E6F1FB', c: '#0C447C' },
+  { bg: '#E1F5EE', c: '#0F6E56' },
+  { bg: '#FBEAF0', c: '#72243E' },
+  { bg: '#FEF3C7', c: '#92400E' },
+]
+
+export function buildMemberCfg(members: FamilyMember[]): Record<string, { bg: string; c: string }> {
+  return Object.fromEntries(members.map((m, i) => [m.id, MEMBER_PALETTE[i % MEMBER_PALETTE.length]]))
+}
+
 export const DEFAULT_MEMBERS: FamilyMember[] = [
   { id: 'M1', name: '', allergien: [], vorlieben: [] },
   { id: 'M2', name: '', allergien: [], vorlieben: [] },
