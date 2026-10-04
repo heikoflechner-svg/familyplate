@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
 
   const { data: invite } = await supabaseAdmin
     .from('family_invitations')
-    .select('family_id, email, target_kuerzel, status, expires_at')
+    .select('family_id, email, target_kuerzel, status, expires_at, invited_role')
     .eq('token', token)
     .maybeSingle()
 
@@ -55,5 +55,6 @@ export async function GET(req: NextRequest) {
     personName: member?.name ?? invite.target_kuerzel,
     email: invite.email,
     expiresAt: invite.expires_at,
+    invitedRole: (invite.invited_role ?? 'member') as string,
   })
 }

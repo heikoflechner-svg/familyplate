@@ -2,6 +2,18 @@ import { createClient } from '@supabase/supabase-js'
 import { Resend } from 'resend'
 import { NextRequest, NextResponse } from 'next/server'
 
+function roleLabelForEmail(role: string): string {
+  if (role === 'admin') return 'Eltern'
+  if (role === 'parent') return 'Oma, Opa & Co.'
+  return 'Mitglied'
+}
+
+function roleHintForEmail(role: string): string {
+  if (role === 'admin') return 'Verwalten die Familie mit: alle Profile, Einladungen, Rollen und Einstellungen.'
+  if (role === 'parent') return 'Z. B. Großeltern, Au-pair: eigenes Profil und die Profile der Kinder.'
+  return 'Bearbeitet nur das eigene Profil.'
+}
+
 function getAdminClient() {
   return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -154,7 +166,8 @@ export async function POST(req: NextRequest) {
         <p style="color:#444;line-height:1.6;margin-bottom:24px;">
           Hallo ${targetMember.name},<br>
           <strong>${ownerRow.display_name}</strong> hat dich zur Familie
-          <strong>${familyRow?.name ?? 'deiner Familie'}</strong> auf MenuFamPlan eingeladen.
+          <strong>${familyRow?.name ?? 'deiner Familie'}</strong> auf MenuFamPlan eingeladen.<br>
+          <span style="font-size:13px;">Deine Rolle: <strong>${roleLabelForEmail(invitedRole)}</strong> – ${roleHintForEmail(invitedRole)}</span>
         </p>
         <div style="text-align:center;margin-bottom:32px;">
           <a href="${inviteUrl}"

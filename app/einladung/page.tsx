@@ -13,6 +13,19 @@ interface InviteInfo {
   personName: string
   email: string
   expiresAt: string
+  invitedRole: string
+}
+
+function roleLabelDisplay(role: string): string {
+  if (role === 'admin') return 'Eltern'
+  if (role === 'parent') return 'Oma, Opa & Co.'
+  return 'Mitglied'
+}
+
+function roleHint(role: string): string {
+  if (role === 'admin') return 'Verwalten die Familie mit: alle Profile, Einladungen, Rollen und Einstellungen.'
+  if (role === 'parent') return 'Z. B. Großeltern, Au-pair: eigenes Profil und die Profile der Kinder.'
+  return 'Bearbeitet nur das eigene Profil.'
 }
 
 type PageState = 'loading' | 'error' | 'ready'
@@ -197,6 +210,14 @@ function InvitationContent() {
         <div style={{ marginTop: 10, fontSize: 14, color: '#555', lineHeight: 1.7 }}>
           Du trittst der Familie <strong>{inviteInfo!.familyName}</strong> bei<br />
           als <strong>{inviteInfo!.personName}</strong>.
+        </div>
+        <div style={{ marginTop: 8, padding: '8px 14px', background: '#F0F9F5', borderRadius: 10, textAlign: 'left' }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: '#0F6E56' }}>
+            Rolle: {roleLabelDisplay(inviteInfo!.invitedRole)}
+          </div>
+          <div style={{ fontSize: 12, color: '#666', marginTop: 2, lineHeight: 1.4 }}>
+            {roleHint(inviteInfo!.invitedRole)}
+          </div>
         </div>
       </div>
 

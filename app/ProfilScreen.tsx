@@ -22,11 +22,18 @@ function formatLastCook(iso: string | null | undefined): string {
   return date.toLocaleDateString('de-DE', { day: 'numeric', month: 'short' })
 }
 
-function roleLabelDisplay(role: MemberRole): string {
-  if (role === 'owner') return 'Gründer'
-  if (role === 'admin') return 'Mitverwaltung'
-  if (role === 'parent') return 'Elternteil'
+function roleLabelDisplay(role: MemberRole | string): string {
+  if (role === 'owner') return 'Organisator'
+  if (role === 'admin') return 'Eltern'
+  if (role === 'parent') return 'Oma, Opa & Co.'
   return 'Mitglied'
+}
+
+function roleHint(role: MemberRole | string): string {
+  if (role === 'owner') return 'Hat die Familie angelegt, alle Rechte.'
+  if (role === 'admin') return 'Verwalten die Familie mit: alle Profile, Einladungen, Rollen und Einstellungen.'
+  if (role === 'parent') return 'Z. B. Großeltern, Au-pair: eigenes Profil und die Profile der Kinder.'
+  return 'Bearbeitet nur das eigene Profil.'
 }
 
 interface PendingInvite {
@@ -278,6 +285,9 @@ export default function ProfilScreen({
                   <div style={{ fontSize: 11, color: '#aaa' }}>
                     {isLinked && memberRole ? roleLabelDisplay(memberRole) : isLinked ? 'Mitglied' : 'Kein Konto'}
                   </div>
+                  {isLinked && memberRole && (
+                    <div style={{ fontSize: 10, color: '#ccc', marginTop: 1, lineHeight: 1.3 }}>{roleHint(memberRole)}</div>
+                  )}
                 </div>
                 {stat && (
                   <div style={{ textAlign: 'right', flexShrink: 0 }}>
@@ -318,19 +328,24 @@ export default function ProfilScreen({
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
                       <div style={{ fontSize: 11, color: '#aaa' }}>✓ Konto verknüpft</div>
                       {memberRole !== 'owner' && (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                          <span style={{ fontSize: 11, color: '#aaa' }}>Rolle:</span>
-                          <select
-                            value={memberRole ?? 'member'}
-                            disabled={roleChangePending === m.id}
-                            onChange={e => void handleRoleChange(m.id, e.target.value as 'member' | 'parent' | 'admin')}
-                            style={{ fontSize: 11, border: '1px solid #ddd', borderRadius: 6, padding: '2px 6px', color: '#555', background: '#fff', cursor: 'pointer' }}
-                          >
-                            <option value="member">Mitglied</option>
-                            <option value="parent">Elternteil</option>
-                            <option value="admin">Mitverwaltung</option>
-                          </select>
-                          {roleChangePending === m.id && <span style={{ fontSize: 11, color: '#aaa' }}>…</span>}
+                        <div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <span style={{ fontSize: 11, color: '#aaa' }}>Rolle:</span>
+                            <select
+                              value={memberRole ?? 'member'}
+                              disabled={roleChangePending === m.id}
+                              onChange={e => void handleRoleChange(m.id, e.target.value as 'member' | 'parent' | 'admin')}
+                              style={{ fontSize: 11, border: '1px solid #ddd', borderRadius: 6, padding: '2px 6px', color: '#555', background: '#fff', cursor: 'pointer' }}
+                            >
+                              <option value="member">Mitglied</option>
+                              <option value="parent">Oma, Opa & Co.</option>
+                              <option value="admin">Eltern</option>
+                            </select>
+                            {roleChangePending === m.id && <span style={{ fontSize: 11, color: '#aaa' }}>…</span>}
+                          </div>
+                          {roleChangePending !== m.id && memberRole && (
+                            <div style={{ fontSize: 10, color: '#aaa', marginTop: 3, lineHeight: 1.3 }}>{roleHint(memberRole)}</div>
+                          )}
                         </div>
                       )}
                     </div>
@@ -375,10 +390,11 @@ export default function ProfilScreen({
                         {(['member', 'parent', 'admin'] as const).map(r => (
                           <label key={r} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: '#555', cursor: 'pointer' }}>
                             <input type="radio" name={`role-${m.id}`} value={r} checked={inviteRole === r} onChange={() => setInviteRole(r)} />
-                            {r === 'member' ? 'Mitglied' : r === 'parent' ? 'Elternteil' : 'Mitverwaltung'}
+                            {roleLabelDisplay(r)}
                           </label>
                         ))}
                       </div>
+                      <div style={{ fontSize: 11, color: '#888', lineHeight: 1.4 }}>{roleHint(inviteRole)}</div>
                       {inviteError && <div style={{ fontSize: 11, color: '#E24B4A' }}>{inviteError}</div>}
                       <div style={{ display: 'flex', gap: 6 }}>
                         <button
