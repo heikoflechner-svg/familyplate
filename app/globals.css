@@ -2,7 +2,7 @@
 html,body{overflow-x:hidden;overscroll-behavior:none;-webkit-text-size-adjust:100%;}
 body{font-family:system-ui,sans-serif;background:#f0f0f0;display:flex;justify-content:center;padding:20px;min-height:100vh;}
 .phone{width:340px;background:#fff;border-radius:36px;border:2px solid #ddd;overflow:hidden;display:flex;flex-direction:column;min-height:680px;position:relative;}
-@media(max-width:500px){body{padding:0;background:#fff;}.phone{width:100%;border-radius:0;border:none;min-height:100svh;padding-top:env(safe-area-inset-top);}.nav{position:fixed;bottom:0;left:0;right:0;z-index:50;background:#fff;padding-bottom:calc(8px + env(safe-area-inset-bottom));}.content{padding-bottom:calc(80px + env(safe-area-inset-bottom));}}
+@media(max-width:500px){body{padding:0;background:#fff;}.phone{width:100%;border-radius:0;border:none;min-height:100svh;padding-top:env(safe-area-inset-top);}.nav{position:fixed;bottom:0;left:0;right:0;z-index:50;background:#fff;padding-bottom:calc(8px + env(safe-area-inset-bottom));}.content{padding-bottom:calc(96px + env(safe-area-inset-bottom));}}
 .statusbar{padding:10px 20px 4px;display:flex;justify-content:space-between;font-size:11px;color:#888;}
 .screen{display:none;flex-direction:column;flex:1;}
 .screen.active{display:flex;}
