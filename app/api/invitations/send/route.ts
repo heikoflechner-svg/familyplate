@@ -35,7 +35,7 @@ export async function POST(req: NextRequest) {
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     return NextResponse.json({ error: 'Ungültige E-Mail-Adresse.' }, { status: 400 })
   }
-  if (!['member', 'parent'].includes(invitedRole)) {
+  if (!['member', 'parent', 'admin'].includes(invitedRole)) {
     return NextResponse.json({ error: 'Ungültige Rolle.' }, { status: 400 })
   }
 
@@ -46,16 +46,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Ungültige Session' }, { status: 401 })
   }
 
-  // Caller must be owner of a family
+  // Caller must be owner or admin
   const { data: ownerRow } = await supabaseAdmin
     .from('family_members')
     .select('family_id, display_name')
     .eq('user_id', user.id)
-    .eq('role', 'owner')
+    .in('role', ['owner', 'admin'])
     .maybeSingle()
 
   if (!ownerRow) {
-    return NextResponse.json({ error: 'Nur der Familiengründer kann einladen.' }, { status: 403 })
+    return NextResponse.json({ error: 'Nur Gründer oder Mitverwaltung können einladen.' }, { status: 403 })
   }
 
   const familyId = ownerRow.family_id

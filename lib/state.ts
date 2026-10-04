@@ -118,7 +118,7 @@ export interface ChefStat {
   lastCook: string | null
 }
 
-export type MemberRole = 'owner' | 'member' | 'parent'
+export type MemberRole = 'owner' | 'member' | 'parent' | 'admin'
 
 export interface FamilyMember {
   id: Chef

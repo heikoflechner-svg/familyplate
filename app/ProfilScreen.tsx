@@ -22,10 +22,18 @@ function formatLastCook(iso: string | null | undefined): string {
   return date.toLocaleDateString('de-DE', { day: 'numeric', month: 'short' })
 }
 
+function roleLabelDisplay(role: MemberRole): string {
+  if (role === 'owner') return 'Gründer'
+  if (role === 'admin') return 'Mitverwaltung'
+  if (role === 'parent') return 'Elternteil'
+  return 'Mitglied'
+}
+
 interface PendingInvite {
   id: string
   kuerzel: string
   email: string
+  invitedRole: string
 }
 
 interface Props {
@@ -49,40 +57,52 @@ export default function ProfilScreen({
   const [pwSuccess, setPwSuccess] = useState(false)
 
   // Invite section state
-  const [currentRole, setCurrentRole] = useState<MemberRole>('member')
-  const [linkedKuerzel, setLinkedKuerzel] = useState<string[]>([])
+  // memberRoles: kuerzel → role for every linked family member
+  const [memberRoles, setMemberRoles] = useState<Record<string, MemberRole>>({})
   const [pendingInvites, setPendingInvites] = useState<PendingInvite[]>([])
   const [inviteDataKey, setInviteDataKey] = useState(0)
 
   const [inviteOpenFor, setInviteOpenFor] = useState<string | null>(null)
   const [inviteEmail, setInviteEmail] = useState('')
-  const [inviteRole, setInviteRole] = useState<'member' | 'parent'>('member')
+  const [inviteRole, setInviteRole] = useState<'member' | 'parent' | 'admin'>('member')
   const [inviteSending, setInviteSending] = useState(false)
   const [inviteError, setInviteError] = useState<string | null>(null)
   const [inviteSuccess, setInviteSuccess] = useState<string | null>(null)
-  const [revoking, setRevoking] = useState<string | null>(null)
+  const [actionPending, setActionPending] = useState<string | null>(null)
 
   const maxCount = Math.max(...familyProfile.members.map(m => m.chefStat?.count ?? 0), 1)
+
+  // Derived from memberRoles
+  const currentRole: MemberRole = memberRoles[currentUser] ?? 'member'
+  const linkedKuerzel = Object.keys(memberRoles)
+  const canManage = currentRole === 'owner' || currentRole === 'admin'
 
   useEffect(() => {
     async function loadInviteData() {
       const familyId = getFamilyId()
       if (!familyId) return
-      const [membersRes, invitesRes] = await Promise.all([
-        supabase.from('family_members').select('kuerzel, role').eq('family_id', familyId),
-        supabase.from('family_invitations').select('id, target_kuerzel, email').eq('family_id', familyId).eq('status', 'pending'),
-      ])
-      const allMembers = (membersRes.data ?? []) as { kuerzel: string; role: string }[]
-      const myMember = allMembers.find(m => m.kuerzel === currentUser)
-      setCurrentRole((myMember?.role as MemberRole) ?? 'member')
-      setLinkedKuerzel(allMembers.map(m => m.kuerzel))
-      setPendingInvites(
-        (invitesRes.data ?? []).map(i => ({
-          id: i.id,
-          kuerzel: i.target_kuerzel as string,
-          email: i.email as string,
-        }))
-      )
+
+      const { data: { session } } = await supabase.auth.getSession()
+
+      const membersPromise = supabase
+        .from('family_members')
+        .select('kuerzel, role')
+        .eq('family_id', familyId)
+
+      const invitesPromise: Promise<{ invitations: PendingInvite[] }> = session?.access_token
+        ? fetch('/api/invitations', {
+            headers: { Authorization: `Bearer ${session.access_token}` },
+          }).then(r => r.ok ? r.json() : { invitations: [] })
+        : Promise.resolve({ invitations: [] })
+
+      const [membersRes, invitesData] = await Promise.all([membersPromise, invitesPromise])
+
+      const roles: Record<string, MemberRole> = {}
+      for (const m of (membersRes.data ?? [])) {
+        roles[m.kuerzel as string] = m.role as MemberRole
+      }
+      setMemberRoles(roles)
+      setPendingInvites(invitesData.invitations ?? [])
     }
     void loadInviteData()
   }, [currentUser, inviteDataKey])
@@ -91,22 +111,20 @@ export default function ProfilScreen({
     setCurrentPw(''); setNewPw(''); setConfirmPw(''); setPwError(null); setPwSuccess(false)
   }
 
-  function openInviteForm(kuerzel: string) {
-    setInviteOpenFor(kuerzel)
-    setInviteEmail('')
-    setInviteRole('member')
-    setInviteError(null)
+  async function getToken(): Promise<string | null> {
+    const { data: { session } } = await supabase.auth.getSession()
+    return session?.access_token ?? null
   }
 
   async function handleSendInvite(kuerzel: string) {
     if (!inviteEmail) return
     setInviteSending(true)
     setInviteError(null)
-    const { data: { session } } = await supabase.auth.getSession()
-    if (!session) { setInviteError('Sitzung abgelaufen.'); setInviteSending(false); return }
+    const token = await getToken()
+    if (!token) { setInviteError('Sitzung abgelaufen.'); setInviteSending(false); return }
     const res = await fetch('/api/invitations/send', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({ email: inviteEmail, targetKuerzel: kuerzel, invitedRole: inviteRole }),
     })
     const data = await res.json() as { error?: string }
@@ -122,16 +140,42 @@ export default function ProfilScreen({
   }
 
   async function handleRevoke(inviteId: string) {
-    setRevoking(inviteId)
-    const { error } = await supabase
-      .from('family_invitations')
-      .update({ status: 'revoked' })
-      .eq('id', inviteId)
-    setRevoking(null)
-    if (!error) setInviteDataKey(k => k + 1)
+    setActionPending(inviteId)
+    const token = await getToken()
+    if (!token) { setActionPending(null); return }
+    const res = await fetch('/api/invitations/revoke', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ inviteId }),
+    })
+    setActionPending(null)
+    if (res.ok) setInviteDataKey(k => k + 1)
   }
 
-  const isOwner = currentRole === 'owner'
+  async function handleResend(invite: PendingInvite) {
+    setActionPending(invite.id)
+    const token = await getToken()
+    if (!token) { setActionPending(null); return }
+
+    const revokeRes = await fetch('/api/invitations/revoke', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ inviteId: invite.id }),
+    })
+    if (!revokeRes.ok) { setActionPending(null); return }
+
+    const sendRes = await fetch('/api/invitations/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ email: invite.email, targetKuerzel: invite.kuerzel, invitedRole: invite.invitedRole }),
+    })
+    setActionPending(null)
+    if (sendRes.ok) {
+      setInviteSuccess(`Einladung erneut an ${invite.email} gesendet.`)
+      setInviteDataKey(k => k + 1)
+      setTimeout(() => setInviteSuccess(null), 4000)
+    }
+  }
 
   return (
     <div className="screen active">
@@ -161,9 +205,11 @@ export default function ProfilScreen({
           const vorliebText = (m.vorlieben ?? []).length ? (m.vorlieben ?? []).join(', ') : null
           const stat = m.chefStat
           const barPct = stat ? Math.round((stat.count / maxCount) * 100) : 0
+          const memberRole = memberRoles[m.id]
           const isLinked = linkedKuerzel.includes(m.id)
           const pendingInvite = pendingInvites.find(i => i.kuerzel === m.id)
           const inviteFormOpen = inviteOpenFor === m.id
+          const isBusy = actionPending === (pendingInvite?.id ?? '')
 
           return (
             <div key={m.id} className="profile-person" style={{ opacity: isMe ? 1 : 0.75 }}>
@@ -184,7 +230,7 @@ export default function ProfilScreen({
                     {isMe && <span style={{ fontSize: 10, color: col.c, marginLeft: 6, fontWeight: 400 }}>· eingeloggt</span>}
                   </div>
                   <div style={{ fontSize: 11, color: '#aaa' }}>
-                    {currentRole === 'owner' && m.id === currentUser ? 'Gründer' : 'Mitglied'}
+                    {isLinked && memberRole ? roleLabelDisplay(memberRole) : isLinked ? 'Mitglied' : 'Kein Konto'}
                   </div>
                 </div>
                 {stat && (
@@ -219,27 +265,34 @@ export default function ProfilScreen({
                 )}
               </div>
 
-              {/* Invite section – owner only, not for own card, not for already-linked members */}
-              {isOwner && !isMe && (
+              {/* Invite section – canManage only, not for own card */}
+              {canManage && !isMe && (
                 <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid #f0f0f0' }}>
                   {isLinked ? (
                     <div style={{ fontSize: 11, color: '#aaa' }}>✓ Konto verknüpft</div>
                   ) : pendingInvite ? (
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                      <div style={{ fontSize: 11, color: '#92400E', background: '#FEF3C7', border: '1px solid #F59E0B', borderRadius: 8, padding: '3px 8px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                      <div style={{ fontSize: 11, color: '#92400E', background: '#FEF3C7', border: '1px solid #F59E0B', borderRadius: 8, padding: '3px 8px', flexShrink: 0 }}>
                         ✉ Einladung ausstehend
                       </div>
                       <button
-                        disabled={revoking === pendingInvite.id}
+                        disabled={isBusy}
                         onClick={() => handleRevoke(pendingInvite.id)}
-                        style={{ fontSize: 11, color: '#aaa', background: 'none', border: 'none', cursor: 'pointer', padding: '2px 0' }}
+                        style={{ fontSize: 11, color: '#aaa', background: 'none', border: 'none', cursor: isBusy ? 'default' : 'pointer', padding: '2px 0' }}
                       >
-                        {revoking === pendingInvite.id ? '…' : 'Zurückziehen'}
+                        {isBusy ? '…' : 'Zurückziehen'}
+                      </button>
+                      <button
+                        disabled={isBusy}
+                        onClick={() => handleResend(pendingInvite)}
+                        style={{ fontSize: 11, color: '#0C447C', background: 'none', border: 'none', cursor: isBusy ? 'default' : 'pointer', padding: '2px 0' }}
+                      >
+                        {isBusy ? '' : 'Erneut senden'}
                       </button>
                     </div>
                   ) : !inviteFormOpen ? (
                     <button
-                      onClick={() => openInviteForm(m.id)}
+                      onClick={() => { setInviteOpenFor(m.id); setInviteEmail(''); setInviteRole('member'); setInviteError(null) }}
                       style={{ fontSize: 12, color: '#0C447C', background: 'none', border: 'none', cursor: 'pointer', padding: '2px 0' }}
                     >
                       ✉ Einladen
@@ -254,15 +307,13 @@ export default function ProfilScreen({
                         autoFocus
                         style={{ fontSize: 13, padding: '8px 10px', border: '1px solid #ddd', borderRadius: 8, outline: 'none' }}
                       />
-                      <div style={{ display: 'flex', gap: 16 }}>
-                        <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: '#555', cursor: 'pointer' }}>
-                          <input type="radio" name={`role-${m.id}`} value="member" checked={inviteRole === 'member'} onChange={() => setInviteRole('member')} />
-                          Mitglied
-                        </label>
-                        <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: '#555', cursor: 'pointer' }}>
-                          <input type="radio" name={`role-${m.id}`} value="parent" checked={inviteRole === 'parent'} onChange={() => setInviteRole('parent')} />
-                          Elternteil
-                        </label>
+                      <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
+                        {(['member', 'parent', 'admin'] as const).map(r => (
+                          <label key={r} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: '#555', cursor: 'pointer' }}>
+                            <input type="radio" name={`role-${m.id}`} value={r} checked={inviteRole === r} onChange={() => setInviteRole(r)} />
+                            {r === 'member' ? 'Mitglied' : r === 'parent' ? 'Elternteil' : 'Mitverwaltung'}
+                          </label>
+                        ))}
                       </div>
                       {inviteError && <div style={{ fontSize: 11, color: '#E24B4A' }}>{inviteError}</div>}
                       <div style={{ display: 'flex', gap: 6 }}>
