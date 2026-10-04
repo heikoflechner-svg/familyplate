@@ -118,12 +118,25 @@ export interface ChefStat {
   lastCook: string | null
 }
 
+export type MemberRole = 'owner' | 'member' | 'parent'
+
 export interface FamilyMember {
   id: Chef
   name: string
   allergien: string[]
   vorlieben: string[]
   chefStat?: ChefStat
+  istKind?: boolean
+}
+
+export interface Invitation {
+  id: string
+  targetKuerzel: string
+  email: string
+  invitedRole: MemberRole
+  status: 'pending' | 'accepted' | 'expired' | 'revoked'
+  expiresAt: string
+  createdAt: string
 }
 
 export const DEFAULT_LAEDEN = ['Aldi', 'Edeka', 'Kaufland', 'Netto', 'Sonstiges']

@@ -1,7 +1,8 @@
 'use client'
-import { useState } from 'react'
-import type { Chef, FamilyProfile } from '../lib/state'
+import { useEffect, useState } from 'react'
+import type { Chef, FamilyProfile, MemberRole } from '../lib/state'
 import { changePassword } from '../lib/auth'
+import { supabase, getFamilyId } from '../lib/supabase'
 
 const MEMBER_PALETTE = [
   { bg: '#E6F1FB', c: '#0C447C' },
@@ -21,6 +22,12 @@ function formatLastCook(iso: string | null | undefined): string {
   return date.toLocaleDateString('de-DE', { day: 'numeric', month: 'short' })
 }
 
+interface PendingInvite {
+  id: string
+  kuerzel: string
+  email: string
+}
+
 interface Props {
   currentUser: Chef
   familyProfile: FamilyProfile
@@ -32,6 +39,7 @@ export default function ProfilScreen({
   currentUser, familyProfile,
   onSignOut, onEditProfile,
 }: Props) {
+  // Password-change state
   const [pwOpen, setPwOpen] = useState(false)
   const [currentPw, setCurrentPw] = useState('')
   const [newPw, setNewPw] = useState('')
@@ -39,11 +47,91 @@ export default function ProfilScreen({
   const [pwSaving, setPwSaving] = useState(false)
   const [pwError, setPwError] = useState<string | null>(null)
   const [pwSuccess, setPwSuccess] = useState(false)
+
+  // Invite section state
+  const [currentRole, setCurrentRole] = useState<MemberRole>('member')
+  const [linkedKuerzel, setLinkedKuerzel] = useState<string[]>([])
+  const [pendingInvites, setPendingInvites] = useState<PendingInvite[]>([])
+  const [inviteDataKey, setInviteDataKey] = useState(0)
+
+  const [inviteOpenFor, setInviteOpenFor] = useState<string | null>(null)
+  const [inviteEmail, setInviteEmail] = useState('')
+  const [inviteRole, setInviteRole] = useState<'member' | 'parent'>('member')
+  const [inviteSending, setInviteSending] = useState(false)
+  const [inviteError, setInviteError] = useState<string | null>(null)
+  const [inviteSuccess, setInviteSuccess] = useState<string | null>(null)
+  const [revoking, setRevoking] = useState<string | null>(null)
+
   const maxCount = Math.max(...familyProfile.members.map(m => m.chefStat?.count ?? 0), 1)
+
+  useEffect(() => {
+    async function loadInviteData() {
+      const familyId = getFamilyId()
+      if (!familyId) return
+      const [membersRes, invitesRes] = await Promise.all([
+        supabase.from('family_members').select('kuerzel, role').eq('family_id', familyId),
+        supabase.from('family_invitations').select('id, target_kuerzel, email').eq('family_id', familyId).eq('status', 'pending'),
+      ])
+      const allMembers = (membersRes.data ?? []) as { kuerzel: string; role: string }[]
+      const myMember = allMembers.find(m => m.kuerzel === currentUser)
+      setCurrentRole((myMember?.role as MemberRole) ?? 'member')
+      setLinkedKuerzel(allMembers.map(m => m.kuerzel))
+      setPendingInvites(
+        (invitesRes.data ?? []).map(i => ({
+          id: i.id,
+          kuerzel: i.target_kuerzel as string,
+          email: i.email as string,
+        }))
+      )
+    }
+    void loadInviteData()
+  }, [currentUser, inviteDataKey])
 
   function resetPwForm() {
     setCurrentPw(''); setNewPw(''); setConfirmPw(''); setPwError(null); setPwSuccess(false)
   }
+
+  function openInviteForm(kuerzel: string) {
+    setInviteOpenFor(kuerzel)
+    setInviteEmail('')
+    setInviteRole('member')
+    setInviteError(null)
+  }
+
+  async function handleSendInvite(kuerzel: string) {
+    if (!inviteEmail) return
+    setInviteSending(true)
+    setInviteError(null)
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) { setInviteError('Sitzung abgelaufen.'); setInviteSending(false); return }
+    const res = await fetch('/api/invitations/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+      body: JSON.stringify({ email: inviteEmail, targetKuerzel: kuerzel, invitedRole: inviteRole }),
+    })
+    const data = await res.json() as { error?: string }
+    setInviteSending(false)
+    if (!res.ok) {
+      setInviteError(data.error ?? 'Fehler beim Senden.')
+    } else {
+      setInviteSuccess(`Einladung an ${inviteEmail} gesendet.`)
+      setInviteOpenFor(null)
+      setInviteDataKey(k => k + 1)
+      setTimeout(() => setInviteSuccess(null), 4000)
+    }
+  }
+
+  async function handleRevoke(inviteId: string) {
+    setRevoking(inviteId)
+    const { error } = await supabase
+      .from('family_invitations')
+      .update({ status: 'revoked' })
+      .eq('id', inviteId)
+    setRevoking(null)
+    if (!error) setInviteDataKey(k => k + 1)
+  }
+
+  const isOwner = currentRole === 'owner'
 
   return (
     <div className="screen active">
@@ -60,6 +148,12 @@ export default function ProfilScreen({
           </button>
         </div>
 
+        {inviteSuccess && (
+          <div style={{ background: '#E1F5EE', border: '1px solid #A7D7C5', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#085041', marginBottom: 12 }}>
+            ✓ {inviteSuccess}
+          </div>
+        )}
+
         {familyProfile.members.map((m, idx) => {
           const col = MEMBER_PALETTE[idx % MEMBER_PALETTE.length]
           const isMe = m.id === currentUser
@@ -67,6 +161,9 @@ export default function ProfilScreen({
           const vorliebText = (m.vorlieben ?? []).length ? (m.vorlieben ?? []).join(', ') : null
           const stat = m.chefStat
           const barPct = stat ? Math.round((stat.count / maxCount) * 100) : 0
+          const isLinked = linkedKuerzel.includes(m.id)
+          const pendingInvite = pendingInvites.find(i => i.kuerzel === m.id)
+          const inviteFormOpen = inviteOpenFor === m.id
 
           return (
             <div key={m.id} className="profile-person" style={{ opacity: isMe ? 1 : 0.75 }}>
@@ -86,7 +183,9 @@ export default function ProfilScreen({
                     {m.name}
                     {isMe && <span style={{ fontSize: 10, color: col.c, marginLeft: 6, fontWeight: 400 }}>· eingeloggt</span>}
                   </div>
-                  <div style={{ fontSize: 11, color: '#aaa' }}>Mitglied</div>
+                  <div style={{ fontSize: 11, color: '#aaa' }}>
+                    {currentRole === 'owner' && m.id === currentUser ? 'Gründer' : 'Mitglied'}
+                  </div>
                 </div>
                 {stat && (
                   <div style={{ textAlign: 'right', flexShrink: 0 }}>
@@ -119,6 +218,72 @@ export default function ProfilScreen({
                   <div style={{ fontSize: 12, color: '#ccc' }}>Keine Angaben</div>
                 )}
               </div>
+
+              {/* Invite section – owner only, not for own card, not for already-linked members */}
+              {isOwner && !isMe && (
+                <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid #f0f0f0' }}>
+                  {isLinked ? (
+                    <div style={{ fontSize: 11, color: '#aaa' }}>✓ Konto verknüpft</div>
+                  ) : pendingInvite ? (
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                      <div style={{ fontSize: 11, color: '#92400E', background: '#FEF3C7', border: '1px solid #F59E0B', borderRadius: 8, padding: '3px 8px' }}>
+                        ✉ Einladung ausstehend
+                      </div>
+                      <button
+                        disabled={revoking === pendingInvite.id}
+                        onClick={() => handleRevoke(pendingInvite.id)}
+                        style={{ fontSize: 11, color: '#aaa', background: 'none', border: 'none', cursor: 'pointer', padding: '2px 0' }}
+                      >
+                        {revoking === pendingInvite.id ? '…' : 'Zurückziehen'}
+                      </button>
+                    </div>
+                  ) : !inviteFormOpen ? (
+                    <button
+                      onClick={() => openInviteForm(m.id)}
+                      style={{ fontSize: 12, color: '#0C447C', background: 'none', border: 'none', cursor: 'pointer', padding: '2px 0' }}
+                    >
+                      ✉ Einladen
+                    </button>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      <input
+                        type="email"
+                        placeholder={`E-Mail von ${m.name}`}
+                        value={inviteEmail}
+                        onChange={e => { setInviteEmail(e.target.value); setInviteError(null) }}
+                        autoFocus
+                        style={{ fontSize: 13, padding: '8px 10px', border: '1px solid #ddd', borderRadius: 8, outline: 'none' }}
+                      />
+                      <div style={{ display: 'flex', gap: 16 }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: '#555', cursor: 'pointer' }}>
+                          <input type="radio" name={`role-${m.id}`} value="member" checked={inviteRole === 'member'} onChange={() => setInviteRole('member')} />
+                          Mitglied
+                        </label>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: '#555', cursor: 'pointer' }}>
+                          <input type="radio" name={`role-${m.id}`} value="parent" checked={inviteRole === 'parent'} onChange={() => setInviteRole('parent')} />
+                          Elternteil
+                        </label>
+                      </div>
+                      {inviteError && <div style={{ fontSize: 11, color: '#E24B4A' }}>{inviteError}</div>}
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <button
+                          disabled={inviteSending || !inviteEmail}
+                          onClick={() => handleSendInvite(m.id)}
+                          style={{ flex: 1, padding: '8px', background: (inviteSending || !inviteEmail) ? '#ccc' : '#1D9E75', color: '#fff', border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: (inviteSending || !inviteEmail) ? 'default' : 'pointer' }}
+                        >
+                          {inviteSending ? '…' : 'Senden'}
+                        </button>
+                        <button
+                          onClick={() => { setInviteOpenFor(null); setInviteError(null) }}
+                          style={{ padding: '8px 12px', background: 'none', border: '1px solid #eee', borderRadius: 8, fontSize: 12, color: '#888', cursor: 'pointer' }}
+                        >
+                          Abbrechen
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )
         })}
