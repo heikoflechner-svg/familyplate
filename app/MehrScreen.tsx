@@ -118,7 +118,7 @@ export default function MehrScreen({
     return (
       <div className="screen active" style={{ overflowY: 'auto' }}>
         <div className="topbar"><h1>⋯ Mehr</h1></div>
-        <div className="content" style={{ padding: '0 16px' }}>
+        <div className="content" style={{ padding: '0 16px 24px' }}>
 
           <div className="lbl" style={{ marginTop: 20 }}>Planungseinstellungen</div>
           <div className="card" style={{ marginBottom: 20 }}>
@@ -239,7 +239,7 @@ export default function MehrScreen({
           <button className="back" onClick={() => setView('overview')}>‹</button>
           <h1>🛒 Einkaufsmanager</h1>
         </div>
-        <div className="content" style={{ padding: '0 16px' }}>
+        <div className="content" style={{ padding: '0 16px 24px' }}>
 
           {isChef ? (
             <>
@@ -444,7 +444,7 @@ export default function MehrScreen({
           <button className="back" onClick={() => setView('overview')}>‹</button>
           <h1>👨‍🍳 Wochenchefs</h1>
         </div>
-        <div className="content" style={{ padding: '0 16px' }}>
+        <div className="content" style={{ padding: '0 16px 24px' }}>
 
           {/* Aktuelle Woche */}
           <div style={{ marginTop: 20 }}>
