@@ -365,7 +365,7 @@ export default function EinkaufScreen({ weekPlan, mealsData, shoppingList, onSho
                 {groupByLaden(recipeItems, zutatenLaden, laeden).map(group => (
                   <div key={group.laden} style={{ marginBottom: 18 }}>
                     <div style={{ fontSize: 11, fontWeight: 700, color: '#888', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 6, paddingBottom: 4, borderBottom: '1.5px solid #eee' }}>
-                      {group.unassigned ? 'Noch nicht zugeordnet' : group.laden}
+                      {group.unassigned ? 'Noch keinem Laden zugeordnet' : group.laden}
                     </div>
                     {group.items.map(item => (
                       <div key={item.name}>

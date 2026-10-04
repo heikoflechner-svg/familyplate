@@ -262,7 +262,7 @@ export function groupByLaden(
     .map(l => ({ laden: l, items: byLaden.get(l)!, unassigned: false }))
 
   if (unassigned.length > 0) {
-    result.push({ laden: '__unassigned__', items: unassigned, unassigned: true })
+    result.unshift({ laden: '__unassigned__', items: unassigned, unassigned: true })
   }
 
   return result
