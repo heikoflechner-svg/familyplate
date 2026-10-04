@@ -39,12 +39,13 @@ interface PendingInvite {
 interface Props {
   currentUser: Chef
   familyProfile: FamilyProfile
+  currentMemberRole: MemberRole
   onSignOut: () => Promise<void>
   onEditProfile: (profile: FamilyProfile) => void
 }
 
 export default function ProfilScreen({
-  currentUser, familyProfile,
+  currentUser, familyProfile, currentMemberRole,
   onSignOut, onEditProfile,
 }: Props) {
   // Password-change state
@@ -207,13 +208,14 @@ export default function ProfilScreen({
 
   function handleEditProfile() {
     let editableMembers: FamilyMember[]
-    if (currentRole === 'owner' || currentRole === 'admin') {
+    if (currentMemberRole === 'owner' || currentMemberRole === 'admin') {
       editableMembers = familyProfile.members
-    } else if (currentRole === 'parent') {
+    } else if (currentMemberRole === 'parent') {
       editableMembers = familyProfile.members.filter(m => m.id === currentUser || m.istKind)
     } else {
       editableMembers = familyProfile.members.filter(m => m.id === currentUser)
     }
+    if (editableMembers.length === 0) editableMembers = familyProfile.members
     onEditProfile({ ...familyProfile, members: editableMembers })
   }
 

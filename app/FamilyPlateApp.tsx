@@ -474,6 +474,7 @@ export default function FamilyPlateApp() {
           <ProfilScreen
             currentUser={currentUser}
             familyProfile={familyProfile}
+            currentMemberRole={currentMemberRole}
             onSignOut={signOut}
             onEditProfile={(filteredProfile) => setEditingWithProfile(filteredProfile)}
           />
