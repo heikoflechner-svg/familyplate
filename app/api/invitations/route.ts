@@ -25,12 +25,13 @@ export async function GET(req: NextRequest) {
 
   const { data: member } = await supabaseAdmin
     .from('family_members')
-    .select('family_id')
+    .select('family_id, role')
     .eq('user_id', user.id)
+    .in('role', ['owner', 'admin'])
     .maybeSingle()
 
   if (!member) {
-    return NextResponse.json({ invitations: [] })
+    return NextResponse.json({ error: 'Keine Berechtigung.' }, { status: 403 })
   }
 
   const { data: rows } = await supabaseAdmin
