@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react'
 import type { Chef, FamilyMember, FamilyProfile, MemberRole } from '../lib/state'
 import { changePassword } from '../lib/auth'
-import { supabase, getFamilyId } from '../lib/supabase'
+import { supabase } from '../lib/supabase'
 
 const MEMBER_PALETTE = [
   { bg: '#E6F1FB', c: '#0C447C' },
@@ -59,7 +59,6 @@ export default function ProfilScreen({
 
   // memberRoles: kuerzel → role for every linked family member
   const [memberRoles, setMemberRoles] = useState<Record<string, MemberRole>>({})
-  const [memberUserIds, setMemberUserIds] = useState<Record<string, string>>({})
   const [pendingInvites, setPendingInvites] = useState<PendingInvite[]>([])
   const [inviteDataKey, setInviteDataKey] = useState(0)
 
@@ -85,33 +84,23 @@ export default function ProfilScreen({
 
   useEffect(() => {
     async function loadInviteData() {
-      const familyId = getFamilyId()
-      if (!familyId) return
-
       const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.access_token) return
+      const token = session.access_token
 
-      const membersPromise = supabase
-        .from('family_members')
-        .select('kuerzel, role, user_id')
-        .eq('family_id', familyId)
-
-      const invitesPromise: Promise<{ invitations: PendingInvite[] }> = session?.access_token
-        ? fetch('/api/invitations', {
-            headers: { Authorization: `Bearer ${session.access_token}` },
-          }).then(r => r.ok ? r.json() : { invitations: [] })
-        : Promise.resolve({ invitations: [] })
-
-      const [membersRes, invitesData] = await Promise.all([membersPromise, invitesPromise])
+      const [membersData, invitesData] = await Promise.all([
+        fetch('/api/members/list', { headers: { Authorization: `Bearer ${token}` } })
+          .then(r => r.ok ? r.json() as Promise<{ members: { kuerzel: string; role: string }[] }> : { members: [] }),
+        fetch('/api/invitations', { headers: { Authorization: `Bearer ${token}` } })
+          .then(r => r.ok ? r.json() : { invitations: [] }),
+      ])
 
       const roles: Record<string, MemberRole> = {}
-      const userIds: Record<string, string> = {}
-      for (const m of (membersRes.data ?? [])) {
-        roles[m.kuerzel as string] = m.role as MemberRole
-        userIds[m.kuerzel as string] = m.user_id as string
+      for (const m of ((membersData as { members?: { kuerzel: string; role: string }[] }).members ?? [])) {
+        roles[m.kuerzel] = m.role as MemberRole
       }
       setMemberRoles(roles)
-      setMemberUserIds(userIds)
-      setPendingInvites(invitesData.invitations ?? [])
+      setPendingInvites((invitesData as { invitations?: PendingInvite[] }).invitations ?? [])
     }
     void loadInviteData()
   }, [currentUser, inviteDataKey])
@@ -187,15 +176,13 @@ export default function ProfilScreen({
   }
 
   async function handleRoleChange(kuerzel: string, newRole: 'member' | 'parent' | 'admin') {
-    const targetUserId = memberUserIds[kuerzel]
-    if (!targetUserId) return
     setRoleChangePending(kuerzel)
     const token = await getToken()
     if (!token) { setRoleChangePending(null); return }
     const res = await fetch('/api/members/role', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ targetUserId, newRole }),
+      body: JSON.stringify({ targetKuerzel: kuerzel, newRole }),
     })
     setRoleChangePending(null)
     if (res.ok) {

@@ -16,17 +16,17 @@ export async function POST(req: NextRequest) {
   }
   const token = authHeader.slice(7)
 
-  let targetUserId: string, newRole: string
+  let targetKuerzel: string, newRole: string
   try {
     const body = await req.json()
-    targetUserId = ((body.targetUserId as string) ?? '').trim()
+    targetKuerzel = ((body.targetKuerzel as string) ?? '').trim().toUpperCase()
     newRole = ((body.newRole as string) ?? '').trim()
   } catch {
     return NextResponse.json({ error: 'Ungültige Anfrage.' }, { status: 400 })
   }
 
-  if (!targetUserId || !newRole) {
-    return NextResponse.json({ error: 'targetUserId und newRole sind Pflicht.' }, { status: 400 })
+  if (!targetKuerzel || !newRole) {
+    return NextResponse.json({ error: 'targetKuerzel und newRole sind Pflicht.' }, { status: 400 })
   }
   if (!(['member', 'parent', 'admin'] as string[]).includes(newRole)) {
     return NextResponse.json({ error: 'Ungültige Rolle. Erlaubt: member, parent, admin.' }, { status: 400 })
@@ -42,7 +42,7 @@ export async function POST(req: NextRequest) {
   // Caller must be owner or admin
   const { data: callerMember } = await supabaseAdmin
     .from('family_members')
-    .select('family_id, role')
+    .select('family_id, role, kuerzel')
     .eq('user_id', user.id)
     .in('role', ['owner', 'admin'])
     .maybeSingle()
@@ -52,7 +52,7 @@ export async function POST(req: NextRequest) {
   }
 
   // Cannot change own role
-  if (user.id === targetUserId) {
+  if ((callerMember as { kuerzel: string }).kuerzel === targetKuerzel) {
     return NextResponse.json({ error: 'Eigene Rolle kann nicht geändert werden.' }, { status: 403 })
   }
 
@@ -60,7 +60,7 @@ export async function POST(req: NextRequest) {
   const { data: targetMember } = await supabaseAdmin
     .from('family_members')
     .select('id, role')
-    .eq('user_id', targetUserId)
+    .eq('kuerzel', targetKuerzel)
     .eq('family_id', (callerMember as { family_id: string }).family_id)
     .maybeSingle()
 
