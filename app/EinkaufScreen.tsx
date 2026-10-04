@@ -33,6 +33,7 @@ interface Props {
   laeden: string[]
   zutatenLaden: Record<string, string>
   onZutatenLadenChange: (mapping: Record<string, string>) => Promise<void>
+  canEditSettings: boolean
   shoppingDays?: string[]
   nextWeekData?: NextWeekData | null
   freezerItems: FreezerItem[]
@@ -42,7 +43,7 @@ interface Props {
 
 type ViewMode = 'tag' | 'zusammen' | 'laden'
 
-export default function EinkaufScreen({ weekPlan, mealsData, shoppingList, onShoppingListChange, onMealsDataChange, currentUser, wochenchef, shopDone, onShopDoneChange, laeden, zutatenLaden, onZutatenLadenChange, shoppingDays = [], nextWeekData = null, freezerItems, pantryItems, members }: Props) {
+export default function EinkaufScreen({ weekPlan, mealsData, shoppingList, onShoppingListChange, onMealsDataChange, currentUser, wochenchef, shopDone, onShopDoneChange, laeden, zutatenLaden, onZutatenLadenChange, canEditSettings, shoppingDays = [], nextWeekData = null, freezerItems, pantryItems, members }: Props) {
   const [newName, setNewName] = useState('')
   const [newMenge, setNewMenge] = useState('')
   const [dayPickerOpen, setDayPickerOpen] = useState(false)
@@ -370,30 +371,34 @@ export default function EinkaufScreen({ weekPlan, mealsData, shoppingList, onSho
                       <div key={item.name}>
                         <ConsolidatedRow item={item} onToggle={() => toggleConsolidated(item.ids)} />
                         {group.unassigned ? (
-                          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', paddingLeft: 42, paddingBottom: 10, marginTop: -4 }}>
-                            {laeden.map(l => (
-                              <button
-                                key={l}
-                                onClick={() => onZutatenLadenChange({ ...zutatenLaden, [item.name.toLowerCase()]: l })}
-                                style={{ fontSize: 10, padding: '3px 10px', border: '1px solid #ddd', borderRadius: 12, background: '#f5f5f5', cursor: 'pointer', color: '#555' }}
-                              >
-                                {l}
-                              </button>
-                            ))}
-                          </div>
+                          canEditSettings ? (
+                            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', paddingLeft: 42, paddingBottom: 10, marginTop: -4 }}>
+                              {laeden.map(l => (
+                                <button
+                                  key={l}
+                                  onClick={() => onZutatenLadenChange({ ...zutatenLaden, [item.name.toLowerCase()]: l })}
+                                  style={{ fontSize: 10, padding: '3px 10px', border: '1px solid #ddd', borderRadius: 12, background: '#f5f5f5', cursor: 'pointer', color: '#555' }}
+                                >
+                                  {l}
+                                </button>
+                              ))}
+                            </div>
+                          ) : null
                         ) : (
-                          <div style={{ paddingLeft: 42, paddingBottom: 8, marginTop: -4 }}>
-                            <button
-                              onClick={() => {
-                                const next = { ...zutatenLaden }
-                                delete next[item.name.toLowerCase()]
-                                onZutatenLadenChange(next)
-                              }}
-                              style={{ fontSize: 10, padding: '2px 8px', border: '1px solid #ddd', borderRadius: 12, background: '#f0f8f5', cursor: 'pointer', color: '#1D9E75' }}
-                            >
-                              {group.laden} ×
-                            </button>
-                          </div>
+                          canEditSettings ? (
+                            <div style={{ paddingLeft: 42, paddingBottom: 8, marginTop: -4 }}>
+                              <button
+                                onClick={() => {
+                                  const next = { ...zutatenLaden }
+                                  delete next[item.name.toLowerCase()]
+                                  onZutatenLadenChange(next)
+                                }}
+                                style={{ fontSize: 10, padding: '2px 8px', border: '1px solid #ddd', borderRadius: 12, background: '#f0f8f5', cursor: 'pointer', color: '#1D9E75' }}
+                              >
+                                {group.laden} ×
+                              </button>
+                            </div>
+                          ) : null
                         )}
                       </div>
                     ))}
@@ -429,17 +434,19 @@ export default function EinkaufScreen({ weekPlan, mealsData, shoppingList, onSho
                       return (
                         <div key={item.id}>
                           <ItemRow item={item} onToggle={() => toggle(item.id)} onRemove={() => remove(item.id)} />
-                          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', paddingLeft: 42, paddingBottom: 10, marginTop: -4 }}>
-                            {laeden.map(l => (
-                              <button
-                                key={l}
-                                onClick={() => onZutatenLadenChange({ ...zutatenLaden, [key]: l })}
-                                style={{ fontSize: 10, padding: '3px 10px', border: '1px solid #ddd', borderRadius: 12, background: '#f5f5f5', cursor: 'pointer', color: '#555' }}
-                              >
-                                {l}
-                              </button>
-                            ))}
-                          </div>
+                          {canEditSettings && (
+                            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', paddingLeft: 42, paddingBottom: 10, marginTop: -4 }}>
+                              {laeden.map(l => (
+                                <button
+                                  key={l}
+                                  onClick={() => onZutatenLadenChange({ ...zutatenLaden, [key]: l })}
+                                  style={{ fontSize: 10, padding: '3px 10px', border: '1px solid #ddd', borderRadius: 12, background: '#f5f5f5', cursor: 'pointer', color: '#555' }}
+                                >
+                                  {l}
+                                </button>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       )
                     })}

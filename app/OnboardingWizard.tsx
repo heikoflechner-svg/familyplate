@@ -100,10 +100,11 @@ export default function OnboardingWizard({ onDone, initialProfile, onCancel }: P
     }))
     const profile: FamilyProfile = { members: finalMembers, laeden: initialProfile?.laeden ?? DEFAULT_LAEDEN, zutatenLaden: initialProfile?.zutatenLaden ?? {} }
     try {
-      await saveFamilyProfile(profile)
-      onDone(profile)
-    } catch {
-      setSaveError('Speichern fehlgeschlagen – bitte erneut versuchen.')
+      const saved = await saveFamilyProfile(profile)
+      onDone(saved)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Speichern fehlgeschlagen – bitte erneut versuchen.'
+      setSaveError(msg)
       setSaving(false)
     }
   }

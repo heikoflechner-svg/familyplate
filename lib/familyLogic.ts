@@ -42,21 +42,30 @@ export async function loadFamilyProfile(): Promise<FamilyProfile | null> {
   }
 }
 
-export async function saveFamilyProfile(profile: FamilyProfile): Promise<void> {
-  const { error } = await supabase
-    .from('family_profiles')
-    .upsert(
-      {
-        family_id: getFamilyId(),
-        members: profile.members,
-        laeden: profile.laeden,
-        zutaten_laden: profile.zutatenLaden,
-        onboarding_done: true,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: 'family_id' }
-    )
-  if (error) throw new Error(error.message)
+export async function saveFamilyProfile(profile: FamilyProfile): Promise<FamilyProfile> {
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session?.access_token) throw new Error('Nicht eingeloggt.')
+
+  const res = await fetch('/api/profile/save', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${session.access_token}`,
+    },
+    body: JSON.stringify({
+      members: profile.members,
+      laeden: profile.laeden,
+      zutatenLaden: profile.zutatenLaden,
+    }),
+  })
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({})) as { error?: string }
+    throw new Error(err.error ?? `Speichern fehlgeschlagen (${res.status}).`)
+  }
+
+  const data = await res.json() as { profile: FamilyProfile }
+  return data.profile
 }
 
 export function applyChefStats(members: FamilyMember[], confirmedEntries: WeekPlanEntry[], today: string): FamilyMember[] {

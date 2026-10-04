@@ -41,13 +41,14 @@ interface Props {
   onPlanWEChange: (val: boolean) => void
   laeden: string[]
   onLaedenChange: (laeden: string[]) => Promise<void>
+  canEditSettings: boolean
 }
 
 export default function MehrScreen({
   currentUser, wochenchef, members, weekPlan, shoppingDays, shoppingPersons, proposals,
   onShoppingDaysChange, onShoppingPersonsChange, onShoppingProposalSubmit, onGoToAttendance,
   nextWeekData, nextWeekStart, onWochenchefChange, onNextWeekDataChange,
-  mittagsloseTage, planWE, onMittagsloseTageChange, onPlanWEChange, laeden, onLaedenChange,
+  mittagsloseTage, planWE, onMittagsloseTageChange, onPlanWEChange, laeden, onLaedenChange, canEditSettings,
 }: Props) {
   const [view, setView] = useState<View>('overview')
   const [saving, setSaving] = useState(false)
@@ -390,32 +391,39 @@ export default function MehrScreen({
                 {laeden.map((l, i) => (
                   <div key={l} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '9px 0', borderBottom: i < laeden.length - 1 ? '1px solid #f5f5f5' : 'none' }}>
                     <span style={{ fontSize: 13, color: '#111' }}>{l}</span>
-                    <button onClick={() => void onLaedenChange(laeden.filter(x => x !== l))} style={{ border: 'none', background: 'none', color: '#ccc', fontSize: 18, cursor: 'pointer', lineHeight: 1 }}>×</button>
+                    {canEditSettings && (
+                      <button onClick={() => void onLaedenChange(laeden.filter(x => x !== l))} style={{ border: 'none', background: 'none', color: '#ccc', fontSize: 18, cursor: 'pointer', lineHeight: 1 }}>×</button>
+                    )}
                   </div>
                 ))}
-                <div style={{ display: 'flex', gap: 8, marginTop: laeden.length > 0 ? 10 : 0 }}>
-                  <input
-                    value={newLaden}
-                    onChange={e => setNewLaden(e.target.value)}
-                    onKeyDown={e => {
-                      if (e.key === 'Enter' && newLaden.trim() && !laeden.includes(newLaden.trim())) {
-                        void onLaedenChange([...laeden, newLaden.trim()])
-                        setNewLaden('')
-                      }
-                    }}
-                    placeholder="Laden hinzufügen"
-                    style={{ flex: 1, border: '1px solid #ddd', borderRadius: 10, padding: '8px 12px', fontSize: 13, outline: 'none' }}
-                  />
-                  <button
-                    onClick={() => {
-                      if (newLaden.trim() && !laeden.includes(newLaden.trim())) {
-                        void onLaedenChange([...laeden, newLaden.trim()])
-                        setNewLaden('')
-                      }
-                    }}
-                    style={{ border: 'none', background: '#1D9E75', color: '#fff', borderRadius: 10, padding: '8px 14px', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}
-                  >+</button>
-                </div>
+                {canEditSettings && (
+                  <div style={{ display: 'flex', gap: 8, marginTop: laeden.length > 0 ? 10 : 0 }}>
+                    <input
+                      value={newLaden}
+                      onChange={e => setNewLaden(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter' && newLaden.trim() && !laeden.includes(newLaden.trim())) {
+                          void onLaedenChange([...laeden, newLaden.trim()])
+                          setNewLaden('')
+                        }
+                      }}
+                      placeholder="Laden hinzufügen"
+                      style={{ flex: 1, border: '1px solid #ddd', borderRadius: 10, padding: '8px 12px', fontSize: 13, outline: 'none' }}
+                    />
+                    <button
+                      onClick={() => {
+                        if (newLaden.trim() && !laeden.includes(newLaden.trim())) {
+                          void onLaedenChange([...laeden, newLaden.trim()])
+                          setNewLaden('')
+                        }
+                      }}
+                      style={{ border: 'none', background: '#1D9E75', color: '#fff', borderRadius: 10, padding: '8px 14px', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}
+                    >+</button>
+                  </div>
+                )}
+                {!canEditSettings && laeden.length === 0 && (
+                  <div style={{ fontSize: 12, color: '#bbb', paddingTop: 4 }}>Keine Läden eingetragen.</div>
+                )}
               </div>
             )}
           </div>

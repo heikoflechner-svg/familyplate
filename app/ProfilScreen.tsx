@@ -1,6 +1,6 @@
 'use client'
 import { useEffect, useState } from 'react'
-import type { Chef, FamilyProfile, MemberRole } from '../lib/state'
+import type { Chef, FamilyMember, FamilyProfile, MemberRole } from '../lib/state'
 import { changePassword } from '../lib/auth'
 import { supabase, getFamilyId } from '../lib/supabase'
 
@@ -40,7 +40,7 @@ interface Props {
   currentUser: Chef
   familyProfile: FamilyProfile
   onSignOut: () => Promise<void>
-  onEditProfile: () => void
+  onEditProfile: (profile: FamilyProfile) => void
 }
 
 export default function ProfilScreen({
@@ -56,11 +56,15 @@ export default function ProfilScreen({
   const [pwError, setPwError] = useState<string | null>(null)
   const [pwSuccess, setPwSuccess] = useState(false)
 
-  // Invite section state
   // memberRoles: kuerzel → role for every linked family member
   const [memberRoles, setMemberRoles] = useState<Record<string, MemberRole>>({})
+  const [memberUserIds, setMemberUserIds] = useState<Record<string, string>>({})
   const [pendingInvites, setPendingInvites] = useState<PendingInvite[]>([])
   const [inviteDataKey, setInviteDataKey] = useState(0)
+
+  // Role change state
+  const [roleChangePending, setRoleChangePending] = useState<string | null>(null)
+  const [roleChangeError, setRoleChangeError] = useState<string | null>(null)
 
   const [inviteOpenFor, setInviteOpenFor] = useState<string | null>(null)
   const [inviteEmail, setInviteEmail] = useState('')
@@ -86,7 +90,7 @@ export default function ProfilScreen({
 
       const membersPromise = supabase
         .from('family_members')
-        .select('kuerzel, role')
+        .select('kuerzel, role, user_id')
         .eq('family_id', familyId)
 
       const invitesPromise: Promise<{ invitations: PendingInvite[] }> = session?.access_token
@@ -98,10 +102,13 @@ export default function ProfilScreen({
       const [membersRes, invitesData] = await Promise.all([membersPromise, invitesPromise])
 
       const roles: Record<string, MemberRole> = {}
+      const userIds: Record<string, string> = {}
       for (const m of (membersRes.data ?? [])) {
         roles[m.kuerzel as string] = m.role as MemberRole
+        userIds[m.kuerzel as string] = m.user_id as string
       }
       setMemberRoles(roles)
+      setMemberUserIds(userIds)
       setPendingInvites(invitesData.invitations ?? [])
     }
     void loadInviteData()
@@ -177,6 +184,39 @@ export default function ProfilScreen({
     }
   }
 
+  async function handleRoleChange(kuerzel: string, newRole: 'member' | 'parent' | 'admin') {
+    const targetUserId = memberUserIds[kuerzel]
+    if (!targetUserId) return
+    setRoleChangePending(kuerzel)
+    const token = await getToken()
+    if (!token) { setRoleChangePending(null); return }
+    const res = await fetch('/api/members/role', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ targetUserId, newRole }),
+    })
+    setRoleChangePending(null)
+    if (res.ok) {
+      setMemberRoles(r => ({ ...r, [kuerzel]: newRole }))
+    } else {
+      const err = await res.json().catch(() => ({})) as { error?: string }
+      setRoleChangeError(err.error ?? 'Rollenänderung fehlgeschlagen.')
+      setTimeout(() => setRoleChangeError(null), 4000)
+    }
+  }
+
+  function handleEditProfile() {
+    let editableMembers: FamilyMember[]
+    if (currentRole === 'owner' || currentRole === 'admin') {
+      editableMembers = familyProfile.members
+    } else if (currentRole === 'parent') {
+      editableMembers = familyProfile.members.filter(m => m.id === currentUser || m.istKind)
+    } else {
+      editableMembers = familyProfile.members.filter(m => m.id === currentUser)
+    }
+    onEditProfile({ ...familyProfile, members: editableMembers })
+  }
+
   return (
     <div className="screen active">
       <div className="topbar"><h1>👤 Profil</h1></div>
@@ -185,12 +225,18 @@ export default function ProfilScreen({
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
           <div className="lbl" style={{ marginBottom: 0 }}>Familie</div>
           <button
-            onClick={onEditProfile}
+            onClick={handleEditProfile}
             style={{ fontSize: 12, color: '#0C447C', background: 'none', border: 'none', cursor: 'pointer', padding: '2px 0' }}
           >
             ✏️ Bearbeiten
           </button>
         </div>
+
+        {roleChangeError && (
+          <div style={{ background: '#FEE2E2', border: '1px solid #FCA5A5', borderRadius: 10, padding: '8px 12px', fontSize: 12, color: '#991B1B', marginBottom: 10 }}>
+            ⚠️ {roleChangeError}
+          </div>
+        )}
 
         {inviteSuccess && (
           <div style={{ background: '#E1F5EE', border: '1px solid #A7D7C5', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#085041', marginBottom: 12 }}>
@@ -265,11 +311,29 @@ export default function ProfilScreen({
                 )}
               </div>
 
-              {/* Invite section – canManage only, not for own card */}
+              {/* Invite/role section – canManage only, not for own card */}
               {canManage && !isMe && (
                 <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid #f0f0f0' }}>
                   {isLinked ? (
-                    <div style={{ fontSize: 11, color: '#aaa' }}>✓ Konto verknüpft</div>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
+                      <div style={{ fontSize: 11, color: '#aaa' }}>✓ Konto verknüpft</div>
+                      {memberRole !== 'owner' && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <span style={{ fontSize: 11, color: '#aaa' }}>Rolle:</span>
+                          <select
+                            value={memberRole ?? 'member'}
+                            disabled={roleChangePending === m.id}
+                            onChange={e => void handleRoleChange(m.id, e.target.value as 'member' | 'parent' | 'admin')}
+                            style={{ fontSize: 11, border: '1px solid #ddd', borderRadius: 6, padding: '2px 6px', color: '#555', background: '#fff', cursor: 'pointer' }}
+                          >
+                            <option value="member">Mitglied</option>
+                            <option value="parent">Elternteil</option>
+                            <option value="admin">Mitverwaltung</option>
+                          </select>
+                          {roleChangePending === m.id && <span style={{ fontSize: 11, color: '#aaa' }}>…</span>}
+                        </div>
+                      )}
+                    </div>
                   ) : pendingInvite ? (
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                       <div style={{ fontSize: 11, color: '#92400E', background: '#FEF3C7', border: '1px solid #F59E0B', borderRadius: 8, padding: '3px 8px', flexShrink: 0 }}>

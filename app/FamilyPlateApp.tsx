@@ -4,7 +4,8 @@ import { loadWeekPlan, saveWeekPlan, saveAttendance, saveShoppingList, savePropo
 import { loadFreezerItems, loadPantryItems } from '../lib/freezerLogic'
 import { loadFamilyProfile, saveFamilyProfile, applyChefStats, DEFAULT_MEMBERS } from '../lib/familyLogic'
 import { signOut, onAuthChange, SETUP_NEEDED } from '../lib/auth'
-import type { WeekPlanEntry, Rezept, FreezerItem, PantryItem, ShoppingItem, Tab, Wish, Chef, FamilyProfile, DayAttendance, ChangeProposal, NextWeekData, NextWeekWish } from '../lib/state'
+import { supabase, getFamilyId } from '../lib/supabase'
+import type { WeekPlanEntry, Rezept, FreezerItem, PantryItem, ShoppingItem, Tab, Wish, Chef, FamilyProfile, DayAttendance, ChangeProposal, NextWeekData, NextWeekWish, MemberRole } from '../lib/state'
 import LoginScreen from './LoginScreen'
 import RegisterScreen from './RegisterScreen'
 import SetupScreen from './SetupScreen'
@@ -22,7 +23,8 @@ export default function FamilyPlateApp() {
   const lastAuthUser = useRef<Chef | null>(null)
 
   const [familyProfile, setFamilyProfile] = useState<FamilyProfile | null>(null)
-  const [editingProfile, setEditingProfile] = useState(false)
+  const [editingWithProfile, setEditingWithProfile] = useState<FamilyProfile | null>(null)
+  const [currentMemberRole, setCurrentMemberRole] = useState<MemberRole>('member')
   const [attendance, setAttendance] = useState<DayAttendance[]>([])
   const [attendanceConfirmed, setAttendanceConfirmed] = useState<Chef[]>([])
   const [weekPlan, setWeekPlan] = useState<WeekPlanEntry[]>([])
@@ -72,6 +74,7 @@ export default function FamilyPlateApp() {
         setPantryItems([])
         setShoppingList([])
         setFamilyProfile(null)
+        setCurrentMemberRole('member')
         setProposals([])
         setActiveWochenchef('')
         setPlanConfirmed(false)
@@ -84,8 +87,9 @@ export default function FamilyPlateApp() {
     if (!currentUser || currentUser === SETUP_NEEDED) return
     const doLoad = async () => {
       setProfileLoadError(false)
-      const [loaded, freezer, pantry, profile, nwLoaded] = await Promise.all([
+      const [loaded, freezer, pantry, profile, nwLoaded, roleData] = await Promise.all([
         loadWeekPlan(), loadFreezerItems(), loadPantryItems(), loadFamilyProfile(), loadNextWeekData(),
+        supabase.from('family_members').select('role').eq('family_id', getFamilyId()).eq('kuerzel', currentUser!).maybeSingle(),
       ])
       let planData = loaded
       let nwData = nwLoaded
@@ -116,6 +120,7 @@ export default function FamilyPlateApp() {
       setFreezerItems(freezer)
       setPantryItems(pantry)
       setFamilyProfile(profile)
+      setCurrentMemberRole((roleData.data?.role as MemberRole | null) ?? 'member')
       setDataLoading(false)
       loadLastDishes().then(setLastDishes).catch(() => {})
     }
@@ -223,16 +228,30 @@ export default function FamilyPlateApp() {
 
   async function handleZutatenLadenChange(mapping: Record<string, string>) {
     if (!familyProfile) return
+    const previous = familyProfile
     const updated: FamilyProfile = { ...familyProfile, zutatenLaden: mapping }
     setFamilyProfile(updated)
-    await saveFamilyProfile(updated)
+    try {
+      const saved = await saveFamilyProfile(updated)
+      setFamilyProfile(saved)
+    } catch (err) {
+      setFamilyProfile(previous)
+      setProfileSaveError(err instanceof Error ? err.message : 'Speichern fehlgeschlagen.')
+    }
   }
 
   async function handleLaedenChange(newLaeden: string[]) {
     if (!familyProfile) return
+    const previous = familyProfile
     const updated: FamilyProfile = { ...familyProfile, laeden: newLaeden }
     setFamilyProfile(updated)
-    await saveFamilyProfile(updated)
+    try {
+      const saved = await saveFamilyProfile(updated)
+      setFamilyProfile(saved)
+    } catch (err) {
+      setFamilyProfile(previous)
+      setProfileSaveError(err instanceof Error ? err.message : 'Speichern fehlgeschlagen.')
+    }
   }
 
   async function handlePlanConfirm(confirmedEntries: WeekPlanEntry[]) {
@@ -246,7 +265,8 @@ export default function FamilyPlateApp() {
     setWeekStart(monday)
     await saveWeekStart(monday)
     try {
-      await saveFamilyProfile(updated)
+      const saved = await saveFamilyProfile(updated)
+      setFamilyProfile(saved)
     } catch (err) {
       setProfileSaveError('Profil-Speichern fehlgeschlagen – Chef-Statistik nicht aktualisiert.')
       console.error('saveFamilyProfile:', err)
@@ -337,20 +357,22 @@ export default function FamilyPlateApp() {
             ),
           }
           setFamilyProfile(corrected)
-          void saveFamilyProfile(corrected)
+          saveFamilyProfile(corrected)
+            .then(saved => setFamilyProfile(saved))
+            .catch(err => setProfileSaveError(err instanceof Error ? err.message : 'Profil konnte nicht gespeichert werden.'))
           void handleWochenchefChange(currentUser)
         }}
       />
     )
   }
 
-  if (editingProfile) {
+  if (editingWithProfile) {
     return (
       <OnboardingWizard
         key="edit"
-        initialProfile={familyProfile}
-        onDone={profile => { setFamilyProfile(profile); setEditingProfile(false) }}
-        onCancel={() => setEditingProfile(false)}
+        initialProfile={editingWithProfile}
+        onDone={profile => { setFamilyProfile(profile); setEditingWithProfile(null) }}
+        onCancel={() => setEditingWithProfile(null)}
       />
     )
   }
@@ -440,6 +462,7 @@ export default function FamilyPlateApp() {
             laeden={familyProfile.laeden}
             zutatenLaden={familyProfile.zutatenLaden}
             onZutatenLadenChange={handleZutatenLadenChange}
+            canEditSettings={currentMemberRole !== 'member'}
             shoppingDays={shoppingDays}
             nextWeekData={nextWeekData}
             freezerItems={freezerItems}
@@ -452,7 +475,7 @@ export default function FamilyPlateApp() {
             currentUser={currentUser}
             familyProfile={familyProfile}
             onSignOut={signOut}
-            onEditProfile={() => setEditingProfile(true)}
+            onEditProfile={(filteredProfile) => setEditingWithProfile(filteredProfile)}
           />
         )}
         {activeTab === 'mehr' && (
@@ -482,6 +505,7 @@ export default function FamilyPlateApp() {
             onPlanWEChange={setPlanWE}
             laeden={familyProfile.laeden}
             onLaedenChange={handleLaedenChange}
+            canEditSettings={currentMemberRole !== 'member'}
           />
         )}
       </div>
