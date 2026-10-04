@@ -116,7 +116,7 @@ export default function MehrScreen({
     const nwChef = nextWeekData?.wochenchef ?? null
     const activeDays = planWE ? WOCHENTAGE : WOCHENTAGE.slice(0, 5)
     return (
-      <div className="screen active" style={{ overflowY: 'auto', paddingBottom: 'calc(80px + env(safe-area-inset-bottom))' }}>
+      <div className="screen active" style={{ overflowY: 'auto' }}>
         <div className="topbar"><h1>⋯ Mehr</h1></div>
         <div className="content" style={{ padding: '0 16px' }}>
 
@@ -234,7 +234,7 @@ export default function MehrScreen({
   // ── Einkaufsmanager ─────────────────────────────────────────────────────────
   if (view === 'einkauf') {
     return (
-      <div className="screen active" style={{ overflowY: 'auto', paddingBottom: 'calc(80px + env(safe-area-inset-bottom))' }}>
+      <div className="screen active" style={{ overflowY: 'auto' }}>
         <div className="topbar">
           <button className="back" onClick={() => setView('overview')}>‹</button>
           <h1>🛒 Einkaufsmanager</h1>
@@ -439,7 +439,7 @@ export default function MehrScreen({
     const ccCurrent = CFG[wochenchef] ?? Object.values(CFG)[0]
 
     return (
-      <div className="screen active" style={{ overflowY: 'auto', paddingBottom: 'calc(80px + env(safe-area-inset-bottom))' }}>
+      <div className="screen active" style={{ overflowY: 'auto' }}>
         <div className="topbar">
           <button className="back" onClick={() => setView('overview')}>‹</button>
           <h1>👨‍🍳 Wochenchefs</h1>

@@ -395,7 +395,7 @@ export default function FamilyPlateApp() {
         <span>🍽 MenuFamPlan</span>
         <span style={{ fontSize: 10, color: '#aaa' }}>{currentName}</span>
       </div>
-      <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+      <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
         <div style={{ display: activeTab === 'woche' ? 'flex' : 'none', flex: 1, flexDirection: 'column', overflow: 'hidden', minHeight: 0 }}>
           <WocheScreen
             weekPlan={weekPlan}
