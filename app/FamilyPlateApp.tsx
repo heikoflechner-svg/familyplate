@@ -360,18 +360,10 @@ export default function FamilyPlateApp() {
     return (
       <OnboardingWizard
         key="onboarding"
+        ownerKuerzel={currentUser!}
         onDone={profile => {
-          const corrected = {
-            ...profile,
-            members: profile.members.map((m, i) =>
-              i === 0 ? { ...m, id: currentUser } : m
-            ),
-          }
-          setFamilyProfile(corrected)
-          saveFamilyProfile(corrected)
-            .then(saved => setFamilyProfile(saved))
-            .catch(err => setProfileSaveError(err instanceof Error ? err.message : 'Profil konnte nicht gespeichert werden.'))
-          void handleWochenchefChange(currentUser)
+          setFamilyProfile(profile)
+          void handleWochenchefChange(currentUser!)
         }}
       />
     )

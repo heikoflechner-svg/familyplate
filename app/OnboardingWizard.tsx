@@ -20,26 +20,41 @@ interface Props {
   onDone: (profile: FamilyProfile) => void
   initialProfile?: FamilyProfile
   onCancel?: () => void
+  ownerKuerzel?: string
 }
 
-export default function OnboardingWizard({ onDone, initialProfile, onCancel }: Props) {
+export default function OnboardingWizard({ onDone, initialProfile, onCancel, ownerKuerzel }: Props) {
   const [step, setStep] = useState(1)
   const [members, setMembers] = useState<FamilyMember[]>(() => {
-    if (!initialProfile) return DEFAULT_MEMBERS
-    return initialProfile.members.map(m => ({
-      ...m,
-      allergien: (m.allergien ?? []).filter(a => ALLERGIE_OPTIONS.includes(a)),
-      vorlieben: (m.vorlieben ?? []).filter(v => VORLIEBE_OPTIONS.includes(v)),
-    }))
+    if (initialProfile) {
+      return initialProfile.members.map(m => ({
+        ...m,
+        allergien: (m.allergien ?? []).filter(a => ALLERGIE_OPTIONS.includes(a)),
+        vorlieben: (m.vorlieben ?? []).filter(v => VORLIEBE_OPTIONS.includes(v)),
+      }))
+    }
+    if (ownerKuerzel) {
+      return [
+        { id: ownerKuerzel, name: '', allergien: [], vorlieben: [] },
+        DEFAULT_MEMBERS[1],
+        DEFAULT_MEMBERS[2],
+      ]
+    }
+    return DEFAULT_MEMBERS
   })
   const [freitext, setFreitext] = useState<Record<string, { a: string; v: string }>>(() => {
-    const base = initialProfile ? initialProfile.members : DEFAULT_MEMBERS
-    return Object.fromEntries(
-      base.map(m => [m.id, {
-        a: (m.allergien ?? []).filter(a => !ALLERGIE_OPTIONS.includes(a)).join(', '),
-        v: (m.vorlieben ?? []).filter(v => !VORLIEBE_OPTIONS.includes(v)).join(', '),
-      }])
-    )
+    if (initialProfile) {
+      return Object.fromEntries(
+        initialProfile.members.map(m => [m.id, {
+          a: (m.allergien ?? []).filter(a => !ALLERGIE_OPTIONS.includes(a)).join(', '),
+          v: (m.vorlieben ?? []).filter(v => !VORLIEBE_OPTIONS.includes(v)).join(', '),
+        }])
+      )
+    }
+    const base = ownerKuerzel
+      ? [{ id: ownerKuerzel }, DEFAULT_MEMBERS[1], DEFAULT_MEMBERS[2]]
+      : DEFAULT_MEMBERS
+    return Object.fromEntries(base.map(m => [m.id, { a: '', v: '' }]))
   })
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)

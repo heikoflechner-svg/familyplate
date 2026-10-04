@@ -108,5 +108,21 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Mitgliedschaft konnte nicht angelegt werden.' }, { status: 500 })
   }
 
+  // Profil sofort anlegen, damit kuerzel und members[0].id von Anfang an übereinstimmen
+  const { error: profileError } = await supabaseAdmin
+    .from('family_profiles')
+    .insert({
+      family_id: familyId,
+      members: [{ id: kuerzel, name: displayName, allergien: [], vorlieben: [] }],
+      onboarding_done: false,
+    })
+
+  if (profileError) {
+    await supabaseAdmin.from('family_members').delete().eq('family_id', familyId)
+    await supabaseAdmin.from('families').delete().eq('id', familyId)
+    console.error('family_profiles insert:', profileError)
+    return NextResponse.json({ error: 'Familie konnte nicht vollständig angelegt werden.' }, { status: 500 })
+  }
+
   return NextResponse.json({ success: true, familyId, kuerzel })
 }
