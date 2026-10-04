@@ -66,6 +66,7 @@ export default function ProfilScreen({
   // Role change state
   const [roleChangePending, setRoleChangePending] = useState<string | null>(null)
   const [roleChangeError, setRoleChangeError] = useState<string | null>(null)
+  const [editProfileError, setEditProfileError] = useState<string | null>(null)
 
   const [inviteOpenFor, setInviteOpenFor] = useState<string | null>(null)
   const [inviteEmail, setInviteEmail] = useState('')
@@ -215,7 +216,11 @@ export default function ProfilScreen({
     } else {
       editableMembers = familyProfile.members.filter(m => m.id === currentUser)
     }
-    if (editableMembers.length === 0) editableMembers = familyProfile.members
+    if (editableMembers.length === 0) {
+      setEditProfileError('Profil konnte nicht geladen werden – bitte Seite neu laden.')
+      return
+    }
+    setEditProfileError(null)
     onEditProfile({ ...familyProfile, members: editableMembers })
   }
 
@@ -233,6 +238,12 @@ export default function ProfilScreen({
             ✏️ Bearbeiten
           </button>
         </div>
+
+        {editProfileError && (
+          <div style={{ background: '#FEE2E2', border: '1px solid #FCA5A5', borderRadius: 10, padding: '8px 12px', fontSize: 12, color: '#991B1B', marginBottom: 10 }}>
+            ⚠️ {editProfileError}
+          </div>
+        )}
 
         {roleChangeError && (
           <div style={{ background: '#FEE2E2', border: '1px solid #FCA5A5', borderRadius: 10, padding: '8px 12px', fontSize: 12, color: '#991B1B', marginBottom: 10 }}>

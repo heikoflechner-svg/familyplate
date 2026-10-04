@@ -104,6 +104,16 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Ungültige Mitgliederliste.' }, { status: 400 })
     }
 
+    // If existing members are present and none of the incoming IDs match any DB ID,
+    // this is a complete ID replacement (e.g. DEFAULT_MEMBERS / "Person 1/2/3") — reject always.
+    if (currentMembers.length > 0) {
+      const incomingIdSet = new Set(incomingMembers.map(m => m.id))
+      const hasOverlap = currentMembers.some(m => incomingIdSet.has(m.id))
+      if (!hasOverlap) {
+        return NextResponse.json({ error: 'Mitgliederliste ungültig – keine bekannten Mitglieds-IDs enthalten.' }, { status: 400 })
+      }
+    }
+
     // Adding a member whose ID is not in DB requires owner/admin
     const currentIdSet = new Set(currentMembers.map(m => m.id))
     const addedMembers = incomingMembers.filter(m => !currentIdSet.has(m.id))
