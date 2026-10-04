@@ -99,6 +99,17 @@ export default function FamilyPlateApp() {
         const [reloaded, nwReloaded] = await Promise.all([loadWeekPlan(), loadNextWeekData()])
         planData = reloaded
         nwData = nwReloaded
+        const memberList = profile?.members ?? []
+        if (memberList.length > 0 && !memberList.some(m => m.id === planData.wochenchef)) {
+          const prevChef = loaded.wochenchef
+          const fallback = ([...memberList]
+            .sort((a, b) => (a.chefStat?.count ?? 0) - (b.chefStat?.count ?? 0))
+            .find(m => m.id !== prevChef) ?? memberList[0])?.id as Chef | undefined
+          if (fallback) {
+            await saveWochenchef(fallback)
+            planData = { ...planData, wochenchef: fallback }
+          }
+        }
       }
       const { plan, mealsData: md, wishes: w, attendance: att, attendanceConfirmed: ac, shoppingList: sl, proposals: pr, wochenchef: wc, planConfirmed: pc, shopDone: sd, shoppingDays: sd2, shoppingPersons: sp, weekStart: ws } = planData
       const { nextWeekStart: nws, nextWeekData: nwd } = nwData
@@ -438,6 +449,7 @@ export default function FamilyPlateApp() {
             onNextWeekDataChange={handleNextWeekDataChange}
             onActivateNextWeek={handleActivateNextWeek}
             onAttendanceBack={attendanceReturnToMehr ? () => { setAttendanceReturnToMehr(false); setWocheInitView('home'); setActiveTab('mehr') } : undefined}
+            canEditSettings={currentMemberRole !== 'member'}
           />
         </div>
         {activeTab === 'gefriertruhe' && (

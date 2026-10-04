@@ -65,7 +65,7 @@ export async function POST(req: NextRequest) {
       : `Mittag UND Abend (Mittag nur an: ${mittagTage.join(', ')})`
   const chefRota: string[] = (Array.isArray(memberIds) && memberIds.length > 0)
     ? memberIds
-    : ['M1', 'M2', 'M3']
+    : ['A', 'B', 'C']
 
   if (!apiKey) {
     const fallback: object[] = []
@@ -104,12 +104,12 @@ export async function POST(req: NextRequest) {
     ? ` Gäste: ${gaesteList.map(g => `am ${g.tag} kommen ${g.gaeste} zusätzliche${g.gaeste === 1 ? 'r Gast' : ' Gäste'}`).join(', ')} – bitte an diesen Tagen gut skalierbare Gerichte einplanen, die sich einfach für mehr Personen zubereiten lassen.`
     : ''
 
-  const familienProfil = familyPrompt || 'Sabine (MA) keine Nüsse mag Fisch, Heiko (PA) laktosefrei mag Pasta, Tim (TI) kein Fisch mag Nudeln'
+  const familienProfil = familyPrompt || 'Familienmitglieder mit individuellen Vorlieben und Unverträglichkeiten'
   console.log('[week-plan] familyPrompt:', familienProfil)
   console.log('[week-plan] lastDishes:', lastDishesList.length, 'Einträge')
   console.log('[week-plan] gaesteProTag:', gaesteList.length, 'Tage mit Gästen')
   const allergenCheck = 'SCHRITT 2 – Allergen-Check (nach der Auswahl): Prüfe für jedes gewählte Gericht, ob Zutaten eine Unverträglichkeit aus dem Profil verletzen. Quellen: Gluten=Mehl/Pasta/Brot/Pizzateig/Paniermehl. Kasein=Milch/Käse/Butter/Sahne/Joghurt/Quark/Schmand/Sahnesaucen/Bechamel. Laktose=Milch/Käse/Butter/Sahne/Joghurt. Nüsse=Mandeln/Walnüsse/Cashews/Erdnüsse. Wenn eine Zutat eine Unverträglichkeit verletzt, trag die Ersatz-Zutat NUR für die betroffene Person in allergie[GerichtName] ein als "Menge Produkt (für Person)", z.B. "1 Packung glutenfreier Pizzateig (für Heiko)". Die anderen Familienmitglieder essen das normale Gericht. Wenn keine Unverträglichkeit betroffen ist, setze allergie[GerichtName] auf [].'
-  const prompt = `Du bist Rémy. Plane ${slotHinweis} für ${planTage.join(', ')} für Familie Flechner. Profil: ${familienProfil}.${wishHinweis}${historyHinweis}${behalteneHinweis}${gaesteHinweis} Gefriertruhe: ${freezerList}. Speisekammer: ${pantryList}. Nutze Gefriertruhe/Speisekammer wenn sinnvoll – Artikel mit [DRINGEND] müssen diese Woche eingeplant werden. Weise pro Tag+Slot Küchenchef zu (${chefRota.join(' ')}) nach Fairness. SCHRITT 1 – Gerichtsauswahl: Wähle immer normale, typische Familiengerichte für die ganze Familie – niemals vorsorglich glutenfreie, laktosefreie oder anderweitig angepasste Varianten, auch wenn Unverträglichkeiten im Profil stehen. Das normale Gericht wird für alle gekocht. Ändere Gerichtsnamen nie. ${allergenCheck} Antworte NUR als reines JSON ohne Markdown-Codeblock: {"woche":[${beispiele.join(',')}],"allergie":{"GerichtName":["Menge Ersatz (für Person)"],"GerichtName2":[]}} — allergie enthält für JEDES Gericht in woche einen Eintrag (leeres Array wenn keine Anpassung nötig).`
+  const prompt = `Du bist Rémy. Plane ${slotHinweis} für ${planTage.join(', ')} für die Familie. Profil: ${familienProfil}.${wishHinweis}${historyHinweis}${behalteneHinweis}${gaesteHinweis} Gefriertruhe: ${freezerList}. Speisekammer: ${pantryList}. Nutze Gefriertruhe/Speisekammer wenn sinnvoll – Artikel mit [DRINGEND] müssen diese Woche eingeplant werden. Weise pro Tag+Slot Küchenchef zu (${chefRota.join(' ')}) nach Fairness. SCHRITT 1 – Gerichtsauswahl: Wähle immer normale, typische Familiengerichte für die ganze Familie – niemals vorsorglich glutenfreie, laktosefreie oder anderweitig angepasste Varianten, auch wenn Unverträglichkeiten im Profil stehen. Das normale Gericht wird für alle gekocht. Ändere Gerichtsnamen nie. ${allergenCheck} Antworte NUR als reines JSON ohne Markdown-Codeblock: {"woche":[${beispiele.join(',')}],"allergie":{"GerichtName":["Menge Ersatz (für Person)"],"GerichtName2":[]}} — allergie enthält für JEDES Gericht in woche einen Eintrag (leeres Array wenn keine Anpassung nötig).`
 
   try {
     const resp = await fetch('https://api.anthropic.com/v1/messages', {

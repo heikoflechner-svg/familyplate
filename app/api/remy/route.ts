@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 export const maxDuration = 60
 
 const FALLBACK = [
-  { emoji: '🐟', name: 'Lachs-Pasta', info: 'Sabine + Tim · Regional · aus Gefriertruhe', minuten: 25 },
+  { emoji: '🐟', name: 'Lachs-Pasta', info: 'Leicht · Regional · aus Gefriertruhe', minuten: 25 },
   { emoji: '🍗', name: 'Hähnchen mit Pasta', info: 'Hühnerfilets aus Gefriertruhe · Spaghetti vorhanden', minuten: 30 },
   { emoji: '🍕', name: 'Selbstgemachte Pizza', info: 'Tims Wunsch · alle machen mit', minuten: 40 },
 ]
@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
     ? 'Zustimmungen: ' + zustimmungen.join(', ') + '.'
     : ''
 
-  const familienProfil = familyPrompt || 'Sabine (MA): keine Nüsse. Heiko (PA): laktosefrei. Tim (TI): kein Fisch'
+  const familienProfil = familyPrompt || 'Familienmitglieder mit individuellen Vorlieben und Unverträglichkeiten'
   const prompt = `Du bist Rémy, ein freundlicher KI-Kochassistent für Familien. Familie plant ${choSlot || 'Abend'} am ${choDay || 'heute'}. Wünsche: ${wishText}. ${zustText} Familienprofil: ${familienProfil}. Speisekammer: ${pantryList || 'Spaghetti, Reis, Tomatensoße'}. Gefriertruhe: ${freezerList || 'Hühnerfilets, Lachs'}. Schlage 3 Kompromiss-Gerichte vor. Antworte NUR als JSON ohne Markdown: {"vorschlaege":[{"emoji":"...","name":"...","info":"...","minuten":25},{"emoji":"...","name":"...","info":"...","minuten":30},{"emoji":"...","name":"...","info":"...","minuten":40}]}`
 
   try {

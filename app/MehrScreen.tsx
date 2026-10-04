@@ -452,17 +452,18 @@ export default function MehrScreen({
             <div style={{ background: '#F9FAFB', borderRadius: 12, padding: '14px 16px', border: '1px solid #E5E7EB' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <span style={{ fontSize: 12, color: '#666' }}>Wochenchef:</span>
-                <span style={{ fontSize: 15, fontWeight: 700, color: ccCurrent.c }}>
-                  {personNames[wochenchef] ?? wochenchef}
-                </span>
+                {members.some(m => m.id === wochenchef)
+                  ? <span style={{ fontSize: 15, fontWeight: 700, color: ccCurrent.c }}>{personNames[wochenchef] || wochenchef}</span>
+                  : <span style={{ fontSize: 13, fontWeight: 600, color: '#E24B4A' }}>⚠️ {wochenchef || 'nicht gesetzt'}</span>
+                }
                 {currentUser === wochenchef && (
                   <span style={{ fontSize: 10, color: '#1D9E75', background: '#E1F5EE', borderRadius: 10, padding: '2px 7px', fontWeight: 600 }}>du</span>
                 )}
               </div>
 
-              {isChef ? (
+              {(isChef || (canEditSettings && !members.some(m => m.id === wochenchef))) ? (
                 <div style={{ marginTop: 12 }}>
-                  <div style={{ fontSize: 11, color: '#888', marginBottom: 6 }}>Wochenchef ändern:</div>
+                  <div style={{ fontSize: 11, color: '#888', marginBottom: 6 }}>Wochenchef {isChef ? 'ändern' : 'festlegen'}:</div>
                   <div style={{ display: 'flex', gap: 8 }}>
                     {activeMembers.map(m => {
                       const isSelected = wochenchef === m.id

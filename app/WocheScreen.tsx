@@ -97,6 +97,7 @@ interface Props {
   onNextWeekDataChange?: (data: Partial<NextWeekData>, nextMonday: string) => Promise<void>
   onActivateNextWeek?: () => Promise<void>
   onAttendanceBack?: () => void
+  canEditSettings?: boolean
 }
 
 type View = 'home' | 'week' | 'plan' | 'attendance'
@@ -160,6 +161,7 @@ export default function WocheScreen({
   onNextWeekDataChange,
   onActivateNextWeek,
   onAttendanceBack,
+  canEditSettings = false,
 }: Props) {
   const hasMittag = (tag: string) => !mittagsloseTage.includes(tag)
   const personNames: Record<Chef, string> = Object.fromEntries(
@@ -709,6 +711,32 @@ export default function WocheScreen({
   }
 
   function renderWochenchefDecisions() {
+    const isInvalidChef = !members.some(m => m.id === wochenchef)
+    if (isInvalidChef) {
+      return (
+        <div style={{ marginBottom: 14, border: '1px solid #FECACA', borderRadius: 12, overflow: 'hidden' }}>
+          <div style={{ background: '#FEF2F2', padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 13, fontWeight: 700, color: '#991B1B' }}>⚠️ Kein gültiger Wochenchef{wochenchef ? ` (gespeichert: ${wochenchef})` : ''}</span>
+          </div>
+          {canEditSettings && (members.length > 0) && (
+            <div style={{ padding: '10px 14px' }}>
+              <div style={{ fontSize: 11, color: '#888', marginBottom: 8 }}>Wochenchef für diese Woche festlegen:</div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                {members.map(m => {
+                  const cc = CFG[m.id] ?? Object.values(CFG)[0]
+                  return (
+                    <button key={m.id} onClick={() => void onWochenchefChange(m.id as Chef)} disabled={saving}
+                      style={{ flex: 1, padding: '10px 4px', borderRadius: 10, textAlign: 'center', cursor: saving ? 'default' : 'pointer', border: `2px solid ${cc.c}`, background: cc.bg }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: cc.c }}>{m.name || m.id}</div>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      )
+    }
     if (currentUser !== wochenchef) return null
     const nachtragsAltWishes = wishes.filter((w): w is Extract<Wish, { type: 'alternative' }> & { postConfirm: true } => !!(w.postConfirm && w.type === 'alternative'))
     const nachtragsErgWishes = wishes.filter(w => w.postConfirm && w.type === 'ergaenzung')
@@ -859,7 +887,7 @@ export default function WocheScreen({
               disabled={saving}
               style={{ background: '#1D9E75', fontSize: 13 }}
             >
-              {saving ? '⏳ Speichern…' : `✅ Wochenplan bestätigen (${personNames[wochenchef]})`}
+              {saving ? '⏳ Speichern…' : `✅ Wochenplan bestätigen (${personNames[wochenchef] || wochenchef})`}
             </button>
           </div>
         )}
@@ -1736,7 +1764,7 @@ export default function WocheScreen({
                       })}
                       <div style={{ display: 'flex', gap: 6, padding: '8px 12px' }}>
                         <button onClick={confirmPendingDay} disabled={saving} style={{ flex: 1, padding: '7px', background: '#1D9E75', color: 'white', border: 'none', borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer', opacity: saving ? 0.6 : 1 }}>
-                          {saving ? '⏳…' : `✅ Bestätigen (${personNames[wochenchef]})`}
+                          {saving ? '⏳…' : `✅ Bestätigen (${personNames[wochenchef] || wochenchef})`}
                         </button>
                         <button onClick={() => setPendingDay(null)} style={{ padding: '7px 12px', background: 'white', border: '1px solid #ddd', borderRadius: 6, fontSize: 12, cursor: 'pointer', color: '#666' }}>✕</button>
                       </div>
