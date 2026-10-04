@@ -3102,7 +3102,7 @@ function WishesSection({
 function RecipeModal({ name, rezept, loading, onClose }: { name: string; rezept: import('../lib/state').Rezept | null; loading?: boolean; onClose: () => void }) {
   const hatRezept = !!rezept && rezept.schritte.length > 0
   return (
-    <div style={{ position: 'absolute', inset: 0, zIndex: 50, background: 'white', overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
+    <div style={{ position: 'absolute', inset: 0, zIndex: 100, background: 'white', overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
       <div className="topbar">
         <button className="back" onClick={onClose}>‹</button>
         <h1 style={{ fontSize: 15 }}>{rezept?.emoji ?? '🍽'} {name}</h1>
