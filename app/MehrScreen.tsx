@@ -217,7 +217,7 @@ export default function MehrScreen({
                 <span style={{ color: CFG[wochenchef]?.c ?? '#333', fontWeight: 600 }}>
                   {personNames[wochenchef] ?? wochenchef}
                 </span>
-                {memberStatuses.find(s => s.kuerzel === wochenchef)?.isLinked === false && (
+                {memberStatuses.length > 0 && memberStatuses.find(s => s.kuerzel === wochenchef)?.isLinked !== true && (
                   <span style={{ fontSize: 10, color: '#92400E' }}> (kein Konto)</span>
                 )}
                 {nwChef && (
@@ -225,7 +225,7 @@ export default function MehrScreen({
                     <span style={{ color: CFG[nwChef]?.c ?? '#333', fontWeight: 600 }}>
                       {personNames[nwChef] ?? nwChef}
                     </span>
-                    {memberStatuses.find(s => s.kuerzel === nwChef)?.isLinked === false && (
+                    {memberStatuses.length > 0 && memberStatuses.find(s => s.kuerzel === nwChef)?.isLinked !== true && (
                       <span style={{ fontSize: 10, color: '#92400E' }}> (kein Konto)</span>
                     )}
                   </>
@@ -468,7 +468,7 @@ export default function MehrScreen({
                 {currentUser === wochenchef && (
                   <span style={{ fontSize: 10, color: '#1D9E75', background: '#E1F5EE', borderRadius: 10, padding: '2px 7px', fontWeight: 600 }}>du</span>
                 )}
-                {memberStatuses.length > 0 && members.some(m => m.id === wochenchef) && memberStatuses.find(s => s.kuerzel === wochenchef)?.isLinked === false && (
+                {memberStatuses.length > 0 && members.some(m => m.id === wochenchef) && memberStatuses.find(s => s.kuerzel === wochenchef)?.isLinked !== true && (
                   <span style={{ fontSize: 10, color: '#92400E' }}>(noch kein Konto)</span>
                 )}
                 {canEditSettings && !isChef && members.some(m => m.id === wochenchef) && (
@@ -488,7 +488,7 @@ export default function MehrScreen({
                     {activeMembers.map(m => {
                       const isSelected = wochenchef === m.id
                       const cc = CFG[m.id] ?? Object.values(CFG)[0]
-                      const hasAccount = memberStatuses.length === 0 || (memberStatuses.find(s => s.kuerzel === m.id)?.isLinked !== false)
+                      const hasAccount = memberStatuses.length === 0 || memberStatuses.find(s => s.kuerzel === m.id)?.isLinked === true
                       return (
                         <button
                           key={m.id}
@@ -531,7 +531,7 @@ export default function MehrScreen({
                 ) : (
                   <span style={{ fontSize: 13, color: '#bbb' }}>noch nicht festgelegt</span>
                 )}
-                {nwChef && memberStatuses.length > 0 && memberStatuses.find(s => s.kuerzel === nwChef)?.isLinked === false && (
+                {nwChef && memberStatuses.length > 0 && memberStatuses.find(s => s.kuerzel === nwChef)?.isLinked !== true && (
                   <span style={{ fontSize: 10, color: '#92400E' }}>(noch kein Konto)</span>
                 )}
                 {canEditSettings && !isChef && (
@@ -565,7 +565,7 @@ export default function MehrScreen({
                     {activeMembers.map(m => {
                       const isSelected = nwChef === m.id
                       const cc = CFG[m.id] ?? Object.values(CFG)[0]
-                      const hasAccount = memberStatuses.length === 0 || (memberStatuses.find(s => s.kuerzel === m.id)?.isLinked !== false)
+                      const hasAccount = memberStatuses.length === 0 || memberStatuses.find(s => s.kuerzel === m.id)?.isLinked === true
                       return (
                         <button
                           key={m.id}

@@ -174,7 +174,7 @@ export default function WocheScreen({
   const wishDeadlineHint = wishDeadlinePassed && wishDeadlineStatus
     ? `Änderungen waren nur bis ${wishDeadlineStatus.deadlineDayName} 20:00 Uhr möglich – Einkauf ist am ${wishDeadlineStatus.shoppingDayName}`
     : undefined
-  const wochenchefHasNoAccount = memberStatuses.length > 0 && memberStatuses.find(s => s.kuerzel === wochenchef)?.isLinked === false
+  const wochenchefHasNoAccount = memberStatuses.length > 0 && memberStatuses.find(s => s.kuerzel === wochenchef)?.isLinked !== true
 
   // Hinweis: NW-Plan noch nicht freigegeben, aber Einkaufsfrist nähert sich
   const nwPlanChef = nextWeekData?.wochenchef ?? wochenchef
@@ -716,7 +716,7 @@ export default function WocheScreen({
               <div style={{ display: 'flex', gap: 8 }}>
                 {members.map(m => {
                   const cc = CFG[m.id] ?? Object.values(CFG)[0]
-                  const hasAccount = memberStatuses.length === 0 || (memberStatuses.find(s => s.kuerzel === m.id)?.isLinked !== false)
+                  const hasAccount = memberStatuses.length === 0 || memberStatuses.find(s => s.kuerzel === m.id)?.isLinked === true
                   return (
                     <button key={m.id} onClick={() => void onWochenchefChange(m.id as Chef)} disabled={saving}
                       style={{ flex: 1, padding: '10px 4px', borderRadius: 10, textAlign: 'center', cursor: saving ? 'default' : 'pointer', border: `2px solid ${cc.c}`, background: cc.bg }}>
@@ -1963,7 +1963,7 @@ export default function WocheScreen({
                       <span style={{ fontSize: 11, fontWeight: 700, color: nwChef ? (CFG[nwChef]?.c ?? '#333') : '#bbb' }}>
                         {nwChef ? personNames[nwChef] : '— noch nicht festgelegt'}
                       </span>
-                      {nwChef && memberStatuses.length > 0 && memberStatuses.find(s => s.kuerzel === nwChef)?.isLinked === false && (
+                      {nwChef && memberStatuses.length > 0 && memberStatuses.find(s => s.kuerzel === nwChef)?.isLinked !== true && (
                         <span style={{ fontSize: 10, color: '#92400E' }}>(kein Konto)</span>
                       )}
                     </div>
