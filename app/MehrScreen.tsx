@@ -50,6 +50,8 @@ export default function MehrScreen({
   const [saving, setSaving] = useState(false)
   const [newLaden, setNewLaden] = useState('')
   const [laedenOpen, setLaedenOpen] = useState(false)
+  const [changingCurrent, setChangingCurrent] = useState(false)
+  const [changingNext, setChangingNext] = useState(false)
 
   const isChef = currentUser === wochenchef
   const personNames = Object.fromEntries(members.map(m => [m.id, m.name])) as Record<Chef, string>
@@ -215,11 +217,17 @@ export default function MehrScreen({
                 <span style={{ color: CFG[wochenchef]?.c ?? '#333', fontWeight: 600 }}>
                   {personNames[wochenchef] ?? wochenchef}
                 </span>
+                {memberStatuses.find(s => s.kuerzel === wochenchef)?.isLinked === false && (
+                  <span style={{ fontSize: 10, color: '#92400E' }}> (kein Konto)</span>
+                )}
                 {nwChef && (
                   <> · Nächste:{' '}
                     <span style={{ color: CFG[nwChef]?.c ?? '#333', fontWeight: 600 }}>
                       {personNames[nwChef] ?? nwChef}
                     </span>
+                    {memberStatuses.find(s => s.kuerzel === nwChef)?.isLinked === false && (
+                      <span style={{ fontSize: 10, color: '#92400E' }}> (kein Konto)</span>
+                    )}
                   </>
                 )}
               </div>
@@ -451,7 +459,7 @@ export default function MehrScreen({
           <div style={{ marginTop: 20 }}>
             <div className="lbl" style={{ marginBottom: 10 }}>Aktuelle Woche</div>
             <div style={{ background: '#F9FAFB', borderRadius: 12, padding: '14px 16px', border: '1px solid #E5E7EB' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                 <span style={{ fontSize: 12, color: '#666' }}>Wochenchef:</span>
                 {members.some(m => m.id === wochenchef)
                   ? <span style={{ fontSize: 15, fontWeight: 700, color: ccCurrent.c }}>{personNames[wochenchef] || wochenchef}</span>
@@ -460,15 +468,27 @@ export default function MehrScreen({
                 {currentUser === wochenchef && (
                   <span style={{ fontSize: 10, color: '#1D9E75', background: '#E1F5EE', borderRadius: 10, padding: '2px 7px', fontWeight: 600 }}>du</span>
                 )}
+                {memberStatuses.length > 0 && members.some(m => m.id === wochenchef) && memberStatuses.find(s => s.kuerzel === wochenchef)?.isLinked === false && (
+                  <span style={{ fontSize: 10, color: '#92400E' }}>(noch kein Konto)</span>
+                )}
+                {canEditSettings && !isChef && members.some(m => m.id === wochenchef) && (
+                  <button
+                    onClick={() => setChangingCurrent(c => !c)}
+                    style={{ marginLeft: 'auto', fontSize: 11, color: changingCurrent ? '#1D9E75' : '#888', background: 'none', border: '1px solid #ddd', borderRadius: 8, padding: '2px 8px', cursor: 'pointer' }}
+                  >
+                    {changingCurrent ? '× Abbrechen' : '✏️ Ändern'}
+                  </button>
+                )}
               </div>
 
-              {(isChef || (canEditSettings && !members.some(m => m.id === wochenchef))) ? (
+              {(isChef || changingCurrent || (canEditSettings && !members.some(m => m.id === wochenchef))) ? (
                 <div style={{ marginTop: 12 }}>
-                  <div style={{ fontSize: 11, color: '#888', marginBottom: 6 }}>Wochenchef {isChef ? 'ändern' : 'festlegen'}:</div>
+                  <div style={{ fontSize: 11, color: '#888', marginBottom: 6 }}>Wochenchef {isChef || changingCurrent ? 'ändern' : 'festlegen'}:</div>
                   <div style={{ display: 'flex', gap: 8 }}>
                     {activeMembers.map(m => {
                       const isSelected = wochenchef === m.id
                       const cc = CFG[m.id] ?? Object.values(CFG)[0]
+                      const hasAccount = memberStatuses.length === 0 || (memberStatuses.find(s => s.kuerzel === m.id)?.isLinked !== false)
                       return (
                         <button
                           key={m.id}
@@ -483,6 +503,7 @@ export default function MehrScreen({
                           }}
                         >
                           <div style={{ fontSize: 13, fontWeight: 700, color: isSelected ? cc.c : '#333' }}>{m.name}</div>
+                          {!hasAccount && <div style={{ fontSize: 9, color: '#aaa', marginTop: 1 }}>noch kein Konto</div>}
                           {isSelected && <div style={{ fontSize: 10, color: cc.c, marginTop: 2 }}>✓</div>}
                         </button>
                       )
@@ -501,7 +522,7 @@ export default function MehrScreen({
           <div style={{ marginTop: 24 }}>
             <div className="lbl" style={{ marginBottom: 10 }}>Nächste Woche</div>
             <div style={{ background: '#F9FAFB', borderRadius: 12, padding: '14px 16px', border: '1px solid #E5E7EB' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                 <span style={{ fontSize: 12, color: '#666' }}>Wochenchef:</span>
                 {nwChef ? (
                   <span style={{ fontSize: 15, fontWeight: 700, color: CFG[nwChef]?.c ?? '#333' }}>
@@ -509,6 +530,17 @@ export default function MehrScreen({
                   </span>
                 ) : (
                   <span style={{ fontSize: 13, color: '#bbb' }}>noch nicht festgelegt</span>
+                )}
+                {nwChef && memberStatuses.length > 0 && memberStatuses.find(s => s.kuerzel === nwChef)?.isLinked === false && (
+                  <span style={{ fontSize: 10, color: '#92400E' }}>(noch kein Konto)</span>
+                )}
+                {canEditSettings && !isChef && (
+                  <button
+                    onClick={() => setChangingNext(n => !n)}
+                    style={{ marginLeft: 'auto', fontSize: 11, color: changingNext ? '#1D9E75' : '#888', background: 'none', border: '1px solid #ddd', borderRadius: 8, padding: '2px 8px', cursor: 'pointer' }}
+                  >
+                    {changingNext ? '× Abbrechen' : '✏️ Ändern'}
+                  </button>
                 )}
               </div>
 
@@ -526,9 +558,9 @@ export default function MehrScreen({
                 </div>
               )}
 
-              {isChef ? (
+              {(isChef || changingNext) ? (
                 <div style={{ marginTop: 12 }}>
-                  <div style={{ fontSize: 11, color: '#888', marginBottom: 6 }}>Wochenchef festlegen:</div>
+                  <div style={{ fontSize: 11, color: '#888', marginBottom: 6 }}>Wochenchef {nwChef ? 'ändern' : 'festlegen'}:</div>
                   <div style={{ display: 'flex', gap: 8 }}>
                     {activeMembers.map(m => {
                       const isSelected = nwChef === m.id

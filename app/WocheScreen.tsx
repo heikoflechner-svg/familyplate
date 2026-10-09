@@ -174,6 +174,7 @@ export default function WocheScreen({
   const wishDeadlineHint = wishDeadlinePassed && wishDeadlineStatus
     ? `Änderungen waren nur bis ${wishDeadlineStatus.deadlineDayName} 20:00 Uhr möglich – Einkauf ist am ${wishDeadlineStatus.shoppingDayName}`
     : undefined
+  const wochenchefHasNoAccount = memberStatuses.length > 0 && memberStatuses.find(s => s.kuerzel === wochenchef)?.isLinked === false
 
   // Hinweis: NW-Plan noch nicht freigegeben, aber Einkaufsfrist nähert sich
   const nwPlanChef = nextWeekData?.wochenchef ?? wochenchef
@@ -1962,6 +1963,9 @@ export default function WocheScreen({
                       <span style={{ fontSize: 11, fontWeight: 700, color: nwChef ? (CFG[nwChef]?.c ?? '#333') : '#bbb' }}>
                         {nwChef ? personNames[nwChef] : '— noch nicht festgelegt'}
                       </span>
+                      {nwChef && memberStatuses.length > 0 && memberStatuses.find(s => s.kuerzel === nwChef)?.isLinked === false && (
+                        <span style={{ fontSize: 10, color: '#92400E' }}>(kein Konto)</span>
+                      )}
                     </div>
 
                     {/* Anwesenheit nächste Woche */}
@@ -2554,7 +2558,11 @@ export default function WocheScreen({
             <div>
               <div style={{ fontSize: 11, color: '#0F6E56', fontWeight: 600 }}>Wochenchef diese Woche</div>
               <div style={{ fontSize: 15, fontWeight: 700, color: '#111' }}>{personNames[wochenchef]}</div>
-              <div style={{ fontSize: 11, color: '#555', marginTop: 2 }}>Organisiert alles und kocht auch zwischendrin</div>
+              {wochenchefHasNoAccount ? (
+                <div style={{ fontSize: 11, color: '#92400E', marginTop: 2 }}>noch kein Konto – Organisator oder Eltern bestätigen stellvertretend</div>
+              ) : (
+                <div style={{ fontSize: 11, color: '#555', marginTop: 2 }}>Organisiert alles und kocht auch zwischendrin</div>
+              )}
             </div>
           </div>
 
@@ -2610,6 +2618,21 @@ export default function WocheScreen({
           </div>
         )}
         {renderWochenchefDecisions()}
+        {canEditSettings && !planConfirmed && weekPlan.length > 0 && wochenchefHasNoAccount && currentUser !== wochenchef && (
+          <div style={{ marginBottom: 14, border: '1px solid #FCD34D', borderRadius: 12, overflow: 'hidden' }}>
+            <div style={{ background: '#FFFBEB', padding: '10px 14px 8px', borderBottom: '1px solid #FDE68A' }}>
+              <span style={{ fontSize: 12, fontWeight: 700, color: '#92400E' }}>📋 Plan stellvertretend bestätigen</span>
+            </div>
+            <div style={{ padding: '12px 14px', background: '#FFFBEB' }}>
+              <div style={{ fontSize: 12, color: '#555', marginBottom: 8 }}>
+                <strong>{personNames[wochenchef]}</strong> hat kein Konto – du kannst den Plan stellvertretend bestätigen.
+              </div>
+              <button className="btn primary" onClick={confirmAsChef} disabled={saving} style={{ background: '#1D9E75', fontSize: 13 }}>
+                {saving ? '⏳ Speichern…' : '✅ Wochenplan stellvertretend bestätigen'}
+              </button>
+            </div>
+          </div>
+        )}
         {nwAlertDeadline && (
           <div style={{
             background: nwAlertDeadline.passed ? '#FEF2F2' : '#FFFBEB',
@@ -2635,6 +2658,7 @@ export default function WocheScreen({
             <span style={{ fontSize: 16, flexShrink: 0 }}>⏳</span>
             <div style={{ fontSize: 12, color: '#92400E' }}>
               Plan gespeichert – <strong>{personNames[wochenchef]}</strong> muss noch bestätigen.
+              {wochenchefHasNoAccount && <span style={{ display: 'block', marginTop: 2 }}>(noch kein Konto – Organisator oder Eltern bestätigen stellvertretend)</span>}
             </div>
           </div>
         )}
@@ -2657,6 +2681,7 @@ export default function WocheScreen({
                 </div>
                 <div style={{ fontSize: 12, color: '#444', marginBottom: shoppingDays.length > 0 ? 4 : 0 }}>
                   Diese Woche ist <strong>{personNames[wochenchef]}</strong> der Wochenchef (organisiert und kocht mit). {personNames[wochenchef]} hat die Woche bereits geplant – du kannst aber noch deine Wünsche eintragen.
+                  {wochenchefHasNoAccount && <span style={{ display: 'block', marginTop: 2, color: '#92400E' }}>(noch kein Konto – Organisator oder Eltern bestätigen stellvertretend)</span>}
                 </div>
                 {shoppingDays.length > 0 && (
                   <div style={{ fontSize: 12, color: '#444' }}>
