@@ -118,6 +118,11 @@ export interface ChefStat {
   lastCook: string | null
 }
 
+export interface WochenchefStat {
+  count: number
+  lastWeek: string | null
+}
+
 export type MemberRole = 'owner' | 'member' | 'parent' | 'admin'
 
 export interface FamilyMember {
@@ -126,6 +131,7 @@ export interface FamilyMember {
   allergien: string[]
   vorlieben: string[]
   chefStat?: ChefStat
+  wochenchefStat?: WochenchefStat
   istKind?: boolean
 }
 

@@ -164,10 +164,12 @@ export default function WocheScreen({
   const CFG = buildMemberCfg(activeMembers)
   const memberIds = activeMembers.map(m => m.id)
   const suggestedNextChef: Chef = ([...activeMembers].sort((a, b) => {
-    const aDate = a.chefStat?.lastCook ?? ''
-    const bDate = b.chefStat?.lastCook ?? ''
-    if (aDate !== bDate) return aDate < bDate ? -1 : 1
-    return (a.chefStat?.count ?? 0) - (b.chefStat?.count ?? 0)
+    const aCount = a.wochenchefStat?.count ?? 0
+    const bCount = b.wochenchefStat?.count ?? 0
+    if (aCount !== bCount) return aCount - bCount
+    const aDate = a.wochenchefStat?.lastWeek ?? ''
+    const bDate = b.wochenchefStat?.lastWeek ?? ''
+    return aDate < bDate ? -1 : aDate > bDate ? 1 : 0
   }).find(m => m.id !== wochenchef)?.id ?? activeMembers.find(m => m.id !== wochenchef)?.id ?? activeMembers[0]?.id ?? '') as Chef
   const wishDeadlineStatus = getShoppingDeadlineStatus(shoppingDays)
   const wishDeadlinePassed = planConfirmed && (wishDeadlineStatus?.passed ?? false)

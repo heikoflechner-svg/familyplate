@@ -7,6 +7,7 @@ interface FamilyMember {
   allergien?: string[]
   vorlieben?: string[]
   chefStat?: { count: number; lastCook: string | null }
+  wochenchefStat?: { count: number; lastWeek: string | null }
   istKind?: boolean
 }
 
@@ -162,6 +163,15 @@ export async function POST(req: NextRequest) {
     for (const m of addedMembers) {
       newMembers.push(m)
     }
+
+    // Second pass: wochenchefStat may be updated by any family member (Wochenwechsel counter).
+    // Idempotency guard: only apply if lastWeek changes — prevents double-counting on concurrent devices.
+    newMembers = newMembers.map(dbMember => {
+      const incoming = incomingMembers.find(m => m.id === dbMember.id)
+      if (!incoming?.wochenchefStat) return dbMember
+      if (incoming.wochenchefStat.lastWeek === (dbMember.wochenchefStat?.lastWeek ?? null)) return dbMember
+      return { ...dbMember, wochenchefStat: incoming.wochenchefStat }
+    })
   }
 
   const { error: upsertError } = await supabaseAdmin

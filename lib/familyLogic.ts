@@ -68,6 +68,19 @@ export async function saveFamilyProfile(profile: FamilyProfile): Promise<FamilyP
   return data.profile
 }
 
+export async function incrementWochenchefStat(wochenchef: Chef, weekStart: string, profile: FamilyProfile): Promise<FamilyProfile | null> {
+  if (!wochenchef) return null
+  const member = profile.members.find(m => m.id === wochenchef)
+  if (!member) return null
+  if (member.wochenchefStat?.lastWeek === weekStart) return null
+  const updatedMembers = profile.members.map(m =>
+    m.id === wochenchef
+      ? { ...m, wochenchefStat: { count: (m.wochenchefStat?.count ?? 0) + 1, lastWeek: weekStart } }
+      : m
+  )
+  return saveFamilyProfile({ ...profile, members: updatedMembers })
+}
+
 export function applyChefStats(members: FamilyMember[], confirmedEntries: WeekPlanEntry[], today: string): FamilyMember[] {
   const counts: Partial<Record<Chef, number>> = {}
   for (const e of confirmedEntries) {

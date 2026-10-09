@@ -5,6 +5,15 @@ import { buildMemberCfg, DEFAULT_MEMBERS } from '../lib/familyLogic'
 import { getNextMondayIso } from '../lib/mealLogic'
 
 const WOCHENTAGE = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag']
+
+function getKW(isoDate: string): number {
+  const d = new Date(isoDate + 'T00:00:00')
+  const thu = new Date(d)
+  thu.setDate(d.getDate() + 3 - (d.getDay() + 6) % 7)
+  const yearStart = new Date(thu.getFullYear(), 0, 1)
+  const days = Math.round((thu.getTime() - yearStart.getTime()) / 86400000)
+  return Math.ceil((days + 1) / 7)
+}
 const TAG_SHORT: Record<string, string> = {
   Montag: 'Mo', Dienstag: 'Di', Mittwoch: 'Mi', Donnerstag: 'Do',
   Freitag: 'Fr', Samstag: 'Sa', Sonntag: 'So',
@@ -64,10 +73,12 @@ export default function MehrScreen({
     : []
   const suggestedNextChef: Chef | null = eligibleForSuggestion.length > 0
     ? ([...eligibleForSuggestion].sort((a, b) => {
-        const aDate = a.chefStat?.lastCook ?? ''
-        const bDate = b.chefStat?.lastCook ?? ''
-        if (aDate !== bDate) return aDate < bDate ? -1 : 1
-        return (a.chefStat?.count ?? 0) - (b.chefStat?.count ?? 0)
+        const aCount = a.wochenchefStat?.count ?? 0
+        const bCount = b.wochenchefStat?.count ?? 0
+        if (aCount !== bCount) return aCount - bCount
+        const aDate = a.wochenchefStat?.lastWeek ?? ''
+        const bDate = b.wochenchefStat?.lastWeek ?? ''
+        return aDate < bDate ? -1 : aDate > bDate ? 1 : 0
       }).find(m => m.id !== wochenchef)?.id ?? null)
     : null
 
@@ -514,6 +525,45 @@ export default function MehrScreen({
                 <div style={{ fontSize: 11, color: '#aaa', marginTop: 8 }}>
                   Nur der aktuelle Wochenchef kann das ändern.
                 </div>
+              )}
+            </div>
+          </div>
+
+          {/* Fairplay */}
+          <div style={{ marginTop: 24 }}>
+            <div className="lbl" style={{ marginBottom: 10 }}>Fairplay</div>
+            <div style={{ background: '#F9FAFB', borderRadius: 12, padding: '14px 16px', border: '1px solid #E5E7EB' }}>
+              {activeMembers.map((m, i) => {
+                const status = memberStatuses.find(s => s.kuerzel === m.id)
+                const isEligible = status?.isLinked === true && status.role !== 'parent'
+                const cc = CFG[m.id] ?? Object.values(CFG)[0]
+                const wcCount = m.wochenchefStat?.count ?? 0
+                const chefCount = m.chefStat?.count ?? 0
+                const lastWcKW = m.wochenchefStat?.lastWeek ? `KW ${getKW(m.wochenchefStat.lastWeek)}` : '–'
+                return (
+                  <div key={m.id} style={{ padding: '8px 0', borderBottom: i < activeMembers.length - 1 ? '1px solid #f0f0f0' : 'none' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: cc.c }}>{m.name}</span>
+                      {memberStatuses.length > 0 && !isEligible && (
+                        <span style={{ fontSize: 9, color: '#aaa', background: '#f5f5f5', borderRadius: 8, padding: '1px 5px' }}>
+                          {status?.isLinked !== true ? 'kein Konto' : 'kein Auto-Vorschlag'}
+                        </span>
+                      )}
+                    </div>
+                    <div style={{ fontSize: 11, color: '#666', marginTop: 2 }}>
+                      {wcCount}× Wochenchef · {chefCount}× gekocht · zuletzt Wochenchef: {lastWcKW}
+                    </div>
+                  </div>
+                )
+              })}
+              {suggestedNextChef && (
+                <div style={{ fontSize: 11, color: '#555', background: '#F0FAF5', border: '1px solid #B2DFCC', borderRadius: 8, padding: '7px 10px', marginTop: 12 }}>
+                  🐀 Rémy empfiehlt <strong style={{ color: CFG[suggestedNextChef]?.c ?? '#333' }}>{personNames[suggestedNextChef] ?? suggestedNextChef}</strong> als nächste/n Wochenchef — hat am wenigsten Wochen übernommen
+                  {eligibleForSuggestion.length < activeMembers.length && <> (nur unter Personen mit Konto und ohne Gast-Rolle)</>}.
+                </div>
+              )}
+              {!suggestedNextChef && memberStatuses.length > 0 && (
+                <div style={{ fontSize: 11, color: '#aaa', marginTop: 8 }}>Kein automatischer Vorschlag möglich (keine berechtigten Personen).</div>
               )}
             </div>
           </div>

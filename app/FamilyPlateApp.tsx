@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { loadWeekPlan, saveWeekPlan, saveAttendance, saveShoppingList, saveProposals, saveWochenchef, savePlanConfirmed, saveShopDone, saveShoppingDays, saveShoppingPersons, loadLastDishes, getMondayIso, getNextMondayIso, saveWeekStart, loadNextWeekData, saveNextWeekData, activateNextWeek } from '../lib/mealLogic'
 import { loadFreezerItems, loadPantryItems } from '../lib/freezerLogic'
-import { loadFamilyProfile, saveFamilyProfile, applyChefStats, DEFAULT_MEMBERS } from '../lib/familyLogic'
+import { loadFamilyProfile, saveFamilyProfile, applyChefStats, incrementWochenchefStat, DEFAULT_MEMBERS } from '../lib/familyLogic'
 import { signOut, onAuthChange, SETUP_NEEDED } from '../lib/auth'
 import { supabase, getFamilyId } from '../lib/supabase'
 import type { WeekPlanEntry, Rezept, FreezerItem, PantryItem, ShoppingItem, Tab, Wish, Chef, FamilyProfile, DayAttendance, ChangeProposal, NextWeekData, NextWeekWish, MemberRole } from '../lib/state'
@@ -105,13 +105,18 @@ export default function FamilyPlateApp() {
       ])
       let planData = loaded
       let nwData = nwLoaded
+      let latestProfile = profile
       // Auto-activate next week when the stored weekStart is from a past week
       if (loaded.weekStart && loaded.weekStart < getMondayIso()) {
         await activateNextWeek()
+        if (latestProfile && loaded.wochenchef && (latestProfile.members ?? []).some(m => m.id === loaded.wochenchef)) {
+          const inc = await incrementWochenchefStat(loaded.wochenchef as Chef, loaded.weekStart, latestProfile).catch(() => null)
+          if (inc) latestProfile = inc
+        }
         const [reloaded, nwReloaded] = await Promise.all([loadWeekPlan(), loadNextWeekData()])
         planData = reloaded
         nwData = nwReloaded
-        const memberList = profile?.members ?? []
+        const memberList = latestProfile?.members ?? []
         if (memberList.length > 0 && !memberList.some(m => m.id === planData.wochenchef)) {
           const prevChef = loaded.wochenchef
           const ownerKuerzel = memberSts.find(s => s.role === 'owner')?.kuerzel
@@ -122,7 +127,7 @@ export default function FamilyPlateApp() {
             ? eligibleList
             : (ownerKuerzel ? memberList.filter(m => m.id === ownerKuerzel) : memberList)
           const fallback = ([...candidateList]
-            .sort((a, b) => (a.chefStat?.count ?? 0) - (b.chefStat?.count ?? 0))
+            .sort((a, b) => (a.wochenchefStat?.count ?? 0) - (b.wochenchefStat?.count ?? 0))
             .find(m => m.id !== prevChef) ?? candidateList[0])?.id as Chef | undefined
           if (fallback) {
             await saveWochenchef(fallback)
@@ -149,7 +154,7 @@ export default function FamilyPlateApp() {
       setNextWeekData(nwd)
       setFreezerItems(freezer)
       setPantryItems(pantry)
-      setFamilyProfile(profile)
+      setFamilyProfile(latestProfile)
       setCurrentMemberRole((roleData.data?.role as MemberRole | null) ?? 'member')
       setMemberStatuses(memberSts)
       setDataLoading(false)
