@@ -45,6 +45,7 @@ export default function FamilyPlateApp() {
   const [weekStart, setWeekStart] = useState<string | null>(null)
   const [nextWeekStart, setNextWeekStart] = useState<string | null>(null)
   const [nextWeekData, setNextWeekData] = useState<NextWeekData | null>(null)
+  const [memberStatuses, setMemberStatuses] = useState<{ kuerzel: string; role: string; isLinked: boolean }[]>([])
   const [wocheInitView, setWocheInitView] = useState<'home' | 'attendance'>('home')
   const [attendanceReturnToMehr, setAttendanceReturnToMehr] = useState(false)
   const [activeTab, setActiveTab] = useState<Tab>('woche')
@@ -79,6 +80,7 @@ export default function FamilyPlateApp() {
         setActiveWochenchef('')
         setPlanConfirmed(false)
         setShopDone(false)
+        setMemberStatuses([])
       }
     })
   }, [])
@@ -87,9 +89,19 @@ export default function FamilyPlateApp() {
     if (!currentUser || currentUser === SETUP_NEEDED) return
     const doLoad = async () => {
       setProfileLoadError(false)
-      const [loaded, freezer, pantry, profile, nwLoaded, roleData] = await Promise.all([
+      const [loaded, freezer, pantry, profile, nwLoaded, roleData, memberSts] = await Promise.all([
         loadWeekPlan(), loadFreezerItems(), loadPantryItems(), loadFamilyProfile(), loadNextWeekData(),
         supabase.from('family_members').select('role').eq('family_id', getFamilyId()).eq('kuerzel', currentUser!).maybeSingle(),
+        (async (): Promise<{ kuerzel: string; role: string; isLinked: boolean }[]> => {
+          try {
+            const { data: { session } } = await supabase.auth.getSession()
+            if (!session?.access_token) return []
+            const res = await fetch('/api/members/list', { headers: { Authorization: `Bearer ${session.access_token}` } })
+            if (!res.ok) return []
+            const json = await res.json() as { members?: { kuerzel: string; role: string; isLinked: boolean }[] }
+            return json.members ?? []
+          } catch { return [] }
+        })(),
       ])
       let planData = loaded
       let nwData = nwLoaded
@@ -102,9 +114,16 @@ export default function FamilyPlateApp() {
         const memberList = profile?.members ?? []
         if (memberList.length > 0 && !memberList.some(m => m.id === planData.wochenchef)) {
           const prevChef = loaded.wochenchef
-          const fallback = ([...memberList]
+          const ownerKuerzel = memberSts.find(s => s.role === 'owner')?.kuerzel
+          const eligibleList = memberSts.length > 0
+            ? memberList.filter(m => { const s = memberSts.find(x => x.kuerzel === m.id); return !!(s?.isLinked && s.role !== 'parent') })
+            : []
+          const candidateList = eligibleList.length > 0
+            ? eligibleList
+            : (ownerKuerzel ? memberList.filter(m => m.id === ownerKuerzel) : memberList)
+          const fallback = ([...candidateList]
             .sort((a, b) => (a.chefStat?.count ?? 0) - (b.chefStat?.count ?? 0))
-            .find(m => m.id !== prevChef) ?? memberList[0])?.id as Chef | undefined
+            .find(m => m.id !== prevChef) ?? candidateList[0])?.id as Chef | undefined
           if (fallback) {
             await saveWochenchef(fallback)
             planData = { ...planData, wochenchef: fallback }
@@ -132,6 +151,7 @@ export default function FamilyPlateApp() {
       setPantryItems(pantry)
       setFamilyProfile(profile)
       setCurrentMemberRole((roleData.data?.role as MemberRole | null) ?? 'member')
+      setMemberStatuses(memberSts)
       setDataLoading(false)
       loadLastDishes().then(setLastDishes).catch(() => {})
     }
@@ -442,6 +462,7 @@ export default function FamilyPlateApp() {
             onActivateNextWeek={handleActivateNextWeek}
             onAttendanceBack={attendanceReturnToMehr ? () => { setAttendanceReturnToMehr(false); setWocheInitView('home'); setActiveTab('mehr') } : undefined}
             canEditSettings={currentMemberRole !== 'member'}
+            memberStatuses={memberStatuses}
           />
         </div>
         {activeTab === 'gefriertruhe' && (
@@ -511,6 +532,7 @@ export default function FamilyPlateApp() {
             laeden={familyProfile.laeden}
             onLaedenChange={handleLaedenChange}
             canEditSettings={currentMemberRole !== 'member'}
+            memberStatuses={memberStatuses}
           />
         )}
       </div>

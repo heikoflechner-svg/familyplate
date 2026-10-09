@@ -36,6 +36,7 @@ interface Props {
   laeden: string[]
   onLaedenChange: (laeden: string[]) => Promise<void>
   canEditSettings: boolean
+  memberStatuses?: { kuerzel: string; role: string; isLinked: boolean }[]
 }
 
 export default function MehrScreen({
@@ -43,6 +44,7 @@ export default function MehrScreen({
   onShoppingDaysChange, onShoppingPersonsChange, onShoppingProposalSubmit, onGoToAttendance,
   nextWeekData, nextWeekStart, onWochenchefChange, onNextWeekDataChange,
   mittagsloseTage, planWE, onMittagsloseTageChange, onPlanWEChange, laeden, onLaedenChange, canEditSettings,
+  memberStatuses = [],
 }: Props) {
   const [view, setView] = useState<View>('overview')
   const [saving, setSaving] = useState(false)
@@ -54,13 +56,18 @@ export default function MehrScreen({
   const activeMembers = members.length ? members : DEFAULT_MEMBERS
   const CFG = buildMemberCfg(activeMembers)
 
-  // Rémy Fairplay: person with fewest/oldest chef turns, excluding current chef
-  const suggestedNextChef: Chef = ([...activeMembers].sort((a, b) => {
-    const aDate = a.chefStat?.lastCook ?? ''
-    const bDate = b.chefStat?.lastCook ?? ''
-    if (aDate !== bDate) return aDate < bDate ? -1 : 1
-    return (a.chefStat?.count ?? 0) - (b.chefStat?.count ?? 0)
-  }).find(m => m.id !== wochenchef)?.id ?? activeMembers.find(m => m.id !== wochenchef)?.id ?? activeMembers[0]?.id ?? '') as Chef
+  // Rémy Fairplay: person with fewest/oldest chef turns, excluding current chef and ineligible members
+  const eligibleForSuggestion = memberStatuses.length > 0
+    ? activeMembers.filter(m => { const s = memberStatuses.find(x => x.kuerzel === m.id); return !!(s?.isLinked && s.role !== 'parent') })
+    : []
+  const suggestedNextChef: Chef | null = eligibleForSuggestion.length > 0
+    ? ([...eligibleForSuggestion].sort((a, b) => {
+        const aDate = a.chefStat?.lastCook ?? ''
+        const bDate = b.chefStat?.lastCook ?? ''
+        if (aDate !== bDate) return aDate < bDate ? -1 : 1
+        return (a.chefStat?.count ?? 0) - (b.chefStat?.count ?? 0)
+      }).find(m => m.id !== wochenchef)?.id ?? null)
+    : null
 
   function cookingConflict(tag: string, person: Chef): boolean {
     return weekPlan.some(e => e.tag === tag && e.chef === person)
@@ -506,16 +513,18 @@ export default function MehrScreen({
               </div>
 
               {/* Rémy Fairplay-Empfehlung */}
-              <div style={{
-                fontSize: 11, color: '#555', background: '#F0FAF5',
-                border: '1px solid #B2DFCC', borderRadius: 8, padding: '7px 10px', marginTop: 10,
-              }}>
-                🐀 Rémy empfiehlt:{' '}
-                <strong style={{ color: CFG[suggestedNextChef]?.c ?? '#333' }}>
-                  {personNames[suggestedNextChef] ?? suggestedNextChef}
-                </strong>
-                {' '}(war am seltensten Wochenchef)
-              </div>
+              {suggestedNextChef && (
+                <div style={{
+                  fontSize: 11, color: '#555', background: '#F0FAF5',
+                  border: '1px solid #B2DFCC', borderRadius: 8, padding: '7px 10px', marginTop: 10,
+                }}>
+                  🐀 Rémy empfiehlt:{' '}
+                  <strong style={{ color: CFG[suggestedNextChef]?.c ?? '#333' }}>
+                    {personNames[suggestedNextChef] ?? suggestedNextChef}
+                  </strong>
+                  {' '}(war am seltensten Wochenchef)
+                </div>
+              )}
 
               {isChef ? (
                 <div style={{ marginTop: 12 }}>
@@ -524,6 +533,7 @@ export default function MehrScreen({
                     {activeMembers.map(m => {
                       const isSelected = nwChef === m.id
                       const cc = CFG[m.id] ?? Object.values(CFG)[0]
+                      const hasAccount = memberStatuses.length === 0 || (memberStatuses.find(s => s.kuerzel === m.id)?.isLinked !== false)
                       return (
                         <button
                           key={m.id}
@@ -538,6 +548,7 @@ export default function MehrScreen({
                           }}
                         >
                           <div style={{ fontSize: 13, fontWeight: 700, color: isSelected ? cc.c : '#333' }}>{m.name}</div>
+                          {!hasAccount && <div style={{ fontSize: 9, color: '#aaa', marginTop: 1 }}>noch kein Konto</div>}
                           {isSelected && <div style={{ fontSize: 10, color: cc.c, marginTop: 2 }}>✓</div>}
                           {m.id === suggestedNextChef && !isSelected && (
                             <div style={{ fontSize: 9, color: '#1D9E75', marginTop: 2 }}>🐀 Tipp</div>

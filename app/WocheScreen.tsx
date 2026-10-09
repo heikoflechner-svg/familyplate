@@ -87,6 +87,7 @@ interface Props {
   onActivateNextWeek?: () => Promise<void>
   onAttendanceBack?: () => void
   canEditSettings?: boolean
+  memberStatuses?: { kuerzel: string; role: string; isLinked: boolean }[]
 }
 
 type View = 'home' | 'week' | 'plan' | 'attendance'
@@ -151,6 +152,7 @@ export default function WocheScreen({
   onActivateNextWeek,
   onAttendanceBack,
   canEditSettings = false,
+  memberStatuses = [],
 }: Props) {
   const hasMittag = (tag: string) => !mittagsloseTage.includes(tag)
   const personNames: Record<Chef, string> = Object.fromEntries(
@@ -713,10 +715,12 @@ export default function WocheScreen({
               <div style={{ display: 'flex', gap: 8 }}>
                 {members.map(m => {
                   const cc = CFG[m.id] ?? Object.values(CFG)[0]
+                  const hasAccount = memberStatuses.length === 0 || (memberStatuses.find(s => s.kuerzel === m.id)?.isLinked !== false)
                   return (
                     <button key={m.id} onClick={() => void onWochenchefChange(m.id as Chef)} disabled={saving}
                       style={{ flex: 1, padding: '10px 4px', borderRadius: 10, textAlign: 'center', cursor: saving ? 'default' : 'pointer', border: `2px solid ${cc.c}`, background: cc.bg }}>
                       <div style={{ fontSize: 13, fontWeight: 700, color: cc.c }}>{m.name || m.id}</div>
+                      {!hasAccount && <div style={{ fontSize: 9, color: '#aaa', marginTop: 1 }}>noch kein Konto</div>}
                     </button>
                   )
                 })}
