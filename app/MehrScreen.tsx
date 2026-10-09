@@ -2,13 +2,7 @@
 import { useState } from 'react'
 import type { Chef, FamilyMember, ChangeProposal, WeekPlanEntry, NextWeekData } from '../lib/state'
 import { buildMemberCfg, DEFAULT_MEMBERS } from '../lib/familyLogic'
-
-function getNextMondayIso(d: Date = new Date()): string {
-  const date = new Date(d)
-  const dow = date.getDay()
-  date.setDate(date.getDate() + (dow === 0 ? 1 : 8 - dow))
-  return date.toISOString().slice(0, 10)
-}
+import { getNextMondayIso } from '../lib/mealLogic'
 
 const WOCHENTAGE = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag']
 const TAG_SHORT: Record<string, string> = {

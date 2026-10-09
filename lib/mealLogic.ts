@@ -1,18 +1,22 @@
 import { supabase, getFamilyId } from './supabase'
 import type { WeekPlanEntry, Rezept, Wish, RemyVorschlag, WochenSlot, DayAttendance, Chef, ShoppingItem, ChangeProposal, NextWeekData, NextWeekWish } from './state'
 
+function toLocalDateIso(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
+
 export function getMondayIso(d: Date = new Date()): string {
   const date = new Date(d)
   const dow = date.getDay()
   date.setDate(date.getDate() + (dow === 0 ? -6 : 1 - dow))
-  return date.toISOString().slice(0, 10)
+  return toLocalDateIso(date)
 }
 
 export function getNextMondayIso(d: Date = new Date()): string {
   const date = new Date(d)
   const dow = date.getDay()
   date.setDate(date.getDate() + (dow === 0 ? 1 : 8 - dow))
-  return date.toISOString().slice(0, 10)
+  return toLocalDateIso(date)
 }
 
 export async function loadWeekPlan(): Promise<{ plan: WeekPlanEntry[]; mealsData: Record<string, Rezept>; wishes: Wish[]; attendance: DayAttendance[]; attendanceConfirmed: Chef[]; shoppingList: ShoppingItem[]; proposals: ChangeProposal[]; wochenchef: Chef; planConfirmed: boolean; shopDone: boolean; shoppingDays: string[]; shoppingPersons: Record<string, Chef>; weekStart: string | null }> {
@@ -121,7 +125,7 @@ export async function activateNextWeek(): Promise<{ weekStart: string | null; ne
   const nextStart = existing.next_week_start as string | null
   const nextData = existing.next_week_data as NextWeekData | null
 
-  await supabase.from('week_plans').update({
+  const { error: updateError } = await supabase.from('week_plans').update({
     week_start: nextStart ?? getMondayIso(),
     wochenchef: nextData?.wochenchef ?? '',
     plan_data: nextData?.plan ?? [],
@@ -138,7 +142,10 @@ export async function activateNextWeek(): Promise<{ weekStart: string | null; ne
     shopping_persons: null,
     next_week_start: null,
     next_week_data: null,
+    updated_at: new Date().toISOString(),
   }).eq('id', existing.id)
+
+  if (updateError) throw new Error(`activateNextWeek fehlgeschlagen: ${updateError.message}`)
 
   return { weekStart: nextStart, nextWeekData: nextData }
 }

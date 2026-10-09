@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
-import { generateWeekPlan, getRemySuggestions, generateRecipe, saveLastDishes, isFullRecipe } from '../lib/mealLogic'
+import { generateWeekPlan, getRemySuggestions, generateRecipe, saveLastDishes, isFullRecipe, getMondayIso, getNextMondayIso } from '../lib/mealLogic'
 import { getFreezerListString, getPantryListString, addFreezerItem, deleteFreezerItem } from '../lib/freezerLogic'
 import { buildFamilyPrompt, buildMemberCfg, DEFAULT_MEMBERS } from '../lib/familyLogic'
 import type { WeekPlanEntry, Rezept, FreezerItem, PantryItem, Wish, Chef, WochenSlot, FamilyMember, DayAttendance, ChangeProposal, ShoppingItem, RemyVorschlag, NextWeekData, NextWeekWish } from '../lib/state'
@@ -8,18 +8,7 @@ import SlotWunschPanel from './SlotWunschPanel'
 
 const WOCHENTAGE = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag']
 
-function getMondayIso(d: Date = new Date()): string {
-  const date = new Date(d)
-  const dow = date.getDay()
-  date.setDate(date.getDate() + (dow === 0 ? -6 : 1 - dow))
-  return date.toISOString().slice(0, 10)
-}
-function getNextMondayIso(d: Date = new Date()): string {
-  const date = new Date(d)
-  const dow = date.getDay()
-  date.setDate(date.getDate() + (dow === 0 ? 1 : 8 - dow))
-  return date.toISOString().slice(0, 10)
-}
+
 function getKW(isoDate: string): number {
   const d = new Date(isoDate + 'T00:00:00')
   const thu = new Date(d)
@@ -2537,10 +2526,14 @@ export default function WocheScreen({
   }
 
   if (weekPlan.length === 0) {
+    const emptyWs = weekStart || getMondayIso()
     return (
       <div className="screen active">
         <div className="topbar"><h1>🍽 MenuFamPlan</h1></div>
         <div className="content">
+          <div style={{ textAlign: 'center', fontSize: 12, color: '#888', marginBottom: 12 }}>
+            KW {getKW(emptyWs)} · {getWeekRange(emptyWs)} · <span style={{ color: '#bbb' }}>noch nicht geplant</span>
+          </div>
           {error && (
             <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 8, padding: '10px 14px', marginBottom: 12, fontSize: 12, color: '#991B1B' }}>
               ⚠️ {error}
