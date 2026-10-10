@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
-import { generateWeekPlan, getRemySuggestions, generateRecipe, loadMissingRecipes, getPersonCountForSlot, saveLastDishes, isFullRecipe, getMondayIso, getNextMondayIso } from '../lib/mealLogic'
+import { generateWeekPlan, getRemySuggestions, generateRecipe, rescaleRecipe, loadMissingRecipes, getPersonCountForSlot, saveLastDishes, isFullRecipe, getMondayIso, getNextMondayIso } from '../lib/mealLogic'
+import { rescaleShoppingListMengen } from '../lib/shoppingLogic'
 import { getFreezerListString, getPantryListString, addFreezerItem, deleteFreezerItem } from '../lib/freezerLogic'
 import { buildFamilyPrompt, buildMemberCfg, DEFAULT_MEMBERS } from '../lib/familyLogic'
 import type { WeekPlanEntry, Rezept, FreezerItem, PantryItem, Wish, Chef, WochenSlot, FamilyMember, DayAttendance, ChangeProposal, ShoppingItem, RemyVorschlag, NextWeekData, NextWeekWish, PlanSettings } from '../lib/state'
@@ -1130,14 +1131,20 @@ export default function WocheScreen({
     if (isFullRecipe(existing) && existing?.personenAnzahl === personCount) return
     setRecipeLoading(gericht)
     try {
-      const rezept = await generateRecipe(gericht, emoji, getFreezerListString(freezerItems), getPantryListString(pantryItems), familyPrompt, personCount)
-      if (rezept) {
-        const merged: Rezept = {
-          ...rezept,
-          personenAnzahl: personCount,
-          ersetzteZutaten: rezept.ersetzteZutaten?.length ? rezept.ersetzteZutaten : (existing?.ersetzteZutaten ?? []),
+      if (isFullRecipe(existing) && existing!.personenAnzahl !== undefined && existing!.personenAnzahl !== personCount) {
+        const rescaled = await rescaleRecipe(existing!, personCount)
+        await onWeekPlanChange(weekPlan, { ...mealsData, [gericht]: rescaled })
+        await onShoppingListChange(rescaleShoppingListMengen(shoppingList, gericht, rescaled.zutaten, false))
+      } else {
+        const rezept = await generateRecipe(gericht, emoji, getFreezerListString(freezerItems), getPantryListString(pantryItems), familyPrompt, personCount)
+        if (rezept) {
+          const merged: Rezept = {
+            ...rezept,
+            personenAnzahl: personCount,
+            ersetzteZutaten: rezept.ersetzteZutaten?.length ? rezept.ersetzteZutaten : (existing?.ersetzteZutaten ?? []),
+          }
+          await onWeekPlanChange(weekPlan, { ...mealsData, [gericht]: merged })
         }
-        await onWeekPlanChange(weekPlan, { ...mealsData, [gericht]: merged })
       }
     } finally {
       setRecipeLoading(null)
@@ -1153,12 +1160,17 @@ export default function WocheScreen({
     if (isFullRecipe(existing) && existing?.personenAnzahl === personCount) return
     setRecipeLoading(gericht)
     try {
-      const rezept = await generateRecipe(gericht, emoji, getFreezerListString(freezerItems), getPantryListString(pantryItems), familyPrompt, personCount)
-      if (rezept) {
-        setNwPendingMeals(prev => ({
-          ...prev,
-          [gericht]: { ...rezept, personenAnzahl: personCount, ersetzteZutaten: rezept.ersetzteZutaten?.length ? rezept.ersetzteZutaten : (prev[gericht]?.ersetzteZutaten ?? []) },
-        }))
+      if (isFullRecipe(existing) && existing!.personenAnzahl !== undefined && existing!.personenAnzahl !== personCount) {
+        const rescaled = await rescaleRecipe(existing!, personCount)
+        setNwPendingMeals(prev => ({ ...prev, [gericht]: rescaled }))
+      } else {
+        const rezept = await generateRecipe(gericht, emoji, getFreezerListString(freezerItems), getPantryListString(pantryItems), familyPrompt, personCount)
+        if (rezept) {
+          setNwPendingMeals(prev => ({
+            ...prev,
+            [gericht]: { ...rezept, personenAnzahl: personCount, ersetzteZutaten: rezept.ersetzteZutaten?.length ? rezept.ersetzteZutaten : (prev[gericht]?.ersetzteZutaten ?? []) },
+          }))
+        }
       }
     } finally {
       setRecipeLoading(null)
@@ -1173,12 +1185,17 @@ export default function WocheScreen({
     if (isFullRecipe(existing) && existing?.personenAnzahl === personCount) return
     setRecipeLoading(gericht)
     try {
-      const rezept = await generateRecipe(gericht, emoji, getFreezerListString(freezerItems), getPantryListString(pantryItems), familyPrompt, personCount)
-      if (rezept) {
-        setPendingPlanMeals(prev => ({
-          ...prev,
-          [gericht]: { ...rezept, personenAnzahl: personCount, ersetzteZutaten: rezept.ersetzteZutaten?.length ? rezept.ersetzteZutaten : (prev[gericht]?.ersetzteZutaten ?? []) },
-        }))
+      if (isFullRecipe(existing) && existing!.personenAnzahl !== undefined && existing!.personenAnzahl !== personCount) {
+        const rescaled = await rescaleRecipe(existing!, personCount)
+        setPendingPlanMeals(prev => ({ ...prev, [gericht]: rescaled }))
+      } else {
+        const rezept = await generateRecipe(gericht, emoji, getFreezerListString(freezerItems), getPantryListString(pantryItems), familyPrompt, personCount)
+        if (rezept) {
+          setPendingPlanMeals(prev => ({
+            ...prev,
+            [gericht]: { ...rezept, personenAnzahl: personCount, ersetzteZutaten: rezept.ersetzteZutaten?.length ? rezept.ersetzteZutaten : (prev[gericht]?.ersetzteZutaten ?? []) },
+          }))
+        }
       }
     } finally {
       setRecipeLoading(null)
@@ -1195,11 +1212,17 @@ export default function WocheScreen({
     if (!onNextWeekDataChange) return
     setRecipeLoading(gericht)
     try {
-      const rezept = await generateRecipe(gericht, emoji, getFreezerListString(freezerItems), getPantryListString(pantryItems), familyPrompt, personCount)
-      if (rezept) {
-        const nextMonday = nextWeekStart ?? getNextMondayIso()
-        const merged: Rezept = { ...rezept, personenAnzahl: personCount, ersetzteZutaten: rezept.ersetzteZutaten?.length ? rezept.ersetzteZutaten : (existing?.ersetzteZutaten ?? []) }
-        await onNextWeekDataChange({ mealsData: { ...(nextWeekData?.mealsData ?? {}), [gericht]: merged } }, nextMonday)
+      const nextMonday = nextWeekStart ?? getNextMondayIso()
+      if (isFullRecipe(existing) && existing!.personenAnzahl !== undefined && existing!.personenAnzahl !== personCount) {
+        const rescaled = await rescaleRecipe(existing!, personCount)
+        await onNextWeekDataChange({ mealsData: { ...(nextWeekData?.mealsData ?? {}), [gericht]: rescaled } }, nextMonday)
+        await onShoppingListChange(rescaleShoppingListMengen(shoppingList, gericht, rescaled.zutaten, true))
+      } else {
+        const rezept = await generateRecipe(gericht, emoji, getFreezerListString(freezerItems), getPantryListString(pantryItems), familyPrompt, personCount)
+        if (rezept) {
+          const merged: Rezept = { ...rezept, personenAnzahl: personCount, ersetzteZutaten: rezept.ersetzteZutaten?.length ? rezept.ersetzteZutaten : (existing?.ersetzteZutaten ?? []) }
+          await onNextWeekDataChange({ mealsData: { ...(nextWeekData?.mealsData ?? {}), [gericht]: merged } }, nextMonday)
+        }
       }
     } finally {
       setRecipeLoading(null)

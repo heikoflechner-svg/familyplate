@@ -1,4 +1,4 @@
-import type { ShoppingItem, WeekPlanEntry, Rezept, WochenSlot } from './state'
+import type { ShoppingItem, WeekPlanEntry, Rezept, Rezeptzutat, WochenSlot } from './state'
 
 const WOCHENTAGE = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag']
 
@@ -226,6 +226,25 @@ export function consolidateShoppingList(items: ShoppingItem[]): ConsolidatedItem
         .map(i => ({ tag: i.tag!, slot: i.slot!, gericht: i.gericht! })),
     }
   }).sort((a, b) => a.name.localeCompare(b.name, 'de'))
+}
+
+export function rescaleShoppingListMengen(
+  list: ShoppingItem[],
+  gericht: string,
+  newZutaten: Rezeptzutat[],
+  nextWeek?: boolean,
+): ShoppingItem[] {
+  const mengenByName = new Map<string, string>()
+  for (const z of newZutaten) {
+    mengenByName.set(z.name.toLowerCase(), z.menge)
+  }
+  return list.map(item => {
+    if (item.gericht !== gericht || item.erledigt) return item
+    if (nextWeek !== undefined && Boolean(item.nextWeek) !== nextWeek) return item
+    const newMenge = mengenByName.get(item.name.toLowerCase())
+    if (newMenge === undefined) return item
+    return { ...item, menge: newMenge }
+  })
 }
 
 export function toggleConsolidatedItem(list: ShoppingItem[], ids: string[]): ShoppingItem[] {

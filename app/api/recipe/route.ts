@@ -27,10 +27,47 @@ const FALLBACK = {
   schwierigkeit: 'Einfach',
 }
 
-export async function POST(req: NextRequest) {
-  const { gericht, emoji, freezerList, pantryList, familyPrompt, personCount } = await req.json()
+async function callClaude(apiKey: string, prompt: string, maxTokens = 2000): Promise<string | null> {
+  const resp = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+    body: JSON.stringify({ model: 'claude-haiku-4-5', max_tokens: maxTokens, messages: [{ role: 'user', content: prompt }] }),
+  })
+  const data = await resp.json()
+  return data?.content?.[0]?.text ?? null
+}
 
+export async function POST(req: NextRequest) {
+  const body = await req.json()
   const apiKey = process.env.ANTHROPIC_API_KEY
+
+  // ── Rescale-Modus: nur Mengen anpassen ──────────────────────────────────
+  if (body.mode === 'rescale') {
+    const { existingZutaten, oldPersonCount, newPersonCount } = body as {
+      existingZutaten: { menge: string; name: string; typ: string }[]
+      oldPersonCount: number
+      newPersonCount: number
+    }
+    if (!apiKey) return NextResponse.json({ zutaten: existingZutaten })
+    const rescalePrompt = `Skaliere diese Zutatenliste von ${oldPersonCount} auf ${newPersonCount} Person${newPersonCount === 1 ? '' : 'en'}. Behalte EXAKT: Zutatennamen, typ-Werte, Reihenfolge. Runde auf sinnvolle Küchenmaße (z.B. 400g statt 333g, 1 EL statt 0.75 EL, 1 Dose statt 0.83 Dose). Mengen wie "nach Geschmack" bleiben unverändert.
+Eingabe: ${JSON.stringify(existingZutaten)}
+Antworte NUR als reines JSON-Array ohne Markdown: [{"menge":"...","name":"...","typ":"..."},...]`
+    try {
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const raw = await callClaude(apiKey, rescalePrompt, 800)
+        if (!raw) continue
+        const arrStart = raw.indexOf('[')
+        const arrEnd = raw.lastIndexOf(']')
+        if (arrStart === -1 || arrEnd === -1) continue
+        const parsed = JSON.parse(raw.slice(arrStart, arrEnd + 1))
+        if (Array.isArray(parsed) && parsed.length > 0) return NextResponse.json({ zutaten: parsed })
+      }
+    } catch { /* fall through to original */ }
+    return NextResponse.json({ zutaten: existingZutaten })
+  }
+
+  // ── Normal-Modus: vollständiges Rezept generieren ────────────────────────
+  const { gericht, emoji, freezerList, pantryList, familyPrompt, personCount } = body
   if (!apiKey) {
     return NextResponse.json({ rezept: { ...FALLBACK, name: gericht || FALLBACK.name, emoji: emoji || '🍗' } })
   }
@@ -39,7 +76,7 @@ export async function POST(req: NextRequest) {
   const anzahl: number = typeof personCount === 'number' && personCount > 0 ? personCount : 4
   const prompt = `Du bist Rémy. Erstelle ein vollständiges Familienrezept für "${gericht}" für ${anzahl} Person${anzahl === 1 ? '' : 'en'}. Verfügbar: Gefriertruhe: ${freezerList || 'variiert'}. Speisekammer: ${pantryList || 'variiert'}. Familie: ${familienProfil}.
 
-WICHTIG: Ändere den Namen des Gerichts NIE. Liste ALLE Zutaten mit genauen Mengen für 4 Personen auf – inklusive Gewürze, Kräuter, Öl und Aromaten. Unterscheide dabei:
+WICHTIG: Ändere den Namen des Gerichts NIE. Liste ALLE Zutaten mit genauen Mengen für ${anzahl} Person${anzahl === 1 ? '' : 'en'} auf – inklusive Gewürze, Kräuter, Öl und Aromaten. Unterscheide dabei:
 - "frisch": frische Zutaten (Gemüse, Fleisch, Fisch, Milchprodukte, frische Kräuter)
 - "tiefkühl": Tiefkühlprodukte
 - "speisekammer": Haltbare Zutaten (Nudeln, Reis, Dosentomaten, Mehl, Zucker …)
@@ -52,22 +89,8 @@ Antworte NUR als reines JSON ohne Markdown-Codeblock:
 {"name":"${gericht}","emoji":"${emoji || '🍽'}","zutaten":[{"menge":"400g","name":"...","typ":"frisch"},{"menge":"1 TL","name":"Salz","typ":"grundvorrat"}],"schritte":["Schritt 1 (5 Min.)..."],"minuten":30,"schwierigkeit":"Einfach","ersetzteZutaten":[]}`
 
   try {
-    const resp = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model: 'claude-haiku-4-5',
-        max_tokens: 2000,
-        messages: [{ role: 'user', content: prompt }],
-      }),
-    })
-    const data = await resp.json()
-    if (!data?.content?.[0]?.text) throw new Error('No content in response')
-    const raw = data.content[0].text as string
+    const raw = await callClaude(apiKey, prompt)
+    if (!raw) throw new Error('No content')
     const jsonStart = raw.indexOf('{')
     const jsonEnd = raw.lastIndexOf('}')
     if (jsonStart === -1 || jsonEnd === -1) throw new Error('No JSON found')

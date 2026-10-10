@@ -445,6 +445,30 @@ export async function generateRecipe(
   return null
 }
 
+export async function rescaleRecipe(existing: Rezept, newPersonCount: number): Promise<Rezept> {
+  const oldPersonCount = existing.personenAnzahl ?? 4
+  if (oldPersonCount === newPersonCount) return { ...existing, personenAnzahl: newPersonCount }
+  try {
+    const resp = await fetch('/api/recipe', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        mode: 'rescale',
+        existingZutaten: existing.zutaten.map(z => ({ menge: z.menge, name: z.name, typ: z.typ })),
+        oldPersonCount,
+        newPersonCount,
+      }),
+    })
+    if (!resp.ok) throw new Error('HTTP error')
+    const data = await resp.json()
+    const zutaten = data.zutaten as Rezept['zutaten']
+    if (!Array.isArray(zutaten) || zutaten.length === 0) throw new Error('No zutaten')
+    return { ...existing, zutaten, personenAnzahl: newPersonCount }
+  } catch {
+    return { ...existing, personenAnzahl: newPersonCount }
+  }
+}
+
 export async function loadMissingRecipes(
   entries: WeekPlanEntry[],
   store: Record<string, Rezept>,
