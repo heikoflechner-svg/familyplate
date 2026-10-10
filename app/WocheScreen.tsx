@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
-import { generateWeekPlan, getRemySuggestions, generateRecipe, rescaleRecipe, adjustRecipe, loadMissingRecipes, getPersonCountForSlot, saveLastDishes, isFullRecipe, getMondayIso, getNextMondayIso } from '../lib/mealLogic'
-import { rescaleShoppingListMengen, rewriteShoppingItemsForDish } from '../lib/shoppingLogic'
+import { generateWeekPlan, getRemySuggestions, generateRecipe, rescaleRecipe, adjustRecipe, loadMissingRecipes, getPersonCountForSlot, saveLastDishes, isFullRecipe, getMondayIso, getNextMondayIso, applySwap, checkAllergiesForSwap, checkFreshnessWarning } from '../lib/mealLogic'
+import { rescaleShoppingListMengen, rewriteShoppingItemsForDish, swapShoppingItemsTags } from '../lib/shoppingLogic'
 import { getFreezerListString, getPantryListString, addFreezerItem, deleteFreezerItem } from '../lib/freezerLogic'
 import { buildFamilyPrompt, buildMemberCfg, DEFAULT_MEMBERS } from '../lib/familyLogic'
 import type { WeekPlanEntry, Rezept, FreezerItem, PantryItem, Wish, Chef, WochenSlot, FamilyMember, DayAttendance, ChangeProposal, ShoppingItem, RemyVorschlag, NextWeekData, NextWeekWish, PlanSettings } from '../lib/state'
@@ -321,6 +321,12 @@ export default function WocheScreen({
   const [kochPanelKey, setKochPanelKey] = useState<string | null>(null)
   const [restPortionen, setRestPortionen] = useState<Record<string, number>>({})
   const [vorratHinweis, setVorratHinweis] = useState(false)
+
+  const [swapSource, setSwapSource] = useState<{ tag: string; slot: WochenSlot; entry: WeekPlanEntry } | null>(null)
+  const [swapTarget, setSwapTarget] = useState<{ tag: string; slot: WochenSlot; entry: WeekPlanEntry } | null>(null)
+  const [swapSaving, setSwapSaving] = useState(false)
+  const [swapChef1, setSwapChef1] = useState<Chef | null>(null)
+  const [swapChef2, setSwapChef2] = useState<Chef | null>(null)
 
   const [wishFormKey, setWishFormKey] = useState<string | null>(null)
   const [nextWeekWishInput, setNextWeekWishInput] = useState('')
@@ -827,7 +833,8 @@ export default function WocheScreen({
     const nachtragsErgWishes = wishes.filter(w => w.postConfirm && w.type === 'ergaenzung')
     const chefProposals = proposals.filter(p => !p.type || p.type === 'chef')
     const einkaufProposals = proposals.filter(p => p.type === 'einkauf')
-    const total = chefProposals.length + einkaufProposals.length + nachtragsAltWishes.length + nachtragsErgWishes.length
+    const swapProposals = proposals.filter(p => p.type === 'tauschen')
+    const total = chefProposals.length + einkaufProposals.length + swapProposals.length + nachtragsAltWishes.length + nachtragsErgWishes.length
     const showPreConfirm = !planConfirmed && weekPlan.length > 0
     if (total === 0 && !showPreConfirm) return null
     return (
@@ -883,6 +890,39 @@ export default function WocheScreen({
                   </div>
                   <div style={{ display: 'flex', gap: 6 }}>
                     <button onClick={() => acceptShoppingProposal(p)} style={{ flex: 1, padding: '5px', background: '#1D9E75', color: 'white', border: 'none', borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>✅ Übernehmen</button>
+                    <button onClick={() => rejectProposal(p.id)} style={{ padding: '5px 10px', background: 'white', border: '1px solid #ddd', borderRadius: 6, fontSize: 11, cursor: 'pointer', color: '#888' }}>✕ Ablehnen</button>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+
+        {/* Tausch-Vorschläge */}
+        {swapProposals.length > 0 && (
+          <div style={{ padding: '10px 14px', borderBottom: (nachtragsAltWishes.length + nachtragsErgWishes.length) > 0 ? '1px solid #FDE68A' : 'none', background: '#FFFBEB' }}>
+            <div style={{ fontSize: 11, fontWeight: 600, color: '#92400E', marginBottom: 8 }}>↔ Tausch-Vorschläge ({swapProposals.length})</div>
+            {swapProposals.map(p => {
+              const e1 = weekPlan.find(e => e.tag === p.tag && e.slot === p.slot)
+              const e2 = weekPlan.find(e => e.tag === p.nachTag && e.slot === p.nachSlot)
+              return (
+                <div key={p.id} style={{ background: 'white', border: '1px solid #FCD34D', borderRadius: 8, padding: '8px 10px', marginBottom: 6 }}>
+                  <div style={{ fontSize: 10, color: '#92400E', fontWeight: 700, marginBottom: 4 }}>
+                    {personNames[p.vonChef]} schlägt Tausch vor:
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                    <div style={{ flex: 1, fontSize: 11, color: '#333' }}>
+                      <span style={{ color: '#888' }}>{p.tag} {p.slot === 'Mittag' ? '☀️' : '🌙'}</span>
+                      <br /><span style={{ fontWeight: 600 }}>{e1 ? `${e1.emoji} ${e1.gericht}` : '—'}</span>
+                    </div>
+                    <span style={{ fontSize: 14 }}>↔</span>
+                    <div style={{ flex: 1, fontSize: 11, color: '#333' }}>
+                      <span style={{ color: '#888' }}>{p.nachTag} {p.nachSlot === 'Mittag' ? '☀️' : '🌙'}</span>
+                      <br /><span style={{ fontWeight: 600 }}>{e2 ? `${e2.emoji} ${e2.gericht}` : '—'}</span>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button onClick={() => acceptSwapProposal(p)} disabled={swapSaving} style={{ flex: 1, padding: '5px', background: '#1D9E75', color: 'white', border: 'none', borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>✅ Übernehmen</button>
                     <button onClick={() => rejectProposal(p.id)} style={{ padding: '5px 10px', background: 'white', border: '1px solid #ddd', borderRadius: 6, fontSize: 11, cursor: 'pointer', color: '#888' }}>✕ Ablehnen</button>
                   </div>
                 </div>
@@ -1112,6 +1152,119 @@ export default function WocheScreen({
   function hasPendingChefProposal(tag: string, slot: WochenSlot): boolean {
     return currentUser !== wochenchef &&
       proposals.some(p => p.vonChef === currentUser && p.tag === tag && p.slot === slot)
+  }
+
+  function hasPendingSwapProposal(tag: string, slot: WochenSlot): boolean {
+    if (currentUser === wochenchef || canEditSettings) return false
+    return proposals.some(p =>
+      p.type === 'tauschen' && p.vonChef === currentUser &&
+      ((p.tag === tag && p.slot === slot) || (p.nachTag === tag && p.nachSlot === slot))
+    )
+  }
+
+  function handleSwapStart(tag: string, slot: WochenSlot, entry: WeekPlanEntry) {
+    if (swapSaving) return
+    closeMealPanel()
+    setSwapSource({ tag, slot, entry })
+    setSwapTarget(null)
+    setSwapChef1(null)
+    setSwapChef2(null)
+  }
+
+  function handleSwapSelectTarget(tag: string, slot: WochenSlot, entry: WeekPlanEntry) {
+    if (!swapSource || swapSaving) return
+    if (swapSource.tag === tag && swapSource.slot === slot) {
+      setSwapSource(null)
+      return
+    }
+    setSwapTarget({ tag, slot, entry })
+    setSwapChef1(null)
+    setSwapChef2(null)
+  }
+
+  function handleSwapCancel() {
+    setSwapSource(null)
+    setSwapTarget(null)
+    setSwapChef1(null)
+    setSwapChef2(null)
+  }
+
+  async function executeSwap(
+    t1: string, s1: WochenSlot, e1: WeekPlanEntry,
+    t2: string, s2: WochenSlot, e2: WeekPlanEntry,
+    chef1Override?: Chef, chef2Override?: Chef,
+  ) {
+    setSwapSaving(true)
+    const mbs = members.length ? members : DEFAULT_MEMBERS
+    const newPlan = applySwap(weekPlan, t1, s1, t2, s2, chef1Override, chef2Override)
+    let newMealsData = { ...mealsData }
+    let newShoppingList = shoppingList
+
+    const pc1 = getPersonCountForSlot(t1, s1, attendance, mbs)
+    const pc2 = getPersonCountForSlot(t2, s2, attendance, mbs)
+
+    if (pc1 !== pc2) {
+      const rezept1 = mealsData[e1.gericht]
+      const rezept2 = mealsData[e2.gericht]
+      if (rezept1 && isFullRecipe(rezept1) && (rezept1.personenAnzahl ?? pc1) !== pc2) {
+        const rescaled = await rescaleRecipe(rezept1, pc2)
+        if (rescaled) {
+          newMealsData[e1.gericht] = rescaled
+          newShoppingList = rescaleShoppingListMengen(newShoppingList, e1.gericht, rescaled.zutaten)
+        }
+      }
+      if (rezept2 && isFullRecipe(rezept2) && (rezept2.personenAnzahl ?? pc2) !== pc1) {
+        const rescaled = await rescaleRecipe(rezept2, pc1)
+        if (rescaled) {
+          newMealsData[e2.gericht] = rescaled
+          newShoppingList = rescaleShoppingListMengen(newShoppingList, e2.gericht, rescaled.zutaten)
+        }
+      }
+    }
+
+    newShoppingList = swapShoppingItemsTags(newShoppingList, t1, s1, e1.gericht, t2, s2, e2.gericht)
+
+    await onWeekPlanChange(newPlan, newMealsData)
+    await onShoppingListChange(newShoppingList)
+    setSwapSaving(false)
+    setSwapSource(null)
+    setSwapTarget(null)
+    setSwapChef1(null)
+    setSwapChef2(null)
+  }
+
+  async function handleSwapConfirm() {
+    if (!swapSource || !swapTarget) return
+    const { tag: t1, slot: s1, entry: e1 } = swapSource
+    const { tag: t2, slot: s2, entry: e2 } = swapTarget
+    const canSwapDirectly = currentUser === wochenchef || canEditSettings
+    if (!canSwapDirectly) {
+      await onProposalsChange([...proposals, {
+        id: crypto.randomUUID(),
+        type: 'tauschen' as const,
+        tag: t1, slot: s1,
+        vonChef: currentUser,
+        fuerChef: wochenchef,
+        nachTag: t2, nachSlot: s2,
+        createdAt: new Date().toISOString(),
+      }])
+      setSwapSource(null)
+      setSwapTarget(null)
+      return
+    }
+    await executeSwap(t1, s1, e1, t2, s2, e2, swapChef1 ?? undefined, swapChef2 ?? undefined)
+  }
+
+  async function acceptSwapProposal(proposal: ChangeProposal) {
+    const t1 = proposal.tag
+    const s1 = proposal.slot!
+    const t2 = proposal.nachTag!
+    const s2 = proposal.nachSlot!
+    const e1 = weekPlan.find(e => e.tag === t1 && e.slot === s1)
+    const e2 = weekPlan.find(e => e.tag === t2 && e.slot === s2)
+    if (!e1 || !e2) { await onProposalsChange(proposals.filter(p => p.id !== proposal.id)); return }
+    await onProposalsChange(proposals.filter(p => p.id !== proposal.id))
+    await executeSwap(t1, s1, e1, t2, s2, e2)
   }
 
   function slotEssenLabel(tag: string, slot: WochenSlot): string {
@@ -2046,11 +2199,111 @@ export default function WocheScreen({
         {selectedMealName && (
           <RecipeModal name={selectedMealName} rezept={selectedRezept(selectedMealName)} loading={recipeLoading === selectedMealName} onClose={() => { setSelectedMealName(null); setRecipeContext(null); setAdjustAllergieHinweise([]) }} canRewrite={currentUser === wochenchef || canEditSettings} onRewrite={rewriteRecipe} onAdjust={handleAdjustRecipe} allergieHinweise={adjustAllergieHinweise} />
         )}
+        {swapTarget && swapSource && (() => {
+          const { tag: t1, slot: s1, entry: e1 } = swapSource
+          const { tag: t2, slot: s2, entry: e2 } = swapTarget
+          const mbs = members.length ? members : DEFAULT_MEMBERS
+          const pc1 = getPersonCountForSlot(t1, s1, attendance, mbs)
+          const pc2 = getPersonCountForSlot(t2, s2, attendance, mbs)
+          const anw1 = getSlotAnwesend(t1, s1)
+          const anw2 = getSlotAnwesend(t2, s2)
+          const chef1MissingAtSlot2 = !anw2.includes(e1.chef)
+          const chef2MissingAtSlot1 = !anw1.includes(e2.chef)
+          const rezept1 = mealsData[e1.gericht]
+          const rezept2 = mealsData[e2.gericht]
+          const allergie1 = rezept1 ? checkAllergiesForSwap(rezept1, t2, s2, mbs, attendance) : []
+          const allergie2 = rezept2 ? checkAllergiesForSwap(rezept2, t1, s1, mbs, attendance) : []
+          const fresh1 = rezept1 ? checkFreshnessWarning(rezept1, t1, t2) : false
+          const fresh2 = rezept2 ? checkFreshnessWarning(rezept2, t2, t1) : false
+          const canSwapDirectly = currentUser === wochenchef || canEditSettings
+          const hasWarnings = chef1MissingAtSlot2 || chef2MissingAtSlot1 || allergie1.length > 0 || allergie2.length > 0 || fresh1 || fresh2 || pc1 !== pc2
+          return (
+            <div style={{ position: 'absolute', inset: 0, zIndex: 50, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
+              <div style={{ flex: 1, background: 'rgba(0,0,0,0.35)' }} onClick={() => setSwapTarget(null)} />
+              <div style={{ background: 'white', borderRadius: '16px 16px 0 0', padding: '18px 16px 28px', maxHeight: '80vh', overflowY: 'auto' }}>
+                <div style={{ fontSize: 14, fontWeight: 700, textAlign: 'center', marginBottom: 14 }}>↔ Tauschen bestätigen</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, background: '#f9f9f9', padding: '10px 12px', borderRadius: 10 }}>
+                  <div style={{ flex: 1, textAlign: 'center' }}>
+                    <div style={{ fontSize: 20 }}>{e1.emoji}</div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: '#111' }}>{e1.gericht}</div>
+                    <div style={{ fontSize: 10, color: '#888' }}>{t1} {s1 === 'Mittag' ? '☀️' : '🌙'} ({pc1} P.)</div>
+                  </div>
+                  <div style={{ fontSize: 18, color: '#1D9E75', fontWeight: 700 }}>↔</div>
+                  <div style={{ flex: 1, textAlign: 'center' }}>
+                    <div style={{ fontSize: 20 }}>{e2.emoji}</div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: '#111' }}>{e2.gericht}</div>
+                    <div style={{ fontSize: 10, color: '#888' }}>{t2} {s2 === 'Mittag' ? '☀️' : '🌙'} ({pc2} P.)</div>
+                  </div>
+                </div>
+                {pc1 !== pc2 && <div style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: 8, padding: '8px 10px', marginBottom: 8, fontSize: 11, color: '#1E40AF' }}>👥 Personenzahlen unterscheiden sich ({pc1} ↔ {pc2}) – Mengen werden automatisch umgerechnet</div>}
+                {(allergie1.length > 0 || allergie2.length > 0) && (
+                  <div style={{ background: '#FFFBEB', border: '1px solid #FCD34D', borderRadius: 8, padding: '8px 10px', marginBottom: 8 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: '#92400E', marginBottom: 4 }}>⚠️ Allergie-Hinweis</div>
+                    {allergie1.map((w, i) => <div key={`a1-${i}`} style={{ fontSize: 11, color: '#92400E' }}>{e1.gericht} → {t2}: {w} nicht angepasst</div>)}
+                    {allergie2.map((w, i) => <div key={`a2-${i}`} style={{ fontSize: 11, color: '#92400E' }}>{e2.gericht} → {t1}: {w} nicht angepasst</div>)}
+                  </div>
+                )}
+                {(fresh1 || fresh2) && (
+                  <div style={{ background: '#FFFBEB', border: '1px solid #FCD34D', borderRadius: 8, padding: '8px 10px', marginBottom: 8 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: '#92400E', marginBottom: 4 }}>❄️ Frische-Hinweis</div>
+                    {fresh1 && <div style={{ fontSize: 11, color: '#92400E' }}>{e1.gericht} enthält empfindliche Zutaten – auf {t2} verschoben</div>}
+                    {fresh2 && <div style={{ fontSize: 11, color: '#92400E' }}>{e2.gericht} enthält empfindliche Zutaten – auf {t1} verschoben</div>}
+                  </div>
+                )}
+                {(chef1MissingAtSlot2 || chef2MissingAtSlot1) && (
+                  <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 8, padding: '8px 10px', marginBottom: 8 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: '#991B1B', marginBottom: 6 }}>👨‍🍳 Koch nicht anwesend</div>
+                    {chef1MissingAtSlot2 && (
+                      <div style={{ marginBottom: 8 }}>
+                        <div style={{ fontSize: 11, color: '#991B1B', marginBottom: 4 }}>{personNames[e1.chef]} ist {t2} {s2 === 'Mittag' ? 'mittags' : 'abends'} nicht da:</div>
+                        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                          {mbs.filter(m => anw2.includes(m.id as Chef)).map(m => {
+                            const cc = CFG[m.id] ?? Object.values(CFG)[0]
+                            const active = (swapChef2 ?? e1.chef) === m.id
+                            return <button key={m.id} onClick={() => setSwapChef2(m.id as Chef)} style={{ padding: '4px 10px', borderRadius: 8, border: `1px solid ${active ? cc.c : '#ddd'}`, background: active ? cc.bg : 'white', color: active ? cc.c : '#aaa', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>{personNames[m.id] ?? m.id}</button>
+                          })}
+                        </div>
+                      </div>
+                    )}
+                    {chef2MissingAtSlot1 && (
+                      <div>
+                        <div style={{ fontSize: 11, color: '#991B1B', marginBottom: 4 }}>{personNames[e2.chef]} ist {t1} {s1 === 'Mittag' ? 'mittags' : 'abends'} nicht da:</div>
+                        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                          {mbs.filter(m => anw1.includes(m.id as Chef)).map(m => {
+                            const cc = CFG[m.id] ?? Object.values(CFG)[0]
+                            const active = (swapChef1 ?? e2.chef) === m.id
+                            return <button key={m.id} onClick={() => setSwapChef1(m.id as Chef)} style={{ padding: '4px 10px', borderRadius: 8, border: `1px solid ${active ? cc.c : '#ddd'}`, background: active ? cc.bg : 'white', color: active ? cc.c : '#aaa', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>{personNames[m.id] ?? m.id}</button>
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+                {!canSwapDirectly && <div style={{ fontSize: 11, color: '#92400E', background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 8, padding: '8px 10px', marginBottom: 8 }}>⏳ Dein Tausch-Vorschlag geht als Antrag an {personNames[wochenchef]}.</div>}
+                <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+                  <button onClick={() => void handleSwapConfirm()} disabled={swapSaving} style={{ flex: 1, padding: '11px 0', background: swapSaving ? '#aaa' : (hasWarnings ? '#F59E0B' : '#1D9E75'), color: 'white', border: 'none', borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: swapSaving ? 'default' : 'pointer' }}>
+                    {swapSaving ? '⏳ Tausche…' : canSwapDirectly ? '↔ Jetzt tauschen' : '↔ Vorschlag senden'}
+                  </button>
+                  <button onClick={() => setSwapTarget(null)} style={{ padding: '11px 14px', background: 'white', border: '1px solid #ddd', borderRadius: 10, fontSize: 13, color: '#555', cursor: 'pointer' }}>Abbrechen</button>
+                </div>
+              </div>
+            </div>
+          )
+        })()}
         <div className="topbar">
           <button className="back" onClick={() => setView('home')}>‹</button>
           <h1>📋 Wochenplan</h1>
         </div>
         <div className="content">
+          {swapSource && !swapTarget && (
+            <div style={{ background: '#E1F5EE', border: '1px solid #B2DFCC', borderRadius: 10, padding: '10px 14px', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 18 }}>{swapSource.entry.emoji}</span>
+              <div style={{ flex: 1, fontSize: 12, color: '#085041' }}>
+                <span style={{ fontWeight: 700 }}>Tausch-Modus:</span> Antippe eine andere Mahlzeit als Zielplatz
+              </div>
+              <button onClick={handleSwapCancel} style={{ fontSize: 11, color: '#555', background: 'white', border: '1px solid #ddd', borderRadius: 6, padding: '3px 8px', cursor: 'pointer' }}>✕ Abbrechen</button>
+            </div>
+          )}
           {(() => {
             const ws = weekStart || getMondayIso()
             return (
@@ -2133,24 +2386,44 @@ export default function WocheScreen({
                     const canEdit = !planConfirmed || currentUser === wochenchef
                     const canProposeChef = !shopDone
                     const slotAnwesend = getSlotAnwesend(tag, slot)
+                    const wvIsSwapSource = swapSource?.tag === tag && swapSource?.slot === slot
+                    const wvIsSwapMode = !!swapSource
                     return (
-                      <div key={slot} style={{ borderTop: '1px solid #f0f0f0' }}>
+                      <div key={slot} style={{ borderTop: '1px solid #f0f0f0', background: wvIsSwapSource ? '#E1F5EE' : wvIsSwapMode ? '#f9fff9' : 'transparent' }}>
                         <div style={{ padding: '8px 12px 3px', display: 'flex', alignItems: 'center', gap: 6 }}>
                           <SlotPill slot={slot} />
                           <span
-                            onClick={canProposeChef ? () => toggleEditMeal(key) : undefined}
-                            style={{ fontSize: 11, color: '#555', cursor: canProposeChef ? 'pointer' : 'default', textDecoration: canProposeChef ? 'underline' : 'none', textDecorationStyle: 'dashed', textDecorationColor: '#bbb' }}
+                            onClick={canProposeChef && !wvIsSwapMode ? () => toggleEditMeal(key) : undefined}
+                            style={{ fontSize: 11, color: '#555', cursor: canProposeChef && !wvIsSwapMode ? 'pointer' : 'default', textDecoration: canProposeChef && !wvIsSwapMode ? 'underline' : 'none', textDecorationStyle: 'dashed', textDecorationColor: '#bbb' }}
                           >Koch: {personNames[e.chef]}</span>
                           <span style={{ fontSize: 10, color: '#ddd' }}>·</span>
                           <span
-                            onClick={() => setAttendanceEditKey(isAttendanceEdit ? null : key)}
-                            style={{ fontSize: 11, color: '#555', cursor: 'pointer', textDecoration: 'underline', textDecorationStyle: 'dashed', textDecorationColor: '#bbb' }}
+                            onClick={() => !wvIsSwapMode && setAttendanceEditKey(isAttendanceEdit ? null : key)}
+                            style={{ fontSize: 11, color: '#555', cursor: wvIsSwapMode ? 'default' : 'pointer', textDecoration: wvIsSwapMode ? 'none' : 'underline', textDecorationStyle: 'dashed', textDecorationColor: '#bbb' }}
                           >Essen: {slotEssenLabel(tag, slot)}</span>
-                          {hasPendingChefProposal(tag, slot) && (
-                            <span style={{ marginLeft: 'auto', fontSize: 10, color: '#92400E', background: '#FFFBEB', border: '1px solid #FCD34D', borderRadius: 5, padding: '1px 6px' }}>⏳ Koch-Vorschlag eingereicht</span>
+                          {!wvIsSwapMode && hasPendingChefProposal(tag, slot) && (
+                            <span style={{ marginLeft: 'auto', fontSize: 10, color: '#92400E', background: '#FFFBEB', border: '1px solid #FCD34D', borderRadius: 5, padding: '1px 6px' }}>⏳ Koch-Vorschlag</span>
+                          )}
+                          {!wvIsSwapMode && !shopDone && hasPendingSwapProposal(tag, slot) && (
+                            <span style={{ marginLeft: 'auto', fontSize: 10, color: '#92400E', background: '#FFFBEB', border: '1px solid #FCD34D', borderRadius: 5, padding: '1px 6px' }}>⏳ Tausch-Vorschlag</span>
+                          )}
+                          {planConfirmed && !shopDone && !wvIsSwapMode && (
+                            <button
+                              onClick={() => handleSwapStart(tag, slot, e)}
+                              style={{ marginLeft: 'auto', fontSize: 10, color: '#555', background: 'none', border: '1px solid #ddd', borderRadius: 6, padding: '2px 7px', cursor: 'pointer', lineHeight: 1.4 }}
+                            >↔</button>
+                          )}
+                          {wvIsSwapSource && (
+                            <span style={{ marginLeft: 'auto', fontSize: 10, color: '#0F6E56', fontWeight: 700 }}>← Quelle</span>
+                          )}
+                          {wvIsSwapMode && !wvIsSwapSource && (
+                            <button
+                              onClick={() => handleSwapSelectTarget(tag, slot, e)}
+                              style={{ marginLeft: 'auto', fontSize: 10, color: '#1D9E75', background: '#E1F5EE', border: '1px solid #B2DFCC', borderRadius: 6, padding: '2px 7px', cursor: 'pointer', fontWeight: 700 }}
+                            >↔ Hier tauschen</button>
                           )}
                         </div>
-                        {isEditing && canProposeChef && (
+                        {isEditing && canProposeChef && !wvIsSwapMode && (
                           <div style={{ padding: '4px 12px 8px', background: '#f9f9f9' }}>
                             {planConfirmed && currentUser !== wochenchef && (
                               <div style={{ fontSize: 10, color: '#92400E', padding: '2px 0 6px' }}>⏳ Vorschlag an {personNames[wochenchef]}</div>
@@ -2158,7 +2431,7 @@ export default function WocheScreen({
                             <ChefPicker current={e.chef} onSelect={chef => changeActiveChef(tag, slot, chef)} personNames={personNames} members={members} />
                           </div>
                         )}
-                        {isAttendanceEdit && (
+                        {isAttendanceEdit && !wvIsSwapMode && (
                           <div style={{ padding: '6px 12px 8px', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6, background: '#f9f9f9', borderTop: '1px solid #f0f0f0' }}>
                             <span style={{ fontSize: 11, color: '#888', width: '100%' }}>Wer isst mit?</span>
                             {allChefIds.map(c => {
@@ -2870,24 +3143,44 @@ export default function WocheScreen({
     const canEdit = !planConfirmed || currentUser === wochenchef
     const canProposeChef = !shopDone
     const slotAnwesend = getSlotAnwesend(tag, slot)
+    const isSwapSource = swapSource?.tag === tag && swapSource?.slot === slot
+    const isSwapMode = !!swapSource
     return (
-      <div key={slot} style={{ borderTop: '1px solid #f0f0f0' }}>
+      <div key={slot} style={{ borderTop: '1px solid #f0f0f0', background: isSwapSource ? '#E1F5EE' : isSwapMode ? '#f9fff9' : 'transparent' }}>
         <div style={{ padding: '8px 12px 3px', display: 'flex', alignItems: 'center', gap: 6 }}>
           <SlotPill slot={slot} />
           <span
-            onClick={canProposeChef ? () => toggleEditMeal(key) : undefined}
-            style={{ fontSize: 11, color: '#555', cursor: canProposeChef ? 'pointer' : 'default', textDecoration: canProposeChef ? 'underline' : 'none', textDecorationStyle: 'dashed', textDecorationColor: '#bbb' }}
+            onClick={canProposeChef && !isSwapMode ? () => toggleEditMeal(key) : undefined}
+            style={{ fontSize: 11, color: '#555', cursor: canProposeChef && !isSwapMode ? 'pointer' : 'default', textDecoration: canProposeChef && !isSwapMode ? 'underline' : 'none', textDecorationStyle: 'dashed', textDecorationColor: '#bbb' }}
           >Koch: {personNames[entry.chef]}</span>
           <span style={{ fontSize: 10, color: '#ddd' }}>·</span>
           <span
-            onClick={() => setAttendanceEditKey(isAttendanceEdit ? null : key)}
-            style={{ fontSize: 11, color: '#555', cursor: 'pointer', textDecoration: 'underline', textDecorationStyle: 'dashed', textDecorationColor: '#bbb' }}
+            onClick={() => !isSwapMode && setAttendanceEditKey(isAttendanceEdit ? null : key)}
+            style={{ fontSize: 11, color: '#555', cursor: isSwapMode ? 'default' : 'pointer', textDecoration: isSwapMode ? 'none' : 'underline', textDecorationStyle: 'dashed', textDecorationColor: '#bbb' }}
           >Essen: {slotEssenLabel(tag, slot)}</span>
-          {hasPendingChefProposal(tag, slot) && (
-            <span style={{ marginLeft: 'auto', fontSize: 10, color: '#92400E', background: '#FFFBEB', border: '1px solid #FCD34D', borderRadius: 5, padding: '1px 6px' }}>⏳ Koch-Vorschlag eingereicht</span>
+          {!isSwapMode && hasPendingChefProposal(tag, slot) && (
+            <span style={{ marginLeft: 'auto', fontSize: 10, color: '#92400E', background: '#FFFBEB', border: '1px solid #FCD34D', borderRadius: 5, padding: '1px 6px' }}>⏳ Koch-Vorschlag</span>
+          )}
+          {!isSwapMode && !shopDone && hasPendingSwapProposal(tag, slot) && (
+            <span style={{ marginLeft: 'auto', fontSize: 10, color: '#92400E', background: '#FFFBEB', border: '1px solid #FCD34D', borderRadius: 5, padding: '1px 6px' }}>⏳ Tausch-Vorschlag</span>
+          )}
+          {planConfirmed && !shopDone && !isSwapMode && (
+            <button
+              onClick={() => handleSwapStart(tag, slot, entry)}
+              style={{ marginLeft: 'auto', fontSize: 10, color: '#555', background: 'none', border: '1px solid #ddd', borderRadius: 6, padding: '2px 7px', cursor: 'pointer', lineHeight: 1.4 }}
+            >↔</button>
+          )}
+          {isSwapSource && (
+            <span style={{ marginLeft: 'auto', fontSize: 10, color: '#0F6E56', fontWeight: 700 }}>← Quelle</span>
+          )}
+          {isSwapMode && !isSwapSource && (
+            <button
+              onClick={() => handleSwapSelectTarget(tag, slot, entry)}
+              style={{ marginLeft: 'auto', fontSize: 10, color: '#1D9E75', background: '#E1F5EE', border: '1px solid #B2DFCC', borderRadius: 6, padding: '2px 7px', cursor: 'pointer', fontWeight: 700 }}
+            >↔ Hier tauschen</button>
           )}
         </div>
-        {isEditing && canProposeChef && (
+        {isEditing && canProposeChef && !isSwapMode && (
           <div style={{ padding: '4px 12px 8px', background: '#f9f9f9' }}>
             {planConfirmed && currentUser !== wochenchef && (
               <div style={{ fontSize: 10, color: '#92400E', padding: '2px 0 6px' }}>⏳ Vorschlag an {personNames[wochenchef]}</div>
@@ -2895,7 +3188,7 @@ export default function WocheScreen({
             <ChefPicker current={entry.chef} onSelect={chef => changeActiveChef(tag, slot, chef)} personNames={personNames} members={members} />
           </div>
         )}
-        {planConfirmed && currentUser === wochenchef && !shopDone && (() => {
+        {planConfirmed && currentUser === wochenchef && !shopDone && !isSwapMode && (() => {
           const gKey = key
           const isGerichtOpen = gerichtEditKey === gKey
           const stockItems = [...freezerItems, ...pantryItems]
@@ -2953,7 +3246,7 @@ export default function WocheScreen({
             </div>
           )
         })()}
-        {isAttendanceEdit && (
+        {isAttendanceEdit && !isSwapMode && (
           <div style={{ padding: '6px 12px 8px', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6, background: '#f9f9f9', borderTop: '1px solid #f0f0f0' }}>
             <span style={{ fontSize: 11, color: '#888', width: '100%' }}>Wer isst mit?</span>
             {allChefIds.map(c => {
@@ -3076,11 +3369,143 @@ export default function WocheScreen({
       {selectedMealName && (
         <RecipeModal name={selectedMealName} rezept={selectedRezept(selectedMealName)} loading={recipeLoading === selectedMealName} onClose={() => { setSelectedMealName(null); setRecipeContext(null); setAdjustAllergieHinweise([]) }} canRewrite={currentUser === wochenchef || canEditSettings} onRewrite={rewriteRecipe} onAdjust={handleAdjustRecipe} allergieHinweise={adjustAllergieHinweise} />
       )}
+      {swapTarget && swapSource && (() => {
+        const { tag: t1, slot: s1, entry: e1 } = swapSource
+        const { tag: t2, slot: s2, entry: e2 } = swapTarget
+        const mbs = members.length ? members : DEFAULT_MEMBERS
+        const pc1 = getPersonCountForSlot(t1, s1, attendance, mbs)
+        const pc2 = getPersonCountForSlot(t2, s2, attendance, mbs)
+        const anw1 = getSlotAnwesend(t1, s1)
+        const anw2 = getSlotAnwesend(t2, s2)
+        const chef1MissingAtSlot2 = !anw2.includes(e1.chef)
+        const chef2MissingAtSlot1 = !anw1.includes(e2.chef)
+        const rezept1 = mealsData[e1.gericht]
+        const rezept2 = mealsData[e2.gericht]
+        const allergie1 = rezept1 ? checkAllergiesForSwap(rezept1, t2, s2, mbs, attendance) : []
+        const allergie2 = rezept2 ? checkAllergiesForSwap(rezept2, t1, s1, mbs, attendance) : []
+        const fresh1 = rezept1 ? checkFreshnessWarning(rezept1, t1, t2) : false
+        const fresh2 = rezept2 ? checkFreshnessWarning(rezept2, t2, t1) : false
+        const canSwapDirectly = currentUser === wochenchef || canEditSettings
+        const hasWarnings = chef1MissingAtSlot2 || chef2MissingAtSlot1 || allergie1.length > 0 || allergie2.length > 0 || fresh1 || fresh2 || pc1 !== pc2
+        return (
+          <div style={{ position: 'absolute', inset: 0, zIndex: 50, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
+            <div style={{ flex: 1, background: 'rgba(0,0,0,0.35)' }} onClick={() => { setSwapTarget(null) }} />
+            <div style={{ background: 'white', borderRadius: '16px 16px 0 0', padding: '18px 16px 28px', maxHeight: '80vh', overflowY: 'auto' }}>
+              <div style={{ fontSize: 14, fontWeight: 700, textAlign: 'center', marginBottom: 14 }}>↔ Tauschen bestätigen</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, background: '#f9f9f9', padding: '10px 12px', borderRadius: 10 }}>
+                <div style={{ flex: 1, textAlign: 'center' }}>
+                  <div style={{ fontSize: 20 }}>{e1.emoji}</div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: '#111' }}>{e1.gericht}</div>
+                  <div style={{ fontSize: 10, color: '#888' }}>{t1} {s1 === 'Mittag' ? '☀️' : '🌙'} ({pc1} P.)</div>
+                </div>
+                <div style={{ fontSize: 18, color: '#1D9E75', fontWeight: 700 }}>↔</div>
+                <div style={{ flex: 1, textAlign: 'center' }}>
+                  <div style={{ fontSize: 20 }}>{e2.emoji}</div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: '#111' }}>{e2.gericht}</div>
+                  <div style={{ fontSize: 10, color: '#888' }}>{t2} {s2 === 'Mittag' ? '☀️' : '🌙'} ({pc2} P.)</div>
+                </div>
+              </div>
+
+              {pc1 !== pc2 && (
+                <div style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: 8, padding: '8px 10px', marginBottom: 8, fontSize: 11, color: '#1E40AF' }}>
+                  👥 Personenzahlen unterscheiden sich ({pc1} ↔ {pc2}) – Mengen werden automatisch umgerechnet
+                </div>
+              )}
+
+              {(allergie1.length > 0 || allergie2.length > 0) && (
+                <div style={{ background: '#FFFBEB', border: '1px solid #FCD34D', borderRadius: 8, padding: '8px 10px', marginBottom: 8 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: '#92400E', marginBottom: 4 }}>⚠️ Allergie-Hinweis</div>
+                  {allergie1.map((w, i) => (
+                    <div key={`a1-${i}`} style={{ fontSize: 11, color: '#92400E' }}>{e1.gericht} → {t2}: {w} nicht angepasst</div>
+                  ))}
+                  {allergie2.map((w, i) => (
+                    <div key={`a2-${i}`} style={{ fontSize: 11, color: '#92400E' }}>{e2.gericht} → {t1}: {w} nicht angepasst</div>
+                  ))}
+                </div>
+              )}
+
+              {(fresh1 || fresh2) && (
+                <div style={{ background: '#FFFBEB', border: '1px solid #FCD34D', borderRadius: 8, padding: '8px 10px', marginBottom: 8 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: '#92400E', marginBottom: 4 }}>❄️ Frische-Hinweis</div>
+                  {fresh1 && <div style={{ fontSize: 11, color: '#92400E' }}>{e1.gericht} enthält empfindliche Zutaten – auf {t2} verschoben</div>}
+                  {fresh2 && <div style={{ fontSize: 11, color: '#92400E' }}>{e2.gericht} enthält empfindliche Zutaten – auf {t1} verschoben</div>}
+                </div>
+              )}
+
+              {(chef1MissingAtSlot2 || chef2MissingAtSlot1) && (
+                <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 8, padding: '8px 10px', marginBottom: 8 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: '#991B1B', marginBottom: 6 }}>👨‍🍳 Koch nicht anwesend</div>
+                  {chef1MissingAtSlot2 && (
+                    <div style={{ marginBottom: 8 }}>
+                      <div style={{ fontSize: 11, color: '#991B1B', marginBottom: 4 }}>{personNames[e1.chef]} ist {t2} {s2 === 'Mittag' ? 'mittags' : 'abends'} nicht da – wer kocht {e1.gericht}?</div>
+                      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                        {mbs.filter(m => anw2.includes(m.id as Chef)).map(m => {
+                          const cc = CFG[m.id] ?? Object.values(CFG)[0]
+                          const active = (swapChef2 ?? e1.chef) === m.id
+                          return (
+                            <button key={m.id} onClick={() => setSwapChef2(m.id as Chef)}
+                              style={{ padding: '4px 10px', borderRadius: 8, border: `1px solid ${active ? cc.c : '#ddd'}`, background: active ? cc.bg : 'white', color: active ? cc.c : '#aaa', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>
+                              {personNames[m.id] ?? m.id}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )}
+                  {chef2MissingAtSlot1 && (
+                    <div>
+                      <div style={{ fontSize: 11, color: '#991B1B', marginBottom: 4 }}>{personNames[e2.chef]} ist {t1} {s1 === 'Mittag' ? 'mittags' : 'abends'} nicht da – wer kocht {e2.gericht}?</div>
+                      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                        {mbs.filter(m => anw1.includes(m.id as Chef)).map(m => {
+                          const cc = CFG[m.id] ?? Object.values(CFG)[0]
+                          const active = (swapChef1 ?? e2.chef) === m.id
+                          return (
+                            <button key={m.id} onClick={() => setSwapChef1(m.id as Chef)}
+                              style={{ padding: '4px 10px', borderRadius: 8, border: `1px solid ${active ? cc.c : '#ddd'}`, background: active ? cc.bg : 'white', color: active ? cc.c : '#aaa', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>
+                              {personNames[m.id] ?? m.id}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {!canSwapDirectly && (
+                <div style={{ fontSize: 11, color: '#92400E', background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 8, padding: '8px 10px', marginBottom: 8 }}>
+                  ⏳ Dein Tausch-Vorschlag geht als Antrag an {personNames[wochenchef]}.
+                </div>
+              )}
+
+              <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+                <button
+                  onClick={() => void handleSwapConfirm()}
+                  disabled={swapSaving}
+                  style={{ flex: 1, padding: '11px 0', background: swapSaving ? '#aaa' : (hasWarnings ? '#F59E0B' : '#1D9E75'), color: 'white', border: 'none', borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: swapSaving ? 'default' : 'pointer' }}
+                >
+                  {swapSaving ? '⏳ Tausche…' : canSwapDirectly ? '↔ Jetzt tauschen' : '↔ Vorschlag senden'}
+                </button>
+                <button onClick={() => setSwapTarget(null)} style={{ padding: '11px 14px', background: 'white', border: '1px solid #ddd', borderRadius: 10, fontSize: 13, color: '#555', cursor: 'pointer' }}>Abbrechen</button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
       <div className="topbar"><h1>🍽 MenuFamPlan</h1></div>
       <div className="content">
         {error && (
           <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 8, padding: '10px 14px', marginBottom: 12, fontSize: 12, color: '#991B1B' }}>
             ⚠️ {error}
+          </div>
+        )}
+        {swapSource && !swapTarget && (
+          <div style={{ background: '#E1F5EE', border: '1px solid #B2DFCC', borderRadius: 10, padding: '10px 14px', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 18 }}>{swapSource.entry.emoji}</span>
+            <div style={{ flex: 1, fontSize: 12, color: '#085041' }}>
+              <span style={{ fontWeight: 700 }}>Tausch-Modus:</span> Antippe eine andere Mahlzeit als Zielplatz
+            </div>
+            <button onClick={handleSwapCancel} style={{ fontSize: 11, color: '#555', background: 'white', border: '1px solid #ddd', borderRadius: 6, padding: '3px 8px', cursor: 'pointer' }}>✕ Abbrechen</button>
           </div>
         )}
         {renderWochenchefDecisions()}

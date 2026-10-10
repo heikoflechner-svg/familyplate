@@ -34,14 +34,17 @@ export interface WeekPlanEntry {
 
 export interface ChangeProposal {
   id: string
-  type?: 'chef' | 'einkauf'  // undefined = 'chef' (Rückwärtskompatibilität)
+  type?: 'chef' | 'einkauf' | 'tauschen'  // undefined = 'chef' (Rückwärtskompatibilität)
   tag: string
-  slot?: WochenSlot           // chef proposals
+  slot?: WochenSlot           // chef + tauschen proposals
   vonChef: Chef
-  fuerChef?: Chef             // chef proposals
+  fuerChef?: Chef             // chef + tauschen proposals
   newChef?: Chef              // chef proposals
   vorgeschlagene?: Chef       // einkauf proposals
   createdAt: string
+  // tauschen proposals:
+  nachTag?: string
+  nachSlot?: WochenSlot
 }
 
 export type Wish = {

@@ -499,6 +499,55 @@ export async function adjustRecipe(
   }
 }
 
+const WOCHENTAGE_ORDER = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag']
+const FRESHNESS_PATTERNS = ['fisch', 'hack', 'mett', 'tatar', 'petersilie', 'basilikum', 'schnittlauch', 'dill', 'koriander', 'minze']
+
+export function applySwap(
+  weekPlan: WeekPlanEntry[],
+  tag1: string, slot1: WochenSlot,
+  tag2: string, slot2: WochenSlot,
+  chef1Override?: Chef,
+  chef2Override?: Chef,
+): WeekPlanEntry[] {
+  const e1 = weekPlan.find(e => e.tag === tag1 && e.slot === slot1)
+  const e2 = weekPlan.find(e => e.tag === tag2 && e.slot === slot2)
+  if (!e1 || !e2) return weekPlan
+  return weekPlan.map(e => {
+    if (e.tag === tag1 && e.slot === slot1) return { ...e2, tag: tag1, slot: slot1, chef: chef1Override ?? e2.chef }
+    if (e.tag === tag2 && e.slot === slot2) return { ...e1, tag: tag2, slot: slot2, chef: chef2Override ?? e1.chef }
+    return e
+  })
+}
+
+export function checkAllergiesForSwap(
+  rezept: Rezept,
+  toTag: string,
+  toSlot: WochenSlot,
+  members: FamilyMember[],
+  attendance: DayAttendance[],
+): string[] {
+  const allChefs = members.map(m => m.id as Chef)
+  const day = getAttendanceForDay(attendance, toTag, allChefs)
+  const anwesend = toSlot === 'Mittag' ? day.mittagAnwesend : day.abendAnwesend
+  const warnings: string[] = []
+  for (const member of members) {
+    if (!anwesend.includes(member.id as Chef)) continue
+    if (!member.allergien || member.allergien.length === 0) continue
+    const hasAdaptation = rezept.zutaten.some(z => z.fuer === member.id || z.fuer === member.name)
+    if (!hasAdaptation) warnings.push(`${member.name} (${member.allergien.join(', ')})`)
+  }
+  return warnings
+}
+
+export function checkFreshnessWarning(rezept: Rezept, fromTag: string, toTag: string): boolean {
+  const fromIdx = WOCHENTAGE_ORDER.indexOf(fromTag)
+  const toIdx = WOCHENTAGE_ORDER.indexOf(toTag)
+  if (fromIdx < 0 || toIdx < 0 || toIdx - fromIdx < 2) return false
+  return rezept.zutaten.some(z =>
+    FRESHNESS_PATTERNS.some(p => z.name.toLowerCase().includes(p))
+  )
+}
+
 export async function loadMissingRecipes(
   entries: WeekPlanEntry[],
   store: Record<string, Rezept>,

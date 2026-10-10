@@ -267,6 +267,23 @@ export function rescaleShoppingListMengen(
   })
 }
 
+export function swapShoppingItemsTags(
+  list: ShoppingItem[],
+  tag1: string, slot1: WochenSlot, gericht1: string,
+  tag2: string, slot2: WochenSlot, gericht2: string,
+): ShoppingItem[] {
+  return list.map(item => {
+    if (item.erledigt) return item
+    if (item.tag === tag1 && item.slot === slot1 && item.gericht === gericht1) {
+      return { ...item, tag: tag2, slot: slot2, gericht: gericht2 }
+    }
+    if (item.tag === tag2 && item.slot === slot2 && item.gericht === gericht2) {
+      return { ...item, tag: tag1, slot: slot1, gericht: gericht1 }
+    }
+    return item
+  })
+}
+
 export function toggleConsolidatedItem(list: ShoppingItem[], ids: string[]): ShoppingItem[] {
   const idSet = new Set(ids)
   const allDone = ids.every(id => list.find(i => i.id === id)?.erledigt)
