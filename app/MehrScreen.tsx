@@ -459,7 +459,7 @@ export default function MehrScreen({
                 </div>
               ) : (
                 <div style={{ fontSize: 11, color: '#aaa', marginTop: 8 }}>
-                  Nur der aktuelle Wochenchef kann das ändern.
+                  Ändern können Organisator und Eltern.
                 </div>
               )}
             </div>
@@ -494,8 +494,8 @@ export default function MehrScreen({
               })}
               {suggestedNextChef && (
                 <div style={{ fontSize: 11, color: '#555', background: '#F0FAF5', border: '1px solid #B2DFCC', borderRadius: 8, padding: '7px 10px', marginTop: 12 }}>
-                  🐀 Rémy empfiehlt <strong style={{ color: CFG[suggestedNextChef]?.c ?? '#333' }}>{personNames[suggestedNextChef] ?? suggestedNextChef}</strong> als nächste/n Wochenchef — hat am wenigsten Wochen übernommen
-                  {eligibleForSuggestion.length < activeMembers.length && <> (nur unter Personen mit Konto und ohne Gast-Rolle)</>}.
+                  🐀 Rémy empfiehlt <strong style={{ color: CFG[suggestedNextChef]?.c ?? '#333' }}>{personNames[suggestedNextChef] ?? suggestedNextChef}</strong> als nächsten Wochenchef — hat am wenigsten Wochen übernommen
+                  {eligibleForSuggestion.length < activeMembers.length && <> (nur unter Personen mit Konto und ohne Oma, Opa &amp; Co.)</>}.
                 </div>
               )}
               {!suggestedNextChef && memberStatuses.length > 0 && (

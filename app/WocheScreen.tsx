@@ -94,6 +94,7 @@ interface Props {
   memberStatuses?: { kuerzel: string; role: string; isLinked: boolean }[]
   planSettings?: PlanSettings | null
   onPlanSettingsChange?: (settings: PlanSettings, weekType: 'current' | 'next') => Promise<void>
+  onGoToMehr?: () => void
 }
 
 type View = 'home' | 'week' | 'plan' | 'attendance'
@@ -162,6 +163,7 @@ export default function WocheScreen({
   memberStatuses = [],
   planSettings = null,
   onPlanSettingsChange,
+  onGoToMehr,
 }: Props) {
   const hasMittag = (tag: string) => !mittagsloseTage.includes(tag)
   const personNames: Record<Chef, string> = Object.fromEntries(
@@ -330,6 +332,41 @@ export default function WocheScreen({
     setPlanSettingsSaving(true)
     try { await onPlanSettingsChange(settings, weekType) } finally { setPlanSettingsSaving(false) }
   }
+
+  // ── Nächste Woche – Wochenchef auto-assign ───────────────────────────────
+  const [nwChefPickerOpen, setNwChefPickerOpen] = useState(false)
+  const nwAutoAssignAttempted = useRef(false)
+  useEffect(() => {
+    if (!planConfirmed || !onNextWeekDataChange) return
+    if (nextWeekData?.wochenchef) { nwAutoAssignAttempted.current = false; return }
+    if (nwAutoAssignAttempted.current) return
+    if (memberStatuses.length === 0) return
+    const eligible = activeMembers.filter(m => {
+      const st = memberStatuses.find(s => s.kuerzel === m.id)
+      return st?.isLinked === true && st.role !== 'parent' && m.id !== wochenchef
+    })
+    let autoChef: Chef | null = null
+    if (eligible.length > 0) {
+      const sorted = [...eligible].sort((a, b) => {
+        const ac = a.wochenchefStat?.count ?? 0, bc = b.wochenchefStat?.count ?? 0
+        if (ac !== bc) return ac - bc
+        const ad = a.wochenchefStat?.lastWeek ?? '', bd = b.wochenchefStat?.lastWeek ?? ''
+        return ad < bd ? -1 : ad > bd ? 1 : 0
+      })
+      autoChef = (sorted[0]?.id ?? null) as Chef | null
+    } else {
+      const owner = activeMembers.find(m => {
+        const st = memberStatuses.find(s => s.kuerzel === m.id)
+        return st?.role === 'owner' && st?.isLinked === true && m.id !== wochenchef
+      })
+      autoChef = owner ? owner.id as Chef : null
+    }
+    if (!autoChef) return
+    nwAutoAssignAttempted.current = true
+    const nextMonday = nextWeekStart ?? getNextMondayIso()
+    void onNextWeekDataChange({ wochenchef: autoChef, wochenchefAutoAssigned: true }, nextMonday)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [planConfirmed, nextWeekData?.wochenchef])
 
   // ── Nächste Woche – Plan-State ────────────────────────────────────────────
   const [nwExpanded, setNwExpanded] = useState(false)
@@ -2059,13 +2096,43 @@ export default function WocheScreen({
                 {expanded && (
                   <div style={{ borderTop: '1px solid #E5E7EB' }}>
                     {/* Wochenchef-Zeile */}
-                    <div style={{ padding: '8px 12px', background: '#f9fafb', display: 'flex', alignItems: 'center', gap: 6, borderBottom: '1px solid #f0f0f0' }}>
-                      <span style={{ fontSize: 11, color: '#888' }}>Wochenchef:</span>
-                      <span style={{ fontSize: 11, fontWeight: 700, color: nwChef ? (CFG[nwChef]?.c ?? '#333') : '#bbb' }}>
-                        {nwChef ? personNames[nwChef] : '— noch nicht festgelegt'}
-                      </span>
-                      {nwChef && memberStatuses.length > 0 && memberStatuses.find(s => s.kuerzel === nwChef)?.isLinked !== true && (
-                        <span style={{ fontSize: 10, color: '#92400E' }}>(kein Konto)</span>
+                    <div style={{ padding: '8px 12px', background: '#f9fafb', borderBottom: nwChefPickerOpen ? 'none' : '1px solid #f0f0f0' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: 11, color: '#888' }}>Wochenchef:</span>
+                        <span style={{ fontSize: 11, fontWeight: 700, color: nwChef ? (CFG[nwChef]?.c ?? '#333') : '#bbb' }}>
+                          {nwChef ? personNames[nwChef] : '— noch nicht festgelegt'}
+                        </span>
+                        {nwChef && (nextWeekData as NextWeekData | null)?.wochenchefAutoAssigned && (
+                          <span style={{ fontSize: 10, color: '#1D9E75' }}>(von Rémy festgelegt)</span>
+                        )}
+                        {nwChef && memberStatuses.length > 0 && memberStatuses.find(s => s.kuerzel === nwChef)?.isLinked !== true && (
+                          <span style={{ fontSize: 10, color: '#92400E' }}>(kein Konto)</span>
+                        )}
+                        {canEditSettings && (
+                          <button onClick={() => setNwChefPickerOpen(o => !o)}
+                            style={{ marginLeft: 'auto', fontSize: 11, color: '#1D9E75', border: 'none', background: 'none', cursor: 'pointer', padding: '0 2px' }}>
+                            ✏️ Ändern
+                          </button>
+                        )}
+                      </div>
+                      {nwChefPickerOpen && canEditSettings && (
+                        <div style={{ marginTop: 8, display: 'flex', gap: 6, flexWrap: 'wrap', paddingBottom: 4, borderBottom: '1px solid #f0f0f0' }}>
+                          {activeMembers.map(m => {
+                            const cc = CFG[m.id] ?? Object.values(CFG)[0]
+                            const isSelected = nwChef === m.id
+                            return (
+                              <button key={m.id}
+                                onClick={() => {
+                                  setNwChefPickerOpen(false)
+                                  const mon = nextWeekStart ?? getNextMondayIso()
+                                  void onNextWeekDataChange?.({ wochenchef: m.id as Chef, wochenchefAutoAssigned: false }, mon)
+                                }}
+                                style={{ flex: 1, minWidth: 60, padding: '8px 4px', borderRadius: 10, textAlign: 'center', cursor: 'pointer', border: `2px solid ${isSelected ? cc.c : '#e5e7eb'}`, background: isSelected ? cc.bg : 'white' }}>
+                                <div style={{ fontSize: 12, fontWeight: 700, color: isSelected ? cc.c : '#333' }}>{m.name}</div>
+                              </button>
+                            )
+                          })}
+                        </div>
                       )}
                     </div>
 
@@ -2858,6 +2925,26 @@ export default function WocheScreen({
             )}
           </div>
         )}
+        {planConfirmed && nextWeekData?.wochenchef === currentUser && (() => {
+          const nextMonday = nextWeekStart || getNextMondayIso()
+          const nwKw = getKW(nextMonday)
+          return (
+            <div style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: 10, padding: '10px 14px', marginBottom: 12, display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+              <span style={{ fontSize: 16, flexShrink: 0 }}>🗓️</span>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: '#1E40AF', marginBottom: 2 }}>
+                  Laut Fairplay bist du nächste Woche (KW {nwKw}) dran 😊
+                </div>
+                <div style={{ fontSize: 11, color: '#1E40AF' }}>
+                  {canEditSettings
+                    ? <>Passt es dir nicht?{' '}<button onClick={onGoToMehr} style={{ border: 'none', background: 'none', color: '#1D9E75', fontSize: 11, cursor: 'pointer', padding: 0, textDecoration: 'underline' }}>Mehr → Wochenchefs</button>{' '}zum Tauschen.</>
+                    : 'Passt es dir nicht? Sag Organisator oder Eltern Bescheid.'
+                  }
+                </div>
+              </div>
+            </div>
+          )
+        })()}
         {(() => {
           const ws = weekStart ?? getMondayIso()
           return (

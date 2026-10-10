@@ -117,6 +117,7 @@ export interface NextWeekData {
   attendance?: DayAttendance[]
   attendanceConfirmed?: Chef[]
   planSettings?: PlanSettings
+  wochenchefAutoAssigned?: boolean
 }
 
 export interface ChefStat {

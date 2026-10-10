@@ -504,6 +504,7 @@ export default function FamilyPlateApp() {
             onPlanSettingsChange={handlePlanSettingsChange}
             canEditSettings={currentMemberRole !== 'member'}
             memberStatuses={memberStatuses}
+            onGoToMehr={() => setActiveTab('mehr')}
           />
         </div>
         {activeTab === 'gefriertruhe' && (
