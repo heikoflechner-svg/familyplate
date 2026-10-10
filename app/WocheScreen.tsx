@@ -102,11 +102,12 @@ type PlanState = 'options' | 'loading' | 'results'
 // Frist-Logik: 1 Tag vor dem nächsten Einkaufstag, 20:00 Uhr.
 // Gibt null zurück wenn kein Einkaufstag konfiguriert.
 function getShoppingDeadlineStatus(shoppingDays: string[], now = new Date()):
-  { passed: boolean; deadlineDayName: string; shoppingDayName: string } | null {
+  { passed: boolean; deadlineDayName: string; shoppingDayName: string; deadlineDate: string } | null {
   const nameToNum: Record<string, number> = {
     Sonntag: 0, Montag: 1, Dienstag: 2, Mittwoch: 3, Donnerstag: 4, Freitag: 5, Samstag: 6,
   }
   const numToName = ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag']
+  const M = ['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez']
   if (shoppingDays.length === 0) return null
   const todayNum = now.getDay()
   let earliestFuture: { deadline: Date; deadlineDayNum: number; shoppingDayName: string } | null = null
@@ -135,8 +136,8 @@ function getShoppingDeadlineStatus(shoppingDays: string[], now = new Date()):
         mostRecentPast = { deadline, deadlineDayNum: deadlineNum, shoppingDayName: shoppingName }
     }
   }
-  if (earliestFuture) return { passed: false, deadlineDayName: numToName[earliestFuture.deadlineDayNum], shoppingDayName: earliestFuture.shoppingDayName }
-  if (mostRecentPast) return { passed: true, deadlineDayName: numToName[mostRecentPast.deadlineDayNum], shoppingDayName: mostRecentPast.shoppingDayName }
+  if (earliestFuture) return { passed: false, deadlineDayName: numToName[earliestFuture.deadlineDayNum], shoppingDayName: earliestFuture.shoppingDayName, deadlineDate: `${earliestFuture.deadline.getDate()}. ${M[earliestFuture.deadline.getMonth()]}` }
+  if (mostRecentPast) return { passed: true, deadlineDayName: numToName[mostRecentPast.deadlineDayNum], shoppingDayName: mostRecentPast.shoppingDayName, deadlineDate: `${mostRecentPast.deadline.getDate()}. ${M[mostRecentPast.deadline.getMonth()]}` }
   return null
 }
 
@@ -184,6 +185,11 @@ export default function WocheScreen({
   const wishDeadlineHint = wishDeadlinePassed && wishDeadlineStatus
     ? `Änderungen waren nur bis ${wishDeadlineStatus.deadlineDayName} 20:00 Uhr möglich – Einkauf ist am ${wishDeadlineStatus.shoppingDayName}`
     : undefined
+  const wishHint: string | undefined = planConfirmed
+    ? 'Plan bestätigt – dein Wunsch kommt als Vorschlag beim Wochenchef an.'
+    : (wishDeadlineStatus && !wishDeadlineStatus.passed
+        ? `Wünsche bis ${wishDeadlineStatus.deadlineDayName}, ${wishDeadlineStatus.deadlineDate} eintragen – danach plant der Wochenchef.`
+        : undefined)
   const wochenchefHasNoAccount = memberStatuses.length > 0 && memberStatuses.find(s => s.kuerzel === wochenchef)?.isLinked !== true
 
   const nwPlanSettings = (nextWeekData as NextWeekData | null)?.planSettings ?? null
@@ -1949,7 +1955,7 @@ export default function WocheScreen({
                         <WishesSection
                           tag={tag} wishes={wishes} freezerItems={freezerItems} pantryItems={pantryItems}
                           personNames={personNames} members={activeMembers} mittagsloseTage={mittagsloseTage} lockedSlot={slot} showExisting={false}
-                          canAdd={!shopDone && !wishDeadlinePassed} deadlineHint={wishDeadlineHint}
+                          canAdd={!shopDone && !wishDeadlinePassed} deadlineHint={wishDeadlineHint} wishHint={wishHint}
                           isOpen={wishFormKey === `${tag}-${slot}`} initialPerson={currentUser} familyPrompt={familyPrompt}
                           onOpen={() => openWishForm(tag, slot)} onClose={closeWishForm} onSubmitWish={handleWishSubmit} onRemove={removeWish}
                           fullWidth
@@ -2482,6 +2488,11 @@ export default function WocheScreen({
                       {/* Wish input (for non-nwChef or also nwChef) */}
                       {!nwPendingPlan && (
                         <div>
+                          {nwConfirmed && (
+                            <div style={{ fontSize: 11, color: '#6B7280', fontStyle: 'italic', marginBottom: 6 }}>
+                              ℹ️ Plan bestätigt – dein Wunsch kommt als Vorschlag beim Wochenchef an.
+                            </div>
+                          )}
                           {myNwWish ? (
                             <div style={{ fontSize: 11, color: '#0F6E56', display: 'flex', alignItems: 'center', gap: 6 }}>
                               <span>✓ Dein Wunsch: „{myNwWish.text}"</span>
@@ -2678,7 +2689,7 @@ export default function WocheScreen({
         <WishesSection
           tag={tag} wishes={wishes} freezerItems={freezerItems} pantryItems={pantryItems}
           personNames={personNames} members={activeMembers} mittagsloseTage={mittagsloseTage} lockedSlot={slot}
-          canAdd={!shopDone && !wishDeadlinePassed} deadlineHint={wishDeadlineHint}
+          canAdd={!shopDone && !wishDeadlinePassed} deadlineHint={wishDeadlineHint} wishHint={wishHint}
           isOpen={wishFormKey === `${tag}-${slot}`} initialPerson={currentUser} familyPrompt={familyPrompt}
           onOpen={() => openWishForm(tag, slot)} onClose={closeWishForm} onSubmitWish={handleWishSubmit} onRemove={removeWish}
         />
@@ -2945,6 +2956,7 @@ interface WishesSectionProps {
   showExisting?: boolean
   canAdd?: boolean
   deadlineHint?: string
+  wishHint?: string
   isOpen: boolean
   initialPerson: Chef
   familyPrompt: string
@@ -2957,7 +2969,7 @@ interface WishesSectionProps {
 
 function WishesSection({
   tag, wishes, freezerItems, pantryItems, personNames, members, mittagsloseTage,
-  lockedSlot, showExisting = true, canAdd = true, deadlineHint, isOpen, initialPerson, familyPrompt,
+  lockedSlot, showExisting = true, canAdd = true, deadlineHint, wishHint, isOpen, initialPerson, familyPrompt,
   fullWidth,
   onOpen, onClose, onSubmitWish, onRemove,
 }: WishesSectionProps) {
@@ -3114,6 +3126,9 @@ function WishesSection({
         <div style={fullWidth
           ? { padding: '4px 12px 8px', background: '#f9f9f9', display: 'flex', flexDirection: 'column', gap: 8 }
           : { marginTop: 8, padding: 10, background: '#f9f9f9', borderRadius: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {wishHint && (
+            <div style={{ fontSize: 11, color: '#6B7280', fontStyle: 'italic' }}>ℹ️ {wishHint}</div>
+          )}
           {/* Slot */}
           {!mittagsloseTage.includes(tag) && !lockedSlot && (
             <div style={{ display: 'flex', gap: 4 }}>
