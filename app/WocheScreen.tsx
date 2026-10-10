@@ -325,6 +325,8 @@ export default function WocheScreen({
 
   const [mittagslosOpen, setMittagslosOpen] = useState(false)
   const [nwMittagslosOpen, setNwMittagslosOpen] = useState(false)
+  const [mittagDraft, setMittagDraft] = useState<string[] | null>(null)
+  const [nwMittagDraft, setNwMittagDraft] = useState<string[] | null>(null)
   const [planSettingsSaving, setPlanSettingsSaving] = useState(false)
 
   async function savePlanSettings(settings: PlanSettings, weekType: 'current' | 'next') {
@@ -608,6 +610,19 @@ export default function WocheScreen({
       e.tag === tag && e.slot === slot ? { ...e, gericht: name, emoji, quelle: 'vorrat' } : e
     )
     void onWeekPlanChange(newPlan, mealsData)
+    closeMealPanel()
+  }
+
+  function applyNewManualDish(tag: string, slot: WochenSlot, name: string) {
+    if (!name.trim()) return
+    const newEntry = { tag, slot, gericht: name.trim(), emoji: '🍽️', quelle: 'manuell', chef: wochenchef, minuten: 30 }
+    void onWeekPlanChange([...weekPlan, newEntry], mealsData)
+    closeMealPanel()
+  }
+
+  function applyNewStockItem(tag: string, slot: WochenSlot, name: string, emoji: string) {
+    const newEntry = { tag, slot, gericht: name, emoji, quelle: 'vorrat', chef: wochenchef, minuten: 30 }
+    void onWeekPlanChange([...weekPlan, newEntry], mealsData)
     closeMealPanel()
   }
 
@@ -1418,6 +1433,64 @@ export default function WocheScreen({
   }
 
 
+  function renderNewSlotPicker(tag: string, slot: WochenSlot) {
+    const gKey = `${tag}-${slot}`
+    const isOpen = gerichtEditKey === gKey
+    const stockItems = [...freezerItems, ...pantryItems]
+    return (
+      <div key={slot} style={{ borderTop: '1px solid #f0f0f0' }}>
+        <button
+          onClick={() => { if (isOpen) { setGerichtEditKey(null); setMealSubMode(null) } else { setGerichtEditKey(gKey); setMealSubMode(null) } }}
+          style={{ width: '100%', padding: '10px 12px', background: 'none', border: 'none', textAlign: 'left', fontSize: 12, color: isOpen ? '#1D9E75' : '#92400E', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}
+        >
+          <SlotPill slot={slot} />
+          <span>{isOpen ? '× Abbrechen' : '+ Gericht wählen'}</span>
+        </button>
+        {isOpen && (
+          <div style={{ padding: '4px 12px 8px', background: '#f9f9f9' }}>
+            <div style={{ display: 'flex', gap: 4 }}>
+              <button onClick={() => replanSlot(tag, slot)} disabled={slotLoading !== null || dayLoading !== null}
+                style={{ flex: 1, padding: '6px 4px', border: '1px solid #ddd', borderRadius: 8, background: 'white', cursor: (slotLoading !== null || dayLoading !== null) ? 'default' : 'pointer', fontSize: 11, color: slotLoading === gKey ? '#085041' : '#555', opacity: (slotLoading !== null && slotLoading !== gKey) ? 0.4 : 1 }}>
+                {slotLoading === gKey ? '⏳…' : '↺ Rémy'}
+              </button>
+              <button onClick={() => { if (mealSubMode === 'manual') setMealSubMode(null); else { setMealSubMode('manual'); setManualDishInput('') } }}
+                style={{ flex: 1, padding: '6px 4px', border: `1px solid ${mealSubMode === 'manual' ? '#1D9E75' : '#ddd'}`, borderRadius: 8, background: mealSubMode === 'manual' ? '#E1F5EE' : 'white', cursor: 'pointer', fontSize: 11, color: mealSubMode === 'manual' ? '#0F6E56' : '#555' }}>
+                ✏️ Eigenes
+              </button>
+              <button onClick={() => setMealSubMode(prev => prev === 'pantry' ? null : 'pantry')}
+                style={{ flex: 1, padding: '6px 4px', border: `1px solid ${mealSubMode === 'pantry' ? '#1D9E75' : '#ddd'}`, borderRadius: 8, background: mealSubMode === 'pantry' ? '#E1F5EE' : 'white', cursor: 'pointer', fontSize: 11, color: mealSubMode === 'pantry' ? '#0F6E56' : '#555' }}>
+                ❄️ Vorrat
+              </button>
+            </div>
+            {mealSubMode === 'manual' && (
+              <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
+                <input type="text" value={manualDishInput} onChange={ev => setManualDishInput(ev.target.value)}
+                  onKeyDown={ev => ev.key === 'Enter' && !!manualDishInput.trim() && applyNewManualDish(tag, slot, manualDishInput)}
+                  placeholder="Gerichtsname…" autoFocus
+                  style={{ flex: 1, fontSize: 12, padding: '6px 10px', border: '1px solid #ddd', borderRadius: 6, outline: 'none' }} />
+                <button onClick={() => applyNewManualDish(tag, slot, manualDishInput)} disabled={!manualDishInput.trim()}
+                  style={{ padding: '6px 12px', border: 'none', borderRadius: 6, background: '#1D9E75', color: 'white', fontSize: 12, fontWeight: 600, cursor: manualDishInput.trim() ? 'pointer' : 'default', opacity: manualDishInput.trim() ? 1 : 0.4 }}>✓</button>
+              </div>
+            )}
+            {mealSubMode === 'pantry' && (stockItems.length === 0
+              ? <div style={{ fontSize: 11, color: '#bbb', textAlign: 'center', padding: '4px 0', marginTop: 4 }}>Nichts im Vorrat</div>
+              : <div style={{ maxHeight: 120, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 3, marginTop: 4 }}>
+                  {stockItems.map(item => (
+                    <button key={item.id} onClick={() => applyNewStockItem(tag, slot, item.name, item.emoji)}
+                      style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 8px', border: '1px solid #eee', borderRadius: 6, background: 'white', cursor: 'pointer', textAlign: 'left' }}>
+                      <span style={{ fontSize: 14 }}>{item.emoji}</span>
+                      <span style={{ flex: 1, fontSize: 12, color: '#333' }}>{item.name}</span>
+                      <span style={{ fontSize: 10, color: '#bbb' }}>{item.menge}</span>
+                    </button>
+                  ))}
+                </div>
+            )}
+          </div>
+        )}
+      </div>
+    )
+  }
+
   function renderPlanSettingsButtons(fromView: 'home' | 'week') {
     const currentMtl = planSettings?.mittagsloseTage ?? mittagsloseTage
     const currentPlanWE = planSettings?.planWE ?? planWE
@@ -1432,7 +1505,7 @@ export default function WocheScreen({
           </button>
           {canEditCurrentPlanSettings && (
             <button
-              onClick={() => void savePlanSettings({ planWE: !currentPlanWE, mittagsloseTage: currentMtl }, 'current')}
+              onClick={() => void savePlanSettings({ planWE: !currentPlanWE, mittagsloseTage: planSettings?.mittagsloseTage ?? null }, 'current')}
               disabled={planSettingsSaving}
               style={{ padding: '5px 11px', borderRadius: 20, border: `1px solid ${currentPlanWE ? '#1D9E75' : '#ddd'}`, background: currentPlanWE ? '#F0FAF5' : '#f9fafb', fontSize: 11, color: currentPlanWE ? '#0F6E56' : '#888', cursor: planSettingsSaving ? 'default' : 'pointer', fontWeight: 500 }}
             >
@@ -1441,8 +1514,11 @@ export default function WocheScreen({
           )}
           {canEditCurrentPlanSettings && (
             <button
-              onClick={() => setMittagslosOpen(o => !o)}
-              style={{ padding: '5px 11px', borderRadius: 20, border: `1px solid ${currentMtl.length > 0 ? '#1D9E75' : '#ddd'}`, background: currentMtl.length > 0 ? '#F0FAF5' : '#f9fafb', fontSize: 11, color: currentMtl.length > 0 ? '#0F6E56' : '#888', cursor: 'pointer', fontWeight: 500 }}
+              onClick={() => {
+                if (mittagslosOpen) { setMittagslosOpen(false); setMittagDraft(null) }
+                else { setMittagDraft(planSettings?.mittagsloseTage ?? []); setMittagslosOpen(true) }
+              }}
+              style={{ padding: '5px 11px', borderRadius: 20, border: `1px solid ${(planSettings?.mittagsloseTage ?? []).length > 0 ? '#1D9E75' : '#ddd'}`, background: (planSettings?.mittagsloseTage ?? []).length > 0 ? '#F0FAF5' : '#f9fafb', fontSize: 11, color: (planSettings?.mittagsloseTage ?? []).length > 0 ? '#0F6E56' : '#888', cursor: 'pointer', fontWeight: 500 }}
             >
               {planSettings?.mittagsloseTage == null
                 ? '☀ Mittag: festlegen'
@@ -1454,26 +1530,37 @@ export default function WocheScreen({
             </button>
           )}
         </div>
-        {mittagslosOpen && canEditCurrentPlanSettings && (
+        {mittagslosOpen && canEditCurrentPlanSettings && mittagDraft !== null && (
           <div style={{ marginTop: 8, padding: '8px 12px', background: '#f9fafb', borderRadius: 10, border: '1px solid #e5e7eb' }}>
-            <div style={{ fontSize: 11, color: '#888', marginBottom: 6 }}>Tage ohne Mittagessen:</div>
+            <div style={{ fontSize: 11, color: '#888', marginBottom: 6 }}>An welchen Tagen gibt es Mittagessen?</div>
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
               {(currentPlanWE ? WOCHENTAGE : WOCHENTAGE.slice(0, 5)).map(tag => {
-                const on = currentMtl.includes(tag)
+                const excluded = mittagDraft.includes(tag)
+                const hasLunch = !excluded
                 return (
                   <button
                     key={tag}
-                    disabled={planSettingsSaving}
                     onClick={() => {
-                      const newMtl = on ? currentMtl.filter(t => t !== tag) : [...currentMtl, tag]
-                      void savePlanSettings({ planWE: currentPlanWE, mittagsloseTage: newMtl }, 'current')
+                      const newMtl = excluded ? mittagDraft.filter(t => t !== tag) : [...mittagDraft, tag]
+                      setMittagDraft(newMtl)
                     }}
-                    style={{ padding: '4px 10px', borderRadius: 8, border: `1px solid ${on ? '#1D9E75' : '#ddd'}`, background: on ? '#F0FAF5' : 'white', color: on ? '#0F6E56' : '#666', fontSize: 11, fontWeight: 600, cursor: planSettingsSaving ? 'default' : 'pointer' }}
+                    style={{ padding: '4px 10px', borderRadius: 8, border: `1px solid ${hasLunch ? '#1D9E75' : '#ddd'}`, background: hasLunch ? '#F0FAF5' : 'white', color: hasLunch ? '#0F6E56' : '#666', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}
                   >
                     {TAG_SHORT[tag]}
                   </button>
                 )
               })}
+            </div>
+            <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+              <button
+                onClick={() => { void savePlanSettings({ planWE: currentPlanWE, mittagsloseTage: mittagDraft }, 'current'); setMittagslosOpen(false); setMittagDraft(null) }}
+                disabled={planSettingsSaving}
+                style={{ padding: '5px 12px', borderRadius: 8, border: 'none', background: '#1D9E75', color: 'white', fontSize: 11, fontWeight: 600, cursor: planSettingsSaving ? 'default' : 'pointer' }}
+              >Fertig</button>
+              <button
+                onClick={() => { setMittagslosOpen(false); setMittagDraft(null) }}
+                style={{ padding: '5px 12px', borderRadius: 8, border: '1px solid #ddd', background: 'white', color: '#888', fontSize: 11, cursor: 'pointer' }}
+              >Abbrechen</button>
             </div>
           </div>
         )}
@@ -1908,7 +1995,11 @@ export default function WocheScreen({
 
                   {!isLoading && !isPending && ([mittag, abend] as const).map((e, i) => {
                     const slot = (i === 0 ? 'Mittag' : 'Abend') as WochenSlot
-                    if (!e) return null
+                    if (!e) {
+                      if (slot === 'Mittag' && !hasMittag(tag)) return null
+                      if (!planConfirmed) return null
+                      return renderNewSlotPicker(tag, slot)
+                    }
                     const key = `${tag}-${slot}`
                     const isEditing = editMealKey === key
                     const isAttendanceEdit = attendanceEditKey === key
@@ -2148,7 +2239,7 @@ export default function WocheScreen({
                         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                           {canEditNextPlanSettings && (
                             <button
-                              onClick={() => void savePlanSettings({ planWE: !nwEffectivePlanWE, mittagsloseTage: nwMittagsloseTage }, 'next')}
+                              onClick={() => void savePlanSettings({ planWE: !nwEffectivePlanWE, mittagsloseTage: nwPlanSettings?.mittagsloseTage ?? null }, 'next')}
                               disabled={planSettingsSaving}
                               style={{ padding: '5px 11px', borderRadius: 20, border: `1px solid ${nwEffectivePlanWE ? '#1D9E75' : '#ddd'}`, background: nwEffectivePlanWE ? '#F0FAF5' : '#f9fafb', fontSize: 11, color: nwEffectivePlanWE ? '#0F6E56' : '#888', cursor: planSettingsSaving ? 'default' : 'pointer', fontWeight: 500 }}
                             >
@@ -2157,8 +2248,11 @@ export default function WocheScreen({
                           )}
                           {canEditNextPlanSettings && (
                             <button
-                              onClick={() => setNwMittagslosOpen(o => !o)}
-                              style={{ padding: '5px 11px', borderRadius: 20, border: `1px solid ${nwMittagsloseTage.length > 0 ? '#1D9E75' : '#ddd'}`, background: nwMittagsloseTage.length > 0 ? '#F0FAF5' : '#f9fafb', fontSize: 11, color: nwMittagsloseTage.length > 0 ? '#0F6E56' : '#888', cursor: 'pointer', fontWeight: 500 }}
+                              onClick={() => {
+                                if (nwMittagslosOpen) { setNwMittagslosOpen(false); setNwMittagDraft(null) }
+                                else { setNwMittagDraft(nwPlanSettings?.mittagsloseTage ?? []); setNwMittagslosOpen(true) }
+                              }}
+                              style={{ padding: '5px 11px', borderRadius: 20, border: `1px solid ${(nwPlanSettings?.mittagsloseTage ?? []).length > 0 ? '#1D9E75' : '#ddd'}`, background: (nwPlanSettings?.mittagsloseTage ?? []).length > 0 ? '#F0FAF5' : '#f9fafb', fontSize: 11, color: (nwPlanSettings?.mittagsloseTage ?? []).length > 0 ? '#0F6E56' : '#888', cursor: 'pointer', fontWeight: 500 }}
                             >
                               {nwPlanSettings?.mittagsloseTage == null
                                 ? '☀ Mittag: festlegen'
@@ -2175,26 +2269,37 @@ export default function WocheScreen({
                             </span>
                           )}
                         </div>
-                        {nwMittagslosOpen && canEditNextPlanSettings && (
+                        {nwMittagslosOpen && canEditNextPlanSettings && nwMittagDraft !== null && (
                           <div style={{ marginTop: 8, padding: '8px 10px', background: 'white', borderRadius: 8, border: '1px solid #e5e7eb' }}>
-                            <div style={{ fontSize: 11, color: '#888', marginBottom: 6 }}>Tage ohne Mittagessen:</div>
+                            <div style={{ fontSize: 11, color: '#888', marginBottom: 6 }}>An welchen Tagen gibt es Mittagessen?</div>
                             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                               {(nwEffectivePlanWE ? WOCHENTAGE : WOCHENTAGE.slice(0, 5)).map(tag => {
-                                const on = nwMittagsloseTage.includes(tag)
+                                const excluded = nwMittagDraft.includes(tag)
+                                const hasLunch = !excluded
                                 return (
                                   <button
                                     key={tag}
-                                    disabled={planSettingsSaving}
                                     onClick={() => {
-                                      const newMtl = on ? nwMittagsloseTage.filter(t => t !== tag) : [...nwMittagsloseTage, tag]
-                                      void savePlanSettings({ planWE: nwEffectivePlanWE, mittagsloseTage: newMtl }, 'next')
+                                      const newMtl = excluded ? nwMittagDraft.filter(t => t !== tag) : [...nwMittagDraft, tag]
+                                      setNwMittagDraft(newMtl)
                                     }}
-                                    style={{ padding: '4px 10px', borderRadius: 8, border: `1px solid ${on ? '#1D9E75' : '#ddd'}`, background: on ? '#F0FAF5' : 'white', color: on ? '#0F6E56' : '#666', fontSize: 11, fontWeight: 600, cursor: planSettingsSaving ? 'default' : 'pointer' }}
+                                    style={{ padding: '4px 10px', borderRadius: 8, border: `1px solid ${hasLunch ? '#1D9E75' : '#ddd'}`, background: hasLunch ? '#F0FAF5' : 'white', color: hasLunch ? '#0F6E56' : '#666', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}
                                   >
                                     {TAG_SHORT[tag]}
                                   </button>
                                 )
                               })}
+                            </div>
+                            <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+                              <button
+                                onClick={() => { void savePlanSettings({ planWE: nwEffectivePlanWE, mittagsloseTage: nwMittagDraft }, 'next'); setNwMittagslosOpen(false); setNwMittagDraft(null) }}
+                                disabled={planSettingsSaving}
+                                style={{ padding: '5px 12px', borderRadius: 8, border: 'none', background: '#1D9E75', color: 'white', fontSize: 11, fontWeight: 600, cursor: planSettingsSaving ? 'default' : 'pointer' }}
+                              >Fertig</button>
+                              <button
+                                onClick={() => { setNwMittagslosOpen(false); setNwMittagDraft(null) }}
+                                style={{ padding: '5px 12px', borderRadius: 8, border: '1px solid #ddd', background: 'white', color: '#888', fontSize: 11, cursor: 'pointer' }}
+                              >Abbrechen</button>
                             </div>
                           </div>
                         )}
@@ -2622,14 +2727,15 @@ export default function WocheScreen({
 
   function renderHomeSlot(tag: string, slot: WochenSlot, entry: WeekPlanEntry | null) {
     if (!entry) {
-      return (
-        <div key={slot} style={{ padding: '10px 12px', borderTop: '1px solid #f0f0f0', display: 'flex', alignItems: 'center', gap: 8 }}>
-          <SlotPill slot={slot} />
-          <span style={{ fontSize: 12, color: planConfirmed ? '#92400E' : '#bbb' }}>
-            {planConfirmed ? "Neue Mahlzeit – bitte über 'Gericht ändern' auswählen" : 'noch nicht geplant'}
-          </span>
-        </div>
-      )
+      if (!planConfirmed) {
+        return (
+          <div key={slot} style={{ padding: '10px 12px', borderTop: '1px solid #f0f0f0', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <SlotPill slot={slot} />
+            <span style={{ fontSize: 12, color: '#bbb' }}>noch nicht geplant</span>
+          </div>
+        )
+      }
+      return renderNewSlotPicker(tag, slot)
     }
     const key = `${tag}-${slot}`
     const isEditing = editMealKey === key
@@ -2891,7 +2997,7 @@ export default function WocheScreen({
             <span style={{ fontSize: 16, flexShrink: 0 }}>⏳</span>
             <div style={{ fontSize: 12, color: '#92400E' }}>
               Plan gespeichert – <strong>{personNames[wochenchef]}</strong> muss noch bestätigen.
-              {wochenchefHasNoAccount && <span style={{ display: 'block', marginTop: 2 }}>(noch kein Konto)</span>}
+              {wochenchefHasNoAccount && <span style={{ display: 'block', marginTop: 2 }}>(noch kein Konto – Organisator oder Eltern bestätigen stellvertretend)</span>}
             </div>
           </div>
         )}
@@ -2913,8 +3019,7 @@ export default function WocheScreen({
                   Hallo {personNames[currentUser]}! 👋
                 </div>
                 <div style={{ fontSize: 12, color: '#444', marginBottom: shoppingDays.length > 0 ? 4 : 0 }}>
-                  Diese Woche ist <strong>{personNames[wochenchef]}</strong> der Wochenchef (organisiert und kocht mit). Die Woche ist bereits geplant – du kannst aber noch deine Wünsche eintragen.
-                  {wochenchefHasNoAccount && <span style={{ display: 'block', marginTop: 2, color: '#92400E' }}>(noch kein Konto)</span>}
+                  Diese Woche ist <strong>{personNames[wochenchef]}</strong>{wochenchefHasNoAccount && <span style={{ color: '#92400E' }}> (noch kein Konto)</span>} der Wochenchef (organisiert und kocht mit). Die Woche ist bereits geplant – du kannst aber noch Änderungswünsche an den Wochenchef schicken.
                 </div>
                 {shoppingDays.length > 0 && (
                   <div style={{ fontSize: 12, color: '#444' }}>

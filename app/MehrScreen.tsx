@@ -494,8 +494,7 @@ export default function MehrScreen({
               })}
               {suggestedNextChef && (
                 <div style={{ fontSize: 11, color: '#555', background: '#F0FAF5', border: '1px solid #B2DFCC', borderRadius: 8, padding: '7px 10px', marginTop: 12 }}>
-                  🐀 Rémy empfiehlt <strong style={{ color: CFG[suggestedNextChef]?.c ?? '#333' }}>{personNames[suggestedNextChef] ?? suggestedNextChef}</strong> als nächsten Wochenchef — hat am wenigsten Wochen übernommen
-                  {eligibleForSuggestion.length < activeMembers.length && <> (nur unter Personen mit Konto und ohne Oma, Opa &amp; Co.)</>}.
+                  🐀 Rémy empfiehlt <strong style={{ color: CFG[suggestedNextChef]?.c ?? '#333' }}>{personNames[suggestedNextChef] ?? suggestedNextChef}</strong> als nächsten Wochenchef, weil er/sie am seltensten Wochenchef war. Berücksichtigt werden nur Personen mit eigenem Konto, Oma, Opa &amp; Co. ausgenommen.
                 </div>
               )}
               {!suggestedNextChef && memberStatuses.length > 0 && (
