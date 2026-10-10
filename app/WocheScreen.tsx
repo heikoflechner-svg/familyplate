@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
 import { generateWeekPlan, getRemySuggestions, generateRecipe, rescaleRecipe, loadMissingRecipes, getPersonCountForSlot, saveLastDishes, isFullRecipe, getMondayIso, getNextMondayIso } from '../lib/mealLogic'
-import { rescaleShoppingListMengen } from '../lib/shoppingLogic'
+import { rescaleShoppingListMengen, rewriteShoppingItemsForDish } from '../lib/shoppingLogic'
 import { getFreezerListString, getPantryListString, addFreezerItem, deleteFreezerItem } from '../lib/freezerLogic'
 import { buildFamilyPrompt, buildMemberCfg, DEFAULT_MEMBERS } from '../lib/familyLogic'
 import type { WeekPlanEntry, Rezept, FreezerItem, PantryItem, Wish, Chef, WochenSlot, FamilyMember, DayAttendance, ChangeProposal, ShoppingItem, RemyVorschlag, NextWeekData, NextWeekWish, PlanSettings } from '../lib/state'
@@ -309,6 +309,7 @@ export default function WocheScreen({
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [selectedMealName, setSelectedMealName] = useState<string | null>(null)
+  const [recipeContext, setRecipeContext] = useState<{ tag: string; slot: WochenSlot; source: 'current' | 'pending' | 'nwPending' | 'nwSaved'; emoji: string } | null>(null)
   const [recipeLoading, setRecipeLoading] = useState<string | null>(null)
 
   const [chefAltSelection, setChefAltSelection] = useState<Record<string, string>>({})
@@ -1126,6 +1127,7 @@ export default function WocheScreen({
   // volles Rezept lazy nachladen und persistieren.
   async function openRecipe(gericht: string, emoji: string, tag: string, slot: WochenSlot) {
     setSelectedMealName(gericht)
+    setRecipeContext({ tag, slot, source: 'current', emoji })
     const existing = mealsData[gericht]
     const personCount = getPersonCountForSlot(tag, slot, attendance, members.length ? members : DEFAULT_MEMBERS)
     if (isFullRecipe(existing) && existing?.personenAnzahl === personCount) return
@@ -1156,6 +1158,7 @@ export default function WocheScreen({
   // Nächste-Woche-Vorschlag (lokal, noch nicht gespeichert): Rezept lazy nachladen
   async function openNwPendingRecipe(gericht: string, emoji: string, tag: string, slot: WochenSlot) {
     setSelectedMealName(gericht)
+    setRecipeContext({ tag, slot, source: 'nwPending', emoji })
     const existing = nwPendingMeals[gericht]
     const nwAtt = nextWeekData?.attendance ?? []
     const personCount = getPersonCountForSlot(tag, slot, nwAtt, members.length ? members : DEFAULT_MEMBERS)
@@ -1182,6 +1185,7 @@ export default function WocheScreen({
   // Plan-Vorschau (aktuelle Woche, noch nicht übernommen): Rezept lazy nachladen
   async function openPendingPlanRecipe(gericht: string, emoji: string, tag: string, slot: WochenSlot) {
     setSelectedMealName(gericht)
+    setRecipeContext({ tag, slot, source: 'pending', emoji })
     const existing = pendingPlanMeals[gericht]
     const personCount = getPersonCountForSlot(tag, slot, attendance, members.length ? members : DEFAULT_MEMBERS)
     if (isFullRecipe(existing) && existing?.personenAnzahl === personCount) return
@@ -1207,6 +1211,7 @@ export default function WocheScreen({
   // Nächste-Woche-Plan (gespeichert): Rezept lazy nachladen und persistieren
   async function openNwSavedRecipe(gericht: string, emoji: string, tag: string, slot: WochenSlot) {
     setSelectedMealName(gericht)
+    setRecipeContext({ tag, slot, source: 'nwSaved', emoji })
     const existing = nextWeekData?.mealsData?.[gericht]
     const nwAtt = nextWeekData?.attendance ?? []
     const personCount = getPersonCountForSlot(tag, slot, nwAtt, members.length ? members : DEFAULT_MEMBERS)
@@ -1237,6 +1242,38 @@ export default function WocheScreen({
   function selectedRezept(name: string): Rezept | null {
     const cands = [pendingPlanMeals[name], mealsData[name], nwPendingMeals[name], nextWeekData?.mealsData?.[name]]
     return cands.find(r => isFullRecipe(r)) ?? cands.find((r): r is Rezept => !!r) ?? null
+  }
+
+  async function rewriteRecipe() {
+    if (!recipeContext || !selectedMealName) return
+    const { tag, slot, source, emoji } = recipeContext
+    const mbs = members.length ? members : DEFAULT_MEMBERS
+    const att = (source === 'nwPending' || source === 'nwSaved') ? (nextWeekData?.attendance ?? []) : attendance
+    const personCount = getPersonCountForSlot(tag, slot, att, mbs)
+    setRecipeLoading(selectedMealName)
+    try {
+      const rezept = await generateRecipe(selectedMealName, emoji, getFreezerListString(freezerItems), getPantryListString(pantryItems), familyPrompt, personCount)
+      if (!rezept) return
+      const merged: Rezept = { ...rezept, personenAnzahl: personCount, ersetzteZutaten: rezept.ersetzteZutaten?.length ? rezept.ersetzteZutaten : [] }
+      if (source === 'current') {
+        await onWeekPlanChange(weekPlan, { ...mealsData, [selectedMealName]: merged })
+        if (planConfirmed) {
+          const entry = weekPlan.find(e => e.tag === tag && e.slot === slot)
+          if (entry) await onShoppingListChange(rewriteShoppingItemsForDish(shoppingList, entry, merged, false))
+        }
+      } else if (source === 'pending') {
+        setPendingPlanMeals(prev => ({ ...prev, [selectedMealName]: merged }))
+      } else if (source === 'nwPending') {
+        setNwPendingMeals(prev => ({ ...prev, [selectedMealName]: merged }))
+      } else if (source === 'nwSaved' && onNextWeekDataChange) {
+        const nextMonday = nextWeekStart ?? getNextMondayIso()
+        await onNextWeekDataChange({ mealsData: { ...(nextWeekData?.mealsData ?? {}), [selectedMealName]: merged } }, nextMonday)
+        const entry = (nextWeekData?.plan ?? []).find(e => e.tag === tag && e.slot === slot)
+        if (entry) await onShoppingListChange(rewriteShoppingItemsForDish(shoppingList, entry, merged, true))
+      }
+    } finally {
+      setRecipeLoading(null)
+    }
   }
 
   async function startPlanning() {
@@ -1754,7 +1791,7 @@ export default function WocheScreen({
     return (
       <div className="screen active" style={{ position: 'relative' }}>
         {selectedMealName && (
-          <RecipeModal name={selectedMealName} rezept={selectedRezept(selectedMealName)} loading={recipeLoading === selectedMealName} onClose={() => setSelectedMealName(null)} />
+          <RecipeModal name={selectedMealName} rezept={selectedRezept(selectedMealName)} loading={recipeLoading === selectedMealName} onClose={() => { setSelectedMealName(null); setRecipeContext(null) }} canRewrite={currentUser === wochenchef || canEditSettings} onRewrite={rewriteRecipe} />
         )}
         <div className="topbar">
           {planState !== 'loading' && (
@@ -1969,7 +2006,7 @@ export default function WocheScreen({
     return (
       <div className="screen active" style={{ position: 'relative' }}>
         {selectedMealName && (
-          <RecipeModal name={selectedMealName} rezept={selectedRezept(selectedMealName)} loading={recipeLoading === selectedMealName} onClose={() => setSelectedMealName(null)} />
+          <RecipeModal name={selectedMealName} rezept={selectedRezept(selectedMealName)} loading={recipeLoading === selectedMealName} onClose={() => { setSelectedMealName(null); setRecipeContext(null) }} canRewrite={currentUser === wochenchef || canEditSettings} onRewrite={rewriteRecipe} />
         )}
         <div className="topbar">
           <button className="back" onClick={() => setView('home')}>‹</button>
@@ -2999,7 +3036,7 @@ export default function WocheScreen({
   return (
     <div className="screen active" style={{ position: 'relative' }}>
       {selectedMealName && (
-        <RecipeModal name={selectedMealName} rezept={selectedRezept(selectedMealName)} loading={recipeLoading === selectedMealName} onClose={() => setSelectedMealName(null)} />
+        <RecipeModal name={selectedMealName} rezept={selectedRezept(selectedMealName)} loading={recipeLoading === selectedMealName} onClose={() => { setSelectedMealName(null); setRecipeContext(null) }} canRewrite={currentUser === wochenchef || canEditSettings} onRewrite={rewriteRecipe} />
       )}
       <div className="topbar"><h1>🍽 MenuFamPlan</h1></div>
       <div className="content">
@@ -3556,7 +3593,10 @@ function WishesSection({
   )
 }
 
-function RecipeModal({ name, rezept, loading, onClose }: { name: string; rezept: import('../lib/state').Rezept | null; loading?: boolean; onClose: () => void }) {
+function RecipeModal({ name, rezept, loading, onClose, canRewrite, onRewrite }: { name: string; rezept: import('../lib/state').Rezept | null; loading?: boolean; onClose: () => void; canRewrite?: boolean; onRewrite?: () => void }) {
+  const [confirmRewrite, setConfirmRewrite] = useState(false)
+  // Reset confirmation when loading starts (rewrite in progress)
+  if (loading && confirmRewrite) setConfirmRewrite(false)
   const hatRezept = !!rezept && rezept.schritte.length > 0
   return (
     <div style={{ position: 'absolute', inset: 0, zIndex: 100, background: 'white', overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
@@ -3616,6 +3656,20 @@ function RecipeModal({ name, rezept, loading, onClose }: { name: string; rezept:
                 </div>
               ))}
             </div>
+
+            {canRewrite && (
+              confirmRewrite ? (
+                <div style={{ marginTop: 20, padding: '12px 14px', background: '#FFFBEB', borderRadius: 10, border: '1px solid #FDE68A' }}>
+                  <div style={{ fontSize: 13, color: '#92400E', marginBottom: 10 }}>Rezept neu schreiben? Das bisherige Rezept wird ersetzt.</div>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button onClick={() => { setConfirmRewrite(false); onRewrite?.() }} style={{ flex: 1, padding: '8px 0', background: '#F59E0B', color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Ja, neu schreiben</button>
+                    <button onClick={() => setConfirmRewrite(false)} style={{ flex: 1, padding: '8px 0', background: '#f0f0f0', color: '#555', border: 'none', borderRadius: 8, fontSize: 13, cursor: 'pointer' }}>Abbrechen</button>
+                  </div>
+                </div>
+              ) : (
+                <button onClick={() => setConfirmRewrite(true)} style={{ marginTop: 20, width: '100%', padding: '10px 0', background: 'none', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 13, color: '#666', cursor: 'pointer' }}>↻ Rezept neu schreiben</button>
+              )
+            )}
           </>
         )}
       </div>

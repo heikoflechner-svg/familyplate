@@ -233,6 +233,21 @@ export function consolidateShoppingList(items: ShoppingItem[]): ConsolidatedItem
   }).sort((a, b) => a.name.localeCompare(b.name, 'de'))
 }
 
+export function rewriteShoppingItemsForDish(
+  list: ShoppingItem[],
+  entry: WeekPlanEntry,
+  newRezept: Rezept,
+  nextWeek = false,
+): ShoppingItem[] {
+  const preserved = list.filter(item =>
+    item.gericht !== entry.gericht ||
+    item.erledigt ||
+    Boolean(item.nextWeek) !== nextWeek
+  )
+  const newItems = generateItemsForEntry(entry, { [entry.gericht]: newRezept }, nextWeek)
+  return [...preserved, ...newItems]
+}
+
 export function rescaleShoppingListMengen(
   list: ShoppingItem[],
   gericht: string,
