@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
-import { generateWeekPlan, getRemySuggestions, generateRecipe, loadMissingRecipes, saveLastDishes, isFullRecipe, getMondayIso, getNextMondayIso } from '../lib/mealLogic'
+import { generateWeekPlan, getRemySuggestions, generateRecipe, loadMissingRecipes, getPersonCountForSlot, saveLastDishes, isFullRecipe, getMondayIso, getNextMondayIso } from '../lib/mealLogic'
 import { getFreezerListString, getPantryListString, addFreezerItem, deleteFreezerItem } from '../lib/freezerLogic'
 import { buildFamilyPrompt, buildMemberCfg, DEFAULT_MEMBERS } from '../lib/familyLogic'
 import type { WeekPlanEntry, Rezept, FreezerItem, PantryItem, Wish, Chef, WochenSlot, FamilyMember, DayAttendance, ChangeProposal, ShoppingItem, RemyVorschlag, NextWeekData, NextWeekWish, PlanSettings } from '../lib/state'
@@ -1121,19 +1121,20 @@ export default function WocheScreen({
     return `${total}${gaeste > 0 ? ` (${gaeste} Gast${gaeste > 1 ? 'e' : ''})` : ''}`
   }
 
-  // Rezept-Detail öffnen: liegt nur ein Stub vor (aus der schnellen Wochenplanung),
-  // wird das volle Rezept lazy nachgeladen und persistiert.
-  async function openRecipe(gericht: string, emoji: string) {
+  // Rezept-Detail öffnen: liegt nur ein Stub vor oder Personenzahl hat sich geändert →
+  // volles Rezept lazy nachladen und persistieren.
+  async function openRecipe(gericht: string, emoji: string, tag: string, slot: WochenSlot) {
     setSelectedMealName(gericht)
     const existing = mealsData[gericht]
-    if (isFullRecipe(existing)) return
+    const personCount = getPersonCountForSlot(tag, slot, attendance, members.length ? members : DEFAULT_MEMBERS)
+    if (isFullRecipe(existing) && existing?.personenAnzahl === personCount) return
     setRecipeLoading(gericht)
     try {
-      const rezept = await generateRecipe(gericht, emoji, getFreezerListString(freezerItems), getPantryListString(pantryItems), familyPrompt)
+      const rezept = await generateRecipe(gericht, emoji, getFreezerListString(freezerItems), getPantryListString(pantryItems), familyPrompt, personCount)
       if (rezept) {
         const merged: Rezept = {
           ...rezept,
-          // Allergie-Ersatz aus der Wochenplanung bewahren, falls das Einzelrezept keinen liefert
+          personenAnzahl: personCount,
           ersetzteZutaten: rezept.ersetzteZutaten?.length ? rezept.ersetzteZutaten : (existing?.ersetzteZutaten ?? []),
         }
         await onWeekPlanChange(weekPlan, { ...mealsData, [gericht]: merged })
@@ -1144,17 +1145,19 @@ export default function WocheScreen({
   }
 
   // Nächste-Woche-Vorschlag (lokal, noch nicht gespeichert): Rezept lazy nachladen
-  async function openNwPendingRecipe(gericht: string, emoji: string) {
+  async function openNwPendingRecipe(gericht: string, emoji: string, tag: string, slot: WochenSlot) {
     setSelectedMealName(gericht)
     const existing = nwPendingMeals[gericht]
-    if (isFullRecipe(existing)) return
+    const nwAtt = nextWeekData?.attendance ?? []
+    const personCount = getPersonCountForSlot(tag, slot, nwAtt, members.length ? members : DEFAULT_MEMBERS)
+    if (isFullRecipe(existing) && existing?.personenAnzahl === personCount) return
     setRecipeLoading(gericht)
     try {
-      const rezept = await generateRecipe(gericht, emoji, getFreezerListString(freezerItems), getPantryListString(pantryItems), familyPrompt)
+      const rezept = await generateRecipe(gericht, emoji, getFreezerListString(freezerItems), getPantryListString(pantryItems), familyPrompt, personCount)
       if (rezept) {
         setNwPendingMeals(prev => ({
           ...prev,
-          [gericht]: { ...rezept, ersetzteZutaten: rezept.ersetzteZutaten?.length ? rezept.ersetzteZutaten : (prev[gericht]?.ersetzteZutaten ?? []) },
+          [gericht]: { ...rezept, personenAnzahl: personCount, ersetzteZutaten: rezept.ersetzteZutaten?.length ? rezept.ersetzteZutaten : (prev[gericht]?.ersetzteZutaten ?? []) },
         }))
       }
     } finally {
@@ -1163,17 +1166,18 @@ export default function WocheScreen({
   }
 
   // Plan-Vorschau (aktuelle Woche, noch nicht übernommen): Rezept lazy nachladen
-  async function openPendingPlanRecipe(gericht: string, emoji: string) {
+  async function openPendingPlanRecipe(gericht: string, emoji: string, tag: string, slot: WochenSlot) {
     setSelectedMealName(gericht)
     const existing = pendingPlanMeals[gericht]
-    if (isFullRecipe(existing)) return
+    const personCount = getPersonCountForSlot(tag, slot, attendance, members.length ? members : DEFAULT_MEMBERS)
+    if (isFullRecipe(existing) && existing?.personenAnzahl === personCount) return
     setRecipeLoading(gericht)
     try {
-      const rezept = await generateRecipe(gericht, emoji, getFreezerListString(freezerItems), getPantryListString(pantryItems), familyPrompt)
+      const rezept = await generateRecipe(gericht, emoji, getFreezerListString(freezerItems), getPantryListString(pantryItems), familyPrompt, personCount)
       if (rezept) {
         setPendingPlanMeals(prev => ({
           ...prev,
-          [gericht]: { ...rezept, ersetzteZutaten: rezept.ersetzteZutaten?.length ? rezept.ersetzteZutaten : (prev[gericht]?.ersetzteZutaten ?? []) },
+          [gericht]: { ...rezept, personenAnzahl: personCount, ersetzteZutaten: rezept.ersetzteZutaten?.length ? rezept.ersetzteZutaten : (prev[gericht]?.ersetzteZutaten ?? []) },
         }))
       }
     } finally {
@@ -1182,17 +1186,19 @@ export default function WocheScreen({
   }
 
   // Nächste-Woche-Plan (gespeichert): Rezept lazy nachladen und persistieren
-  async function openNwSavedRecipe(gericht: string, emoji: string) {
+  async function openNwSavedRecipe(gericht: string, emoji: string, tag: string, slot: WochenSlot) {
     setSelectedMealName(gericht)
     const existing = nextWeekData?.mealsData?.[gericht]
-    if (isFullRecipe(existing)) return
+    const nwAtt = nextWeekData?.attendance ?? []
+    const personCount = getPersonCountForSlot(tag, slot, nwAtt, members.length ? members : DEFAULT_MEMBERS)
+    if (isFullRecipe(existing) && existing?.personenAnzahl === personCount) return
     if (!onNextWeekDataChange) return
     setRecipeLoading(gericht)
     try {
-      const rezept = await generateRecipe(gericht, emoji, getFreezerListString(freezerItems), getPantryListString(pantryItems), familyPrompt)
+      const rezept = await generateRecipe(gericht, emoji, getFreezerListString(freezerItems), getPantryListString(pantryItems), familyPrompt, personCount)
       if (rezept) {
         const nextMonday = nextWeekStart ?? getNextMondayIso()
-        const merged: Rezept = { ...rezept, ersetzteZutaten: rezept.ersetzteZutaten?.length ? rezept.ersetzteZutaten : (existing?.ersetzteZutaten ?? []) }
+        const merged: Rezept = { ...rezept, personenAnzahl: personCount, ersetzteZutaten: rezept.ersetzteZutaten?.length ? rezept.ersetzteZutaten : (existing?.ersetzteZutaten ?? []) }
         await onNextWeekDataChange({ mealsData: { ...(nextWeekData?.mealsData ?? {}), [gericht]: merged } }, nextMonday)
       }
     } finally {
@@ -1283,7 +1289,9 @@ export default function WocheScreen({
     setView('home')
     // Rezepte im Hintergrund nachladen – blockiert die Oberfläche nicht
     if (isChefConfirm) {
-      void loadMissingRecipes(planSnapshot, mergedMeals, getFreezerListString(freezerItems), getPantryListString(pantryItems), familyPrompt)
+      const mbs = members.length ? members : DEFAULT_MEMBERS
+      const pc = (tag: string, slot: WochenSlot) => getPersonCountForSlot(tag, slot, attendance, mbs)
+      void loadMissingRecipes(planSnapshot, mergedMeals, getFreezerListString(freezerItems), getPantryListString(pantryItems), familyPrompt, pc)
         .then(full => onWeekPlanChange(planSnapshot, full))
     }
   }
@@ -1293,7 +1301,7 @@ export default function WocheScreen({
 
     // Gewählte Alternativen in weekPlan übernehmen
     let finalPlan = [...weekPlan]
-    const confirmedAlts: { gericht: string; emoji: string }[] = []
+    const confirmedAlts: { gericht: string; emoji: string; tag: string; slot: WochenSlot }[] = []
     for (const [key, selectedId] of Object.entries(chefAltSelection)) {
       if (selectedId === 'original') continue
       const wish = wishes.find(w => w.id === selectedId)
@@ -1306,18 +1314,21 @@ export default function WocheScreen({
           ? { ...e, gericht: wish.dishName, emoji: wish.emoji }
           : e
       )
-      if (!mealsData[wish.dishName]) confirmedAlts.push({ gericht: wish.dishName, emoji: wish.emoji })
+      if (!mealsData[wish.dishName]) confirmedAlts.push({ gericht: wish.dishName, emoji: wish.emoji, tag, slot })
     }
 
     // Rezepte für neu bestätigte Alternativ-Gerichte laden (nötig vor dem Speichern)
     const newMeals: Record<string, Rezept> = {}
-    await Promise.all(confirmedAlts.map(async ({ gericht, emoji }) => {
-      const rezept = await generateRecipe(gericht, emoji, getFreezerListString(freezerItems), getPantryListString(pantryItems), familyPrompt)
-      if (rezept) newMeals[gericht] = rezept
-    }))
-    const altMealsData = { ...mealsData, ...newMeals }
     const freezerStr = getFreezerListString(freezerItems)
     const pantryStr = getPantryListString(pantryItems)
+    const membersForCount = members.length ? members : DEFAULT_MEMBERS
+    await Promise.all(confirmedAlts.map(async ({ gericht, emoji, tag, slot }) => {
+      const personCount = getPersonCountForSlot(tag, slot, attendance, membersForCount)
+      const rezept = await generateRecipe(gericht, emoji, freezerStr, pantryStr, familyPrompt, personCount)
+      if (rezept) newMeals[gericht] = { ...rezept, personenAnzahl: personCount }
+    }))
+    const altMealsData = { ...mealsData, ...newMeals }
+    const pcCallback = (tag: string, slot: WochenSlot) => getPersonCountForSlot(tag, slot, attendance, membersForCount)
 
     // Aktivierte Ergänzungen an Einkaufsliste übergeben
     const newItems: ShoppingItem[] = []
@@ -1351,7 +1362,7 @@ export default function WocheScreen({
     setChefErgaenzungIds([])
     setSaving(false)
     // Restliche fehlende/veraltete Rezepte im Hintergrund nachladen
-    void loadMissingRecipes(finalPlan, altMealsData, freezerStr, pantryStr, familyPrompt)
+    void loadMissingRecipes(finalPlan, altMealsData, freezerStr, pantryStr, familyPrompt, pcCallback)
       .then(full => onWeekPlanChange(finalPlan, full))
   }
 
@@ -1816,7 +1827,7 @@ export default function WocheScreen({
                         )}
                         <div style={{ padding: '3px 12px 10px', display: 'flex', alignItems: 'center', gap: 8 }}>
                           <span style={{ fontSize: 18 }}>{e.emoji}</span>
-                          <div onClick={() => openPendingPlanRecipe(e.gericht, e.emoji)} style={{ flex: 1, cursor: 'pointer' }}>
+                          <div onClick={() => openPendingPlanRecipe(e.gericht, e.emoji, e.tag, e.slot)} style={{ flex: 1, cursor: 'pointer' }}>
                             <div style={{ fontSize: 13, fontWeight: 700, color: '#111', display: 'flex', alignItems: 'center', gap: 4 }}>
                               {e.gericht}<span style={{ fontSize: 10, color: '#bbb' }}>›</span>
                               {(pendingPlanMeals[e.gericht]?.ersetzteZutaten?.length ?? 0) > 0 && (
@@ -2075,7 +2086,7 @@ export default function WocheScreen({
                           </div>
                         )}
                         <div
-                          onClick={() => openRecipe(e.gericht, e.emoji)}
+                          onClick={() => openRecipe(e.gericht, e.emoji, e.tag, e.slot)}
                           style={{ padding: '3px 12px 10px', display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}
                         >
                           <span style={{ fontSize: 18 }}>{e.emoji}</span>
@@ -2472,7 +2483,7 @@ export default function WocheScreen({
                                     ) : (
                                       <>
                                         <span style={{ fontSize: 16 }}>{e!.emoji}</span>
-                                        <div onClick={() => openNwPendingRecipe(e!.gericht, e!.emoji)} style={{ flex: 1, cursor: 'pointer' }}>
+                                        <div onClick={() => openNwPendingRecipe(e!.gericht, e!.emoji, e!.tag, e!.slot)} style={{ flex: 1, cursor: 'pointer' }}>
                                           <div style={{ fontSize: 12, fontWeight: 600, color: '#111', display: 'flex', alignItems: 'center', gap: 4 }}>
                                             {e!.gericht}<span style={{ fontSize: 10, color: '#bbb' }}>›</span>
                                             {(nwPendingMeals[e!.gericht]?.ersetzteZutaten?.length ?? 0) > 0 && (
@@ -2520,7 +2531,7 @@ export default function WocheScreen({
                                 <div key={`${e!.slot}`} style={{ padding: '5px 10px', display: 'flex', alignItems: 'center', gap: 8, borderTop: '1px solid #f5f5f5' }}>
                                   <SlotPill slot={e!.slot} />
                                   <span style={{ fontSize: 15 }}>{e!.emoji}</span>
-                                  <div onClick={() => openNwSavedRecipe(e!.gericht, e!.emoji)} style={{ flex: 1, cursor: 'pointer' }}>
+                                  <div onClick={() => openNwSavedRecipe(e!.gericht, e!.emoji, e!.tag, e!.slot)} style={{ flex: 1, cursor: 'pointer' }}>
                                     <div style={{ fontSize: 12, color: '#333', display: 'flex', alignItems: 'center', gap: 4 }}>
                                       {e!.gericht}<span style={{ fontSize: 10, color: '#bbb' }}>›</span>
                                       {(nwr?.ersetzteZutaten?.length ?? 0) > 0 && (
@@ -2636,7 +2647,7 @@ export default function WocheScreen({
                                     </div>
                                   )
                                 })()}
-                                <div onClick={() => openNwSavedRecipe(e.gericht, e.emoji)} style={{ padding: '3px 12px 10px', display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                                <div onClick={() => openNwSavedRecipe(e.gericht, e.emoji, e.tag, e.slot)} style={{ padding: '3px 12px 10px', display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
                                   <span style={{ fontSize: 18 }}>{e.emoji}</span>
                                   <div style={{ flex: 1 }}>
                                     <div style={{ fontSize: 13, fontWeight: 700, color: '#111', display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -2870,7 +2881,7 @@ export default function WocheScreen({
           </div>
         )}
         <div
-          onClick={() => openRecipe(entry.gericht, entry.emoji)}
+          onClick={() => openRecipe(entry.gericht, entry.emoji, entry.tag, entry.slot)}
           style={{ padding: '3px 12px 10px', display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}
         >
           <span style={{ fontSize: 18 }}>{entry.emoji}</span>
@@ -3540,6 +3551,7 @@ function RecipeModal({ name, rezept, loading, onClose }: { name: string; rezept:
             <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
               <span style={{ fontSize: 11, background: '#f0f0f0', borderRadius: 6, padding: '3px 8px', color: '#666' }}>{rezept.schwierigkeit}</span>
               <span style={{ fontSize: 11, background: '#f0f0f0', borderRadius: 6, padding: '3px 8px', color: '#666' }}>⏱ {rezept.minuten} min</span>
+              {rezept.personenAnzahl && <span style={{ fontSize: 11, background: '#f0f0f0', borderRadius: 6, padding: '3px 8px', color: '#666' }}>👥 {rezept.personenAnzahl} Person{rezept.personenAnzahl === 1 ? '' : 'en'}</span>}
             </div>
 
             <div className="lbl">Zutaten</div>

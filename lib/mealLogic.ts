@@ -1,5 +1,5 @@
 import { supabase, getFamilyId } from './supabase'
-import type { WeekPlanEntry, Rezept, Wish, RemyVorschlag, WochenSlot, DayAttendance, Chef, ShoppingItem, ChangeProposal, NextWeekData, NextWeekWish, PlanSettings } from './state'
+import type { WeekPlanEntry, Rezept, Wish, RemyVorschlag, WochenSlot, DayAttendance, Chef, ShoppingItem, ChangeProposal, NextWeekData, NextWeekWish, PlanSettings, FamilyMember } from './state'
 
 function toLocalDateIso(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
@@ -249,6 +249,18 @@ export function getAttendanceForDay(attendance: DayAttendance[], tag: string, ch
   return found
 }
 
+export function getPersonCountForSlot(
+  tag: string,
+  slot: WochenSlot,
+  attendance: DayAttendance[],
+  members: FamilyMember[],
+): number {
+  const allChefs = members.map(m => m.id as Chef)
+  const day = getAttendanceForDay(attendance, tag, allChefs)
+  const anwesend = slot === 'Mittag' ? day.mittagAnwesend : day.abendAnwesend
+  return anwesend.length + (day.gaeste ?? 0)
+}
+
 export async function saveAttendance(days: DayAttendance[], confirmed: Chef[]): Promise<void> {
   const payload = { v: 2, days, confirmed }
   const { data: existing } = await supabase
@@ -408,13 +420,14 @@ export async function generateRecipe(
   freezerList: string,
   pantryList: string,
   familyPrompt?: string,
+  personCount?: number,
 ): Promise<Rezept | null> {
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
       const resp = await fetch('/api/recipe', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gericht, emoji, freezerList, pantryList, familyPrompt }),
+        body: JSON.stringify({ gericht, emoji, freezerList, pantryList, familyPrompt, personCount }),
       })
       if (!resp.ok) {
         if (attempt === 0) continue
@@ -438,6 +451,7 @@ export async function loadMissingRecipes(
   freezerList: string,
   pantryList: string,
   familyPrompt: string,
+  getPersonCount?: (tag: string, slot: WochenSlot) => number,
 ): Promise<Record<string, Rezept>> {
   const result: Record<string, Rezept> = { ...store }
   const seen = new Set<string>()
@@ -447,10 +461,12 @@ export async function loadMissingRecipes(
     return true
   })
   await Promise.all(missing.map(async e => {
-    const r = await generateRecipe(e.gericht, e.emoji, freezerList, pantryList, familyPrompt)
+    const personCount = getPersonCount ? getPersonCount(e.tag, e.slot) : undefined
+    const r = await generateRecipe(e.gericht, e.emoji, freezerList, pantryList, familyPrompt, personCount)
     if (r) {
       result[e.gericht] = {
         ...r,
+        personenAnzahl: personCount,
         ersetzteZutaten: r.ersetzteZutaten?.length ? r.ersetzteZutaten : (store[e.gericht]?.ersetzteZutaten ?? []),
       }
     }

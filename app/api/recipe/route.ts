@@ -28,7 +28,7 @@ const FALLBACK = {
 }
 
 export async function POST(req: NextRequest) {
-  const { gericht, emoji, freezerList, pantryList, familyPrompt } = await req.json()
+  const { gericht, emoji, freezerList, pantryList, familyPrompt, personCount } = await req.json()
 
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) {
@@ -36,7 +36,8 @@ export async function POST(req: NextRequest) {
   }
 
   const familienProfil = familyPrompt || 'Sabine (keine Nüsse), Heiko (laktosefrei), Tim (kein Fisch)'
-  const prompt = `Du bist Rémy. Erstelle ein vollständiges Familienrezept für "${gericht}" für 4 Personen. Verfügbar: Gefriertruhe: ${freezerList || 'variiert'}. Speisekammer: ${pantryList || 'variiert'}. Familie: ${familienProfil}.
+  const anzahl: number = typeof personCount === 'number' && personCount > 0 ? personCount : 4
+  const prompt = `Du bist Rémy. Erstelle ein vollständiges Familienrezept für "${gericht}" für ${anzahl} Person${anzahl === 1 ? '' : 'en'}. Verfügbar: Gefriertruhe: ${freezerList || 'variiert'}. Speisekammer: ${pantryList || 'variiert'}. Familie: ${familienProfil}.
 
 WICHTIG: Ändere den Namen des Gerichts NIE. Liste ALLE Zutaten mit genauen Mengen für 4 Personen auf – inklusive Gewürze, Kräuter, Öl und Aromaten. Unterscheide dabei:
 - "frisch": frische Zutaten (Gemüse, Fleisch, Fisch, Milchprodukte, frische Kräuter)

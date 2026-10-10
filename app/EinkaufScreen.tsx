@@ -13,10 +13,10 @@ import {
   computeNextWeekCoverage,
 } from '../lib/shoppingLogic'
 import type { ConsolidatedItem } from '../lib/shoppingLogic'
-import { generateRecipe, isFullRecipe } from '../lib/mealLogic'
+import { generateRecipe, isFullRecipe, getPersonCountForSlot } from '../lib/mealLogic'
 import { getFreezerListString, getPantryListString } from '../lib/freezerLogic'
 import { buildFamilyPrompt, DEFAULT_MEMBERS } from '../lib/familyLogic'
-import type { WeekPlanEntry, Rezept, ShoppingItem, Chef, NextWeekData, FreezerItem, PantryItem, FamilyMember } from '../lib/state'
+import type { WeekPlanEntry, Rezept, ShoppingItem, Chef, NextWeekData, FreezerItem, PantryItem, FamilyMember, DayAttendance } from '../lib/state'
 
 const WOCHENTAGE = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag']
 
@@ -35,6 +35,7 @@ interface Props {
   onZutatenLadenChange: (mapping: Record<string, string>) => Promise<void>
   canEditSettings: boolean
   planConfirmed?: boolean
+  attendance?: DayAttendance[]
   shoppingDays?: string[]
   nextWeekData?: NextWeekData | null
   freezerItems: FreezerItem[]
@@ -44,7 +45,7 @@ interface Props {
 
 type ViewMode = 'tag' | 'zusammen' | 'laden'
 
-export default function EinkaufScreen({ weekPlan, mealsData, shoppingList, onShoppingListChange, onMealsDataChange, currentUser, wochenchef, shopDone, onShopDoneChange, laeden, zutatenLaden, onZutatenLadenChange, canEditSettings, planConfirmed = false, shoppingDays = [], nextWeekData = null, freezerItems, pantryItems, members }: Props) {
+export default function EinkaufScreen({ weekPlan, mealsData, shoppingList, onShoppingListChange, onMealsDataChange, currentUser, wochenchef, shopDone, onShopDoneChange, laeden, zutatenLaden, onZutatenLadenChange, canEditSettings, planConfirmed = false, attendance = [], shoppingDays = [], nextWeekData = null, freezerItems, pantryItems, members }: Props) {
   const [newName, setNewName] = useState('')
   const [newMenge, setNewMenge] = useState('')
   const [dayPickerOpen, setDayPickerOpen] = useState(false)
@@ -63,6 +64,7 @@ export default function EinkaufScreen({ weekPlan, mealsData, shoppingList, onSho
     const freezerStr = getFreezerListString(freezerItems)
     const pantryStr = getPantryListString(pantryItems)
     const familyPrompt = buildFamilyPrompt(members.length ? members : DEFAULT_MEMBERS)
+    const mbs = members.length ? members : DEFAULT_MEMBERS
     const store = { ...mealsData }
     const seen = new Set<string>()
     const missing = weekPlan.filter(e => {
@@ -71,8 +73,9 @@ export default function EinkaufScreen({ weekPlan, mealsData, shoppingList, onSho
       return true
     })
     void Promise.all(missing.map(async e => {
-      const r = await generateRecipe(e.gericht, e.emoji, freezerStr, pantryStr, familyPrompt)
-      if (r) store[e.gericht] = { ...r, ersetzteZutaten: r.ersetzteZutaten?.length ? r.ersetzteZutaten : (store[e.gericht]?.ersetzteZutaten ?? []) }
+      const personCount = getPersonCountForSlot(e.tag, e.slot, attendance, mbs)
+      const r = await generateRecipe(e.gericht, e.emoji, freezerStr, pantryStr, familyPrompt, personCount)
+      if (r) store[e.gericht] = { ...r, personenAnzahl: personCount, ersetzteZutaten: r.ersetzteZutaten?.length ? r.ersetzteZutaten : (store[e.gericht]?.ersetzteZutaten ?? []) }
     })).then(() => onMealsDataChange(store))
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [planConfirmed])
