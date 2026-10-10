@@ -33,15 +33,10 @@ interface Props {
   onShoppingDaysChange: (days: string[]) => Promise<void>
   onShoppingPersonsChange: (persons: Record<string, Chef>) => Promise<void>
   onShoppingProposalSubmit: (proposal: ChangeProposal) => Promise<void>
-  onGoToAttendance: () => void
   nextWeekData?: NextWeekData | null
   nextWeekStart?: string | null
   onWochenchefChange: (chef: Chef) => Promise<void>
   onNextWeekDataChange?: (data: Partial<NextWeekData>, nextMonday: string) => Promise<void>
-  mittagsloseTage: string[]
-  planWE: boolean
-  onMittagsloseTageChange: (tage: string[]) => void
-  onPlanWEChange: (val: boolean) => void
   laeden: string[]
   onLaedenChange: (laeden: string[]) => Promise<void>
   canEditSettings: boolean
@@ -50,9 +45,9 @@ interface Props {
 
 export default function MehrScreen({
   currentUser, wochenchef, members, weekPlan, shoppingDays, shoppingPersons, proposals,
-  onShoppingDaysChange, onShoppingPersonsChange, onShoppingProposalSubmit, onGoToAttendance,
+  onShoppingDaysChange, onShoppingPersonsChange, onShoppingProposalSubmit,
   nextWeekData, nextWeekStart, onWochenchefChange, onNextWeekDataChange,
-  mittagsloseTage, planWE, onMittagsloseTageChange, onPlanWEChange, laeden, onLaedenChange, canEditSettings,
+  laeden, onLaedenChange, canEditSettings,
   memberStatuses = [],
 }: Props) {
   const [view, setView] = useState<View>('overview')
@@ -128,76 +123,17 @@ export default function MehrScreen({
   // ── Overview ────────────────────────────────────────────────────────────────
   if (view === 'overview') {
     const nwChef = nextWeekData?.wochenchef ?? null
-    const activeDays = planWE ? WOCHENTAGE : WOCHENTAGE.slice(0, 5)
     return (
       <div className="screen active" style={{ overflowY: 'auto' }}>
         <div className="topbar"><h1>⋯ Mehr</h1></div>
         <div className="content" style={{ padding: '0 16px 24px' }}>
-
-          <div className="lbl" style={{ marginTop: 20 }}>Planungseinstellungen</div>
-          <div className="card" style={{ marginBottom: 20 }}>
-            <div
-              onClick={() => {
-                const newVal = !planWE
-                if (!newVal) onMittagsloseTageChange(mittagsloseTage.filter(t => t !== 'Samstag' && t !== 'Sonntag'))
-                onPlanWEChange(newVal)
-              }}
-              style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '10px 0', borderBottom: '1px solid #f5f5f5' }}
-            >
-              <span style={{ fontSize: 13, color: '#111' }}>📅 Wochenende einplanen (Sa + So)</span>
-              <div style={{ width: 40, height: 22, borderRadius: 11, flexShrink: 0, background: planWE ? '#1D9E75' : '#ddd', position: 'relative', transition: 'background .2s' }}>
-                <div style={{ position: 'absolute', top: 2, left: planWE ? 20 : 2, width: 18, height: 18, borderRadius: 9, background: '#fff', transition: 'left .2s', boxShadow: '0 1px 3px rgba(0,0,0,.2)' }} />
-              </div>
-            </div>
-            <div style={{ paddingTop: 12, paddingBottom: 4 }}>
-              <div style={{ fontSize: 11, color: '#aaa', marginBottom: 8 }}>Kein Mittag an diesen Tagen:</div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                {activeDays.map(tag => {
-                  const isOptedOut = mittagsloseTage.includes(tag)
-                  return (
-                    <button
-                      key={tag}
-                      onClick={() => onMittagsloseTageChange(isOptedOut ? mittagsloseTage.filter(t => t !== tag) : [...mittagsloseTage, tag])}
-                      style={{
-                        padding: '5px 12px', borderRadius: 16, border: `1px solid ${isOptedOut ? '#9CA3AF' : '#e5e7eb'}`,
-                        cursor: 'pointer', fontSize: 12, fontWeight: isOptedOut ? 700 : 400,
-                        background: isOptedOut ? '#E5E7EB' : 'white',
-                        color: isOptedOut ? '#374151' : '#9CA3AF',
-                      }}
-                    >
-                      {TAG_SHORT[tag]}
-                    </button>
-                  )
-                })}
-              </div>
-              {mittagsloseTage.filter(t => activeDays.includes(t)).length === 0 && (
-                <div style={{ fontSize: 11, color: '#ccc', marginTop: 6 }}>Mittag wird jeden Tag eingeplant</div>
-              )}
-            </div>
-          </div>
-
-          <button
-            onClick={onGoToAttendance}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 14, width: '100%',
-              background: '#fff', border: '1px solid #E5E7EB', borderRadius: 14,
-              padding: '16px 18px', marginTop: 20, cursor: 'pointer', textAlign: 'left',
-            }}
-          >
-            <span style={{ fontSize: 26 }}>👥</span>
-            <div>
-              <div style={{ fontSize: 15, fontWeight: 700, color: '#111' }}>Anwesenheit</div>
-              <div style={{ fontSize: 12, color: '#888', marginTop: 2 }}>Wer ist wann da diese Woche?</div>
-            </div>
-            <span style={{ marginLeft: 'auto', color: '#bbb', fontSize: 18 }}>›</span>
-          </button>
 
           <button
             onClick={() => setView('einkauf')}
             style={{
               display: 'flex', alignItems: 'center', gap: 14, width: '100%',
               background: '#fff', border: '1px solid #E5E7EB', borderRadius: 14,
-              padding: '16px 18px', marginTop: 12, cursor: 'pointer', textAlign: 'left',
+              padding: '16px 18px', marginTop: 20, cursor: 'pointer', textAlign: 'left',
             }}
           >
             <span style={{ fontSize: 26 }}>🛒</span>

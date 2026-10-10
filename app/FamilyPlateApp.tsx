@@ -5,7 +5,7 @@ import { loadFreezerItems, loadPantryItems } from '../lib/freezerLogic'
 import { loadFamilyProfile, saveFamilyProfile, applyChefStats, incrementWochenchefStat, DEFAULT_MEMBERS } from '../lib/familyLogic'
 import { signOut, onAuthChange, SETUP_NEEDED } from '../lib/auth'
 import { supabase, getFamilyId } from '../lib/supabase'
-import type { WeekPlanEntry, Rezept, FreezerItem, PantryItem, ShoppingItem, Tab, Wish, Chef, FamilyProfile, DayAttendance, ChangeProposal, NextWeekData, NextWeekWish, MemberRole } from '../lib/state'
+import type { WeekPlanEntry, Rezept, FreezerItem, PantryItem, ShoppingItem, Tab, Wish, Chef, FamilyProfile, DayAttendance, ChangeProposal, NextWeekData, NextWeekWish, MemberRole, PlanSettings } from '../lib/state'
 import LoginScreen from './LoginScreen'
 import RegisterScreen from './RegisterScreen'
 import SetupScreen from './SetupScreen'
@@ -30,7 +30,8 @@ export default function FamilyPlateApp() {
   const [weekPlan, setWeekPlan] = useState<WeekPlanEntry[]>([])
   const [mealsData, setMealsData] = useState<Record<string, Rezept>>({})
   const [mittagsloseTage, setMittagsloseTage] = useState<string[]>([])
-  const [planWE, setPlanWE] = useState(true)
+  const [planWE, setPlanWE] = useState(false)
+  const [planSettings, setPlanSettings] = useState<PlanSettings | null>(null)
   const [freezerItems, setFreezerItems] = useState<FreezerItem[]>([])
   const [pantryItems, setPantryItems] = useState<PantryItem[]>([])
   const [wishes, setWishes] = useState<Wish[]>([])
@@ -47,7 +48,6 @@ export default function FamilyPlateApp() {
   const [nextWeekData, setNextWeekData] = useState<NextWeekData | null>(null)
   const [memberStatuses, setMemberStatuses] = useState<{ kuerzel: string; role: string; isLinked: boolean }[]>([])
   const [wocheInitView, setWocheInitView] = useState<'home' | 'attendance'>('home')
-  const [attendanceReturnToMehr, setAttendanceReturnToMehr] = useState(false)
   const [activeTab, setActiveTab] = useState<Tab>('woche')
   const [authView, setAuthView] = useState<'login' | 'register'>('login')
   const [profileSaveError, setProfileSaveError] = useState<string | null>(null)
@@ -135,8 +135,38 @@ export default function FamilyPlateApp() {
           }
         }
       }
-      const { plan, mealsData: md, wishes: w, attendance: att, attendanceConfirmed: ac, shoppingList: sl, proposals: pr, wochenchef: wc, planConfirmed: pc, shopDone: sd, shoppingDays: sd2, shoppingPersons: sp, weekStart: ws } = planData
+      const { plan, mealsData: md, wishes: w, attendance: att, attendanceConfirmed: ac, shoppingList: sl, proposals: pr, wochenchef: wc, planConfirmed: pc, shopDone: sd, shoppingDays: sd2, shoppingPersons: sp, weekStart: ws, planSettings: ps } = planData
       const { nextWeekStart: nws, nextWeekData: nwd } = nwData
+
+      // Derive effective planWE from plan entries when planSettings is null (already-planned weeks)
+      const effectivePlanWE = ps?.planWE ?? plan.some(e => e.tag === 'Samstag' || e.tag === 'Sonntag')
+      const effectiveMtl = ps?.mittagsloseTage ?? []
+
+      // localStorage migration: only when planSettings is null and no plan exists yet
+      let resolvedPs = ps
+      if (ps === null && plan.length === 0) {
+        try {
+          const lsMt = localStorage.getItem('fp_mittagsloseTage')
+          const lsPw = localStorage.getItem('fp_planWE')
+          if (lsMt !== null || lsPw !== null) {
+            const migSettings: PlanSettings = {
+              mittagsloseTage: lsMt ? JSON.parse(lsMt) as string[] : [],
+              planWE: lsPw !== null ? lsPw !== 'false' : false,
+            }
+            const { data: { session: sess } } = await supabase.auth.getSession()
+            if (sess?.access_token) {
+              fetch('/api/plan-settings', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sess.access_token}` },
+                body: JSON.stringify({ settings: migSettings, weekType: 'current' }),
+              }).catch(() => {})
+              try { localStorage.removeItem('fp_mittagsloseTage'); localStorage.removeItem('fp_planWE') } catch {}
+              resolvedPs = migSettings
+            }
+          }
+        } catch {}
+      }
+
       setWeekPlan(plan)
       setMealsData(md)
       setWishes(w)
@@ -152,6 +182,9 @@ export default function FamilyPlateApp() {
       setWeekStart(ws)
       setNextWeekStart(nws)
       setNextWeekData(nwd)
+      setPlanSettings(resolvedPs)
+      setMittagsloseTage(resolvedPs?.mittagsloseTage ?? effectiveMtl)
+      setPlanWE(resolvedPs?.planWE ?? effectivePlanWE)
       setFreezerItems(freezer)
       setPantryItems(pantry)
       setFamilyProfile(latestProfile)
@@ -169,24 +202,26 @@ export default function FamilyPlateApp() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUser, loadTrigger])
 
-  useEffect(() => {
+  async function handlePlanSettingsChange(settings: PlanSettings, weekType: 'current' | 'next') {
     try {
-      const m = localStorage.getItem('fp_mittagsloseTage')
-      if (m) setMittagsloseTage(JSON.parse(m))
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.access_token) return
+      const res = await fetch('/api/plan-settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ settings, weekType }),
+      })
+      if (!res.ok) return
+      if (weekType === 'current') {
+        setPlanSettings(settings)
+        setMittagsloseTage(settings.mittagsloseTage ?? [])
+        setPlanWE(settings.planWE ?? false)
+      } else {
+        const merged: NextWeekData = { wishes: [], ...nextWeekData, wochenchef: nextWeekData?.wochenchef ?? activeWochenchef, planSettings: settings }
+        setNextWeekData(merged)
+      }
     } catch {}
-    try {
-      const w = localStorage.getItem('fp_planWE')
-      if (w !== null) setPlanWE(w !== 'false')
-    } catch {}
-  }, [])
-
-  useEffect(() => {
-    try { localStorage.setItem('fp_mittagsloseTage', JSON.stringify(mittagsloseTage)) } catch {}
-  }, [mittagsloseTage])
-
-  useEffect(() => {
-    try { localStorage.setItem('fp_planWE', planWE ? 'true' : 'false') } catch {}
-  }, [planWE])
+  }
 
   async function handleWeekPlanChange(plan: WeekPlanEntry[], meals: Record<string, Rezept>) {
     setWeekPlan(plan)
@@ -465,7 +500,8 @@ export default function FamilyPlateApp() {
             nextWeekData={nextWeekData}
             onNextWeekDataChange={handleNextWeekDataChange}
             onActivateNextWeek={handleActivateNextWeek}
-            onAttendanceBack={attendanceReturnToMehr ? () => { setAttendanceReturnToMehr(false); setWocheInitView('home'); setActiveTab('mehr') } : undefined}
+            planSettings={planSettings}
+            onPlanSettingsChange={handlePlanSettingsChange}
             canEditSettings={currentMemberRole !== 'member'}
             memberStatuses={memberStatuses}
           />
@@ -521,19 +557,10 @@ export default function FamilyPlateApp() {
             onShoppingDaysChange={handleShoppingDaysChange}
             onShoppingPersonsChange={handleShoppingPersonsChange}
             onShoppingProposalSubmit={handleShoppingProposalSubmit}
-            onGoToAttendance={() => {
-              setWocheInitView('attendance')
-              setAttendanceReturnToMehr(true)
-              setActiveTab('woche')
-            }}
             nextWeekData={nextWeekData}
             nextWeekStart={nextWeekStart}
             onWochenchefChange={handleWochenchefChange}
             onNextWeekDataChange={handleNextWeekDataChange}
-            mittagsloseTage={mittagsloseTage}
-            planWE={planWE}
-            onMittagsloseTageChange={setMittagsloseTage}
-            onPlanWEChange={setPlanWE}
             laeden={familyProfile.laeden}
             onLaedenChange={handleLaedenChange}
             canEditSettings={currentMemberRole !== 'member'}

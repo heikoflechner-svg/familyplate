@@ -103,6 +103,11 @@ export interface NextWeekWish {
   text: string
 }
 
+export interface PlanSettings {
+  planWE: boolean | null
+  mittagsloseTage: string[] | null
+}
+
 export interface NextWeekData {
   wochenchef: Chef
   wishes: NextWeekWish[]
@@ -111,6 +116,7 @@ export interface NextWeekData {
   planConfirmed?: boolean
   attendance?: DayAttendance[]
   attendanceConfirmed?: Chef[]
+  planSettings?: PlanSettings
 }
 
 export interface ChefStat {

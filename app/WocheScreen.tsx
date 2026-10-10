@@ -3,10 +3,14 @@ import { useState, useEffect, useRef } from 'react'
 import { generateWeekPlan, getRemySuggestions, generateRecipe, saveLastDishes, isFullRecipe, getMondayIso, getNextMondayIso } from '../lib/mealLogic'
 import { getFreezerListString, getPantryListString, addFreezerItem, deleteFreezerItem } from '../lib/freezerLogic'
 import { buildFamilyPrompt, buildMemberCfg, DEFAULT_MEMBERS } from '../lib/familyLogic'
-import type { WeekPlanEntry, Rezept, FreezerItem, PantryItem, Wish, Chef, WochenSlot, FamilyMember, DayAttendance, ChangeProposal, ShoppingItem, RemyVorschlag, NextWeekData, NextWeekWish } from '../lib/state'
+import type { WeekPlanEntry, Rezept, FreezerItem, PantryItem, Wish, Chef, WochenSlot, FamilyMember, DayAttendance, ChangeProposal, ShoppingItem, RemyVorschlag, NextWeekData, NextWeekWish, PlanSettings } from '../lib/state'
 import SlotWunschPanel from './SlotWunschPanel'
 
 const WOCHENTAGE = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag']
+const TAG_SHORT: Record<string, string> = {
+  Montag: 'Mo', Dienstag: 'Di', Mittwoch: 'Mi', Donnerstag: 'Do',
+  Freitag: 'Fr', Samstag: 'Sa', Sonntag: 'So',
+}
 
 
 function getKW(isoDate: string): number {
@@ -88,6 +92,8 @@ interface Props {
   onAttendanceBack?: () => void
   canEditSettings?: boolean
   memberStatuses?: { kuerzel: string; role: string; isLinked: boolean }[]
+  planSettings?: PlanSettings | null
+  onPlanSettingsChange?: (settings: PlanSettings, weekType: 'current' | 'next') => Promise<void>
 }
 
 type View = 'home' | 'week' | 'plan' | 'attendance'
@@ -153,6 +159,8 @@ export default function WocheScreen({
   onAttendanceBack,
   canEditSettings = false,
   memberStatuses = [],
+  planSettings = null,
+  onPlanSettingsChange,
 }: Props) {
   const hasMittag = (tag: string) => !mittagsloseTage.includes(tag)
   const personNames: Record<Chef, string> = Object.fromEntries(
@@ -177,6 +185,12 @@ export default function WocheScreen({
     ? `Änderungen waren nur bis ${wishDeadlineStatus.deadlineDayName} 20:00 Uhr möglich – Einkauf ist am ${wishDeadlineStatus.shoppingDayName}`
     : undefined
   const wochenchefHasNoAccount = memberStatuses.length > 0 && memberStatuses.find(s => s.kuerzel === wochenchef)?.isLinked !== true
+
+  const nwPlanSettings = (nextWeekData as NextWeekData | null)?.planSettings ?? null
+  const canEditCurrentPlanSettings = currentUser === wochenchef || canEditSettings
+  const planSettingsNeeded = planSettings === null && weekPlan.length === 0
+  const nwActiveDays = (nwPlanSettings?.planWE ?? false) ? WOCHENTAGE : WOCHENTAGE.slice(0, 5)
+  const nwMittagsloseTage: string[] = nwPlanSettings?.mittagsloseTage ?? []
 
   // Hinweis: NW-Plan noch nicht freigegeben, aber Einkaufsfrist nähert sich
   const nwPlanChef = nextWeekData?.wochenchef ?? wochenchef
@@ -301,6 +315,16 @@ export default function WocheScreen({
   const [nextWeekWishInput, setNextWeekWishInput] = useState('')
   const [nextWeekWishSaving, setNextWeekWishSaving] = useState(false)
 
+  const [mittagslosOpen, setMittagslosOpen] = useState(false)
+  const [nwMittagslosOpen, setNwMittagslosOpen] = useState(false)
+  const [planSettingsSaving, setPlanSettingsSaving] = useState(false)
+
+  async function savePlanSettings(settings: PlanSettings, weekType: 'current' | 'next') {
+    if (!onPlanSettingsChange || planSettingsSaving) return
+    setPlanSettingsSaving(true)
+    try { await onPlanSettingsChange(settings, weekType) } finally { setPlanSettingsSaving(false) }
+  }
+
   // ── Nächste Woche – Plan-State ────────────────────────────────────────────
   const [nwExpanded, setNwExpanded] = useState(false)
   const [nwAttendanceOpen, setNwAttendanceOpen] = useState(false)
@@ -369,13 +393,15 @@ export default function WocheScreen({
     if (!onNextWeekDataChange) return
     setNwPlanLoading(true)
     setNwPendingPlan(null)
+    const nwPw = nwPlanSettings?.planWE ?? planWE
+    const nwMtl = nwPlanSettings?.mittagsloseTage ?? mittagsloseTage
     try {
       const { plan: result, mealsData: newMeals } = await generateWeekPlan({
-        mittagsloseTage,
-        planWE,
+        mittagsloseTage: nwMtl,
+        planWE: nwPw,
         freezerList: getFreezerListString(freezerItems),
         pantryList: getPantryListString(pantryItems),
-        neuTage: planWE ? [...WOCHENTAGE] : WOCHENTAGE.slice(0, 5),
+        neuTage: nwPw ? [...WOCHENTAGE] : WOCHENTAGE.slice(0, 5),
         wishes: (nextWeekData?.wishes ?? []).map(w => ({
           id: w.id, person: w.person, tag: 'alle', slot: 'Abend' as WochenSlot,
           type: 'ergaenzung' as const, text: w.text, postConfirm: false,
@@ -396,10 +422,11 @@ export default function WocheScreen({
     if (!nwPendingPlan) return
     const key = `${tag}-${slot}`
     setNwSlotLoading(key)
+    const nwMtl = nwPlanSettings?.mittagsloseTage ?? mittagsloseTage
     try {
       const { plan: result, mealsData: newMeals } = await generateWeekPlan({
-        mittagsloseTage: slot === 'Abend' ? [...new Set([...mittagsloseTage, tag])] : mittagsloseTage.filter(t => t !== tag),
-        planWE,
+        mittagsloseTage: slot === 'Abend' ? [...new Set([...nwMtl, tag])] : nwMtl.filter(t => t !== tag),
+        planWE: nwPlanSettings?.planWE ?? planWE,
         freezerList: getFreezerListString(freezerItems),
         pantryList: getPantryListString(pantryItems),
         behaltene: nwPendingPlan.filter(e => !(e.tag === tag && e.slot === slot)),
@@ -440,10 +467,11 @@ export default function WocheScreen({
     if (!onNextWeekDataChange || !nextWeekData?.plan) return
     const key = `${tag}-${slot}`
     setNwSlotLoading(key)
+    const nwMtl = nwPlanSettings?.mittagsloseTage ?? mittagsloseTage
     try {
       const { plan: result, mealsData: newMeals } = await generateWeekPlan({
-        mittagsloseTage: slot === 'Abend' ? [...new Set([...mittagsloseTage, tag])] : mittagsloseTage.filter(t => t !== tag),
-        planWE,
+        mittagsloseTage: slot === 'Abend' ? [...new Set([...nwMtl, tag])] : nwMtl.filter(t => t !== tag),
+        planWE: nwPlanSettings?.planWE ?? planWE,
         freezerList: getFreezerListString(freezerItems),
         pantryList: getPantryListString(pantryItems),
         behaltene: nextWeekData.plan.filter(e => !(e.tag === tag && e.slot === slot)),
@@ -1347,6 +1375,63 @@ export default function WocheScreen({
   }
 
 
+  function renderPlanSettingsButtons(fromView: 'home' | 'week') {
+    const currentMtl = planSettings?.mittagsloseTage ?? mittagsloseTage
+    const currentPlanWE = planSettings?.planWE ?? planWE
+    return (
+      <div style={{ marginBottom: 12 }}>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          <button
+            onClick={() => { setRestoreView(fromView); setView('attendance') }}
+            style={{ padding: '5px 11px', borderRadius: 20, border: '1px solid #ddd', background: '#f9fafb', fontSize: 11, color: '#555', cursor: 'pointer', fontWeight: 500 }}
+          >
+            👥 Anwesenheit
+          </button>
+          {canEditCurrentPlanSettings && (
+            <button
+              onClick={() => void savePlanSettings({ planWE: !currentPlanWE, mittagsloseTage: currentMtl }, 'current')}
+              disabled={planSettingsSaving}
+              style={{ padding: '5px 11px', borderRadius: 20, border: `1px solid ${currentPlanWE ? '#1D9E75' : '#ddd'}`, background: currentPlanWE ? '#F0FAF5' : '#f9fafb', fontSize: 11, color: currentPlanWE ? '#0F6E56' : '#888', cursor: planSettingsSaving ? 'default' : 'pointer', fontWeight: 500 }}
+            >
+              📅 WE: {currentPlanWE ? 'ja' : 'nein'}
+            </button>
+          )}
+          {canEditCurrentPlanSettings && (
+            <button
+              onClick={() => setMittagslosOpen(o => !o)}
+              style={{ padding: '5px 11px', borderRadius: 20, border: `1px solid ${currentMtl.length > 0 ? '#1D9E75' : '#ddd'}`, background: currentMtl.length > 0 ? '#F0FAF5' : '#f9fafb', fontSize: 11, color: currentMtl.length > 0 ? '#0F6E56' : '#888', cursor: 'pointer', fontWeight: 500 }}
+            >
+              ☀ Mittag{currentMtl.length > 0 ? ` (${currentMtl.map(t => TAG_SHORT[t]).join(', ')} ohne)` : ''}
+            </button>
+          )}
+        </div>
+        {mittagslosOpen && canEditCurrentPlanSettings && (
+          <div style={{ marginTop: 8, padding: '8px 12px', background: '#f9fafb', borderRadius: 10, border: '1px solid #e5e7eb' }}>
+            <div style={{ fontSize: 11, color: '#888', marginBottom: 6 }}>Tage ohne Mittagessen:</div>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {(currentPlanWE ? WOCHENTAGE : WOCHENTAGE.slice(0, 5)).map(tag => {
+                const on = currentMtl.includes(tag)
+                return (
+                  <button
+                    key={tag}
+                    disabled={planSettingsSaving}
+                    onClick={() => {
+                      const newMtl = on ? currentMtl.filter(t => t !== tag) : [...currentMtl, tag]
+                      void savePlanSettings({ planWE: currentPlanWE, mittagsloseTage: newMtl }, 'current')
+                    }}
+                    style={{ padding: '4px 10px', borderRadius: 8, border: `1px solid ${on ? '#1D9E75' : '#ddd'}`, background: on ? '#F0FAF5' : 'white', color: on ? '#0F6E56' : '#666', fontSize: 11, fontWeight: 600, cursor: planSettingsSaving ? 'default' : 'pointer' }}
+                  >
+                    {TAG_SHORT[tag]}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+    )
+  }
+
   // ── Attendance view ────────────────────────────────────────────────────────
   if (view === 'attendance') {
     const confirmedCount = attendanceConfirmed.filter(c => allChefIds.includes(c)).length
@@ -1355,7 +1440,7 @@ export default function WocheScreen({
     return (
       <div className="screen active">
         <div className="topbar">
-          <button className="back" onClick={() => { setView(onAttendanceBack ? restoreView : 'home'); onAttendanceBack?.() }}>‹</button>
+          <button className="back" onClick={() => { setView(restoreView); onAttendanceBack?.() }}>‹</button>
           <h1>👥 Wer ist wann da?</h1>
         </div>
         <div className="content">
@@ -1384,14 +1469,18 @@ export default function WocheScreen({
                     {displayDays.map(tag => {
                       const mitOn = getSlotAnwesend(tag, 'Mittag').includes(chef)
                       const abdOn = getSlotAnwesend(tag, 'Abend').includes(chef)
+                      const mittagslos = mittagsloseTage.includes(tag)
                       return (
                         <div key={tag} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
                           <span style={{ fontSize: 9, color: '#bbb', height: 14, lineHeight: '14px', textAlign: 'center' }}>{tag.slice(0, 2)}</span>
-                          <button
-                            onClick={() => canEdit && toggleSlotAttendance(tag, 'Mittag', chef)}
-                            disabled={!canEdit}
-                            style={{ width: 26, height: 26, borderRadius: 5, border: `1px solid ${mitOn ? cc.c : '#ddd'}`, background: mitOn ? cc.bg : 'white', cursor: canEdit ? 'pointer' : 'default', fontSize: 9, color: mitOn ? cc.c : 'transparent', fontWeight: 700, opacity: canEdit ? 1 : 0.4 }}
-                          >✓</button>
+                          {mittagslos
+                            ? <div style={{ width: 26, height: 26 }} />
+                            : <button
+                                onClick={() => canEdit && toggleSlotAttendance(tag, 'Mittag', chef)}
+                                disabled={!canEdit}
+                                style={{ width: 26, height: 26, borderRadius: 5, border: `1px solid ${mitOn ? cc.c : '#ddd'}`, background: mitOn ? cc.bg : 'white', cursor: canEdit ? 'pointer' : 'default', fontSize: 9, color: mitOn ? cc.c : 'transparent', fontWeight: 700, opacity: canEdit ? 1 : 0.4 }}
+                              >✓</button>
+                          }
                           <button
                             onClick={() => canEdit && toggleSlotAttendance(tag, 'Abend', chef)}
                             disabled={!canEdit}
@@ -1707,6 +1796,7 @@ export default function WocheScreen({
               </div>
             )
           })()}
+          {renderPlanSettingsButtons('week')}
           {renderWochenchefDecisions()}
           {plannedDays.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '40px 0' }}>
@@ -1933,7 +2023,10 @@ export default function WocheScreen({
             const nwMeals = nextWeekData?.mealsData ?? {}
             const nwConfirmed = nextWeekData?.planConfirmed ?? false
             const isNwChef = !!nwChef && currentUser === nwChef
-            const nwDays = (planWE ? WOCHENTAGE : WOCHENTAGE.slice(0, 5)).filter(t => nwPlan.some(e => e.tag === t))
+            const canEditNextPlanSettings = (!!nwChef && currentUser === nwChef) || canEditSettings
+            const nwPlanSettingsNeeded = nwPlanSettings === null && nwPlan.length === 0
+            const nwEffectivePlanWE = nwPlanSettings?.planWE ?? planWE
+            const nwDays = (nwEffectivePlanWE ? WOCHENTAGE : WOCHENTAGE.slice(0, 5)).filter(t => nwPlan.some(e => e.tag === t))
             const nwWishes = nextWeekData?.wishes ?? []
             const myNwWish = nwWishes.find(w => w.person === currentUser)
             const autoExpand = nwConfirmed || !!nwPendingPlan || nwPlanLoading
@@ -1970,6 +2063,64 @@ export default function WocheScreen({
                       )}
                     </div>
 
+                    {/* Plan-Einstellungen nächste Woche */}
+                    {(canEditNextPlanSettings || true) && (
+                      <div style={{ padding: '8px 12px', background: '#f9fafb', borderBottom: '1px solid #f0f0f0' }}>
+                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                          {canEditNextPlanSettings && (
+                            <button
+                              onClick={() => void savePlanSettings({ planWE: !nwEffectivePlanWE, mittagsloseTage: nwMittagsloseTage }, 'next')}
+                              disabled={planSettingsSaving}
+                              style={{ padding: '5px 11px', borderRadius: 20, border: `1px solid ${nwEffectivePlanWE ? '#1D9E75' : '#ddd'}`, background: nwEffectivePlanWE ? '#F0FAF5' : '#f9fafb', fontSize: 11, color: nwEffectivePlanWE ? '#0F6E56' : '#888', cursor: planSettingsSaving ? 'default' : 'pointer', fontWeight: 500 }}
+                            >
+                              📅 WE: {nwEffectivePlanWE ? 'ja' : 'nein'}
+                            </button>
+                          )}
+                          {canEditNextPlanSettings && (
+                            <button
+                              onClick={() => setNwMittagslosOpen(o => !o)}
+                              style={{ padding: '5px 11px', borderRadius: 20, border: `1px solid ${nwMittagsloseTage.length > 0 ? '#1D9E75' : '#ddd'}`, background: nwMittagsloseTage.length > 0 ? '#F0FAF5' : '#f9fafb', fontSize: 11, color: nwMittagsloseTage.length > 0 ? '#0F6E56' : '#888', cursor: 'pointer', fontWeight: 500 }}
+                            >
+                              ☀ Mittag{nwMittagsloseTage.length > 0 ? ` (${nwMittagsloseTage.map(t => TAG_SHORT[t]).join(', ')} ohne)` : ''}
+                            </button>
+                          )}
+                          {!canEditNextPlanSettings && (nwEffectivePlanWE || nwMittagsloseTage.length > 0) && (
+                            <span style={{ fontSize: 11, color: '#888' }}>
+                              {nwEffectivePlanWE ? '📅 mit WE' : ''}{nwMittagsloseTage.length > 0 ? `${nwEffectivePlanWE ? ' · ' : ''}☀ ohne ${nwMittagsloseTage.map(t => TAG_SHORT[t]).join(', ')}` : ''}
+                            </span>
+                          )}
+                        </div>
+                        {nwMittagslosOpen && canEditNextPlanSettings && (
+                          <div style={{ marginTop: 8, padding: '8px 10px', background: 'white', borderRadius: 8, border: '1px solid #e5e7eb' }}>
+                            <div style={{ fontSize: 11, color: '#888', marginBottom: 6 }}>Tage ohne Mittagessen:</div>
+                            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                              {(nwEffectivePlanWE ? WOCHENTAGE : WOCHENTAGE.slice(0, 5)).map(tag => {
+                                const on = nwMittagsloseTage.includes(tag)
+                                return (
+                                  <button
+                                    key={tag}
+                                    disabled={planSettingsSaving}
+                                    onClick={() => {
+                                      const newMtl = on ? nwMittagsloseTage.filter(t => t !== tag) : [...nwMittagsloseTage, tag]
+                                      void savePlanSettings({ planWE: nwEffectivePlanWE, mittagsloseTage: newMtl }, 'next')
+                                    }}
+                                    style={{ padding: '4px 10px', borderRadius: 8, border: `1px solid ${on ? '#1D9E75' : '#ddd'}`, background: on ? '#F0FAF5' : 'white', color: on ? '#0F6E56' : '#666', fontSize: 11, fontWeight: 600, cursor: planSettingsSaving ? 'default' : 'pointer' }}
+                                  >
+                                    {TAG_SHORT[tag]}
+                                  </button>
+                                )
+                              })}
+                            </div>
+                          </div>
+                        )}
+                        {nwPlanSettingsNeeded && (
+                          <div style={{ marginTop: 8, padding: '8px 10px', background: '#FFFBEB', borderRadius: 8, border: '1px solid #FCD34D', fontSize: 11, color: '#92400E' }}>
+                            ⚙️ Bitte Planungseinstellungen festlegen, bevor Rémy plant.
+                          </div>
+                        )}
+                      </div>
+                    )}
+
                     {/* Anwesenheit nächste Woche */}
                     <div style={{ borderBottom: '1px solid #f0f0f0' }}>
                       <button
@@ -1998,7 +2149,7 @@ export default function WocheScreen({
                             const isNwConfirmed = nwAttConf.includes(chef)
                             const canEditNw = isMine && !isNwConfirmed
                             const cc = CFG[chef] ?? Object.values(CFG)[0]
-                            const displayDays = planWE ? WOCHENTAGE : WOCHENTAGE.slice(0, 5)
+                            const displayDays = nwEffectivePlanWE ? WOCHENTAGE : WOCHENTAGE.slice(0, 5)
                             return (
                               <div key={chef} style={{ borderRadius: 10, border: `1px solid ${isMine ? '#B2DFCC' : '#e5e7eb'}`, marginBottom: 8, overflow: 'hidden' }}>
                                 <div style={{ padding: '6px 10px', background: isMine ? '#F0FAF5' : '#f9fafb', borderBottom: '1px solid #f0f0f0', display: 'flex', alignItems: 'center' }}>
@@ -2100,7 +2251,7 @@ export default function WocheScreen({
                     {!nwPlanLoading && nwPendingPlan && (
                       <div style={{ padding: '10px 12px' }}>
                         <div style={{ fontSize: 12, fontWeight: 600, color: '#085041', marginBottom: 8 }}>Rémy schlägt vor:</div>
-                        {(planWE ? WOCHENTAGE : WOCHENTAGE.slice(0, 5)).map(tag => {
+                        {(nwEffectivePlanWE ? WOCHENTAGE : WOCHENTAGE.slice(0, 5)).map(tag => {
                           const mittag = nwPendingPlan.find(e => e.tag === tag && e.slot === 'Mittag')
                           const abend = nwPendingPlan.find(e => e.tag === tag && e.slot === 'Abend')
                           if (!mittag && !abend) return null
@@ -2152,7 +2303,7 @@ export default function WocheScreen({
                     {!nwPlanLoading && !nwPendingPlan && nwPlan.length > 0 && !nwConfirmed && (
                       <div style={{ padding: '8px 12px' }}>
                         <div style={{ fontSize: 11, color: '#888', marginBottom: 8 }}>Plan vorhanden – noch nicht freigegeben</div>
-                        {(planWE ? WOCHENTAGE : WOCHENTAGE.slice(0, 5)).map(tag => {
+                        {(nwEffectivePlanWE ? WOCHENTAGE : WOCHENTAGE.slice(0, 5)).map(tag => {
                           const mittag = nwPlan.find(e => e.tag === tag && e.slot === 'Mittag')
                           const abend = nwPlan.find(e => e.tag === tag && e.slot === 'Abend')
                           if (!mittag && !abend) return null
@@ -2541,15 +2692,21 @@ export default function WocheScreen({
       <div className="screen active">
         <div className="topbar"><h1>🍽 MenuFamPlan</h1></div>
         <div className="content">
-          <div style={{ textAlign: 'center', fontSize: 12, color: '#888', marginBottom: 12 }}>
+          <div style={{ textAlign: 'center', fontSize: 12, color: '#888', marginBottom: 8 }}>
             KW {getKW(emptyWs)} · {getWeekRange(emptyWs)} · <span style={{ color: '#bbb' }}>noch nicht geplant</span>
           </div>
+          {renderPlanSettingsButtons('home')}
+          {planSettingsNeeded && (
+            <div style={{ background: '#FFFBEB', border: '1px solid #FCD34D', borderRadius: 10, padding: '10px 14px', marginBottom: 12, fontSize: 12, color: '#92400E' }}>
+              ⚙️ Bitte zuerst Planungseinstellungen festlegen (Wochenende, Mittag), damit Rémy die richtigen Tage plant.
+            </div>
+          )}
           {error && (
             <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 8, padding: '10px 14px', marginBottom: 12, fontSize: 12, color: '#991B1B' }}>
               ⚠️ {error}
             </div>
           )}
-          <div style={{ textAlign: 'center', padding: '24px 0 20px' }}>
+          <div style={{ textAlign: 'center', padding: '20px 0 16px' }}>
             <div style={{ fontSize: 40, marginBottom: 8 }}>🐀</div>
             <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Rémy plant eure Woche in Sekunden</div>
           </div>
@@ -2568,27 +2725,9 @@ export default function WocheScreen({
             </div>
           </div>
 
-          {/* Karte 1: Anwesenheit (vor dem Planen) */}
+          {/* Wochenplan erstellen */}
           <div style={{ borderRadius: 12, border: '1px solid #e5e7eb', marginBottom: 12, overflow: 'hidden' }}>
             <div style={{ padding: '10px 14px', background: '#f9fafb', borderBottom: '1px solid #f0f0f0', display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ width: 22, height: 22, borderRadius: '50%', background: '#1D9E75', color: 'white', fontSize: 11, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>1</span>
-              <span style={{ fontSize: 13, fontWeight: 700, color: '#111' }}>Anwesenheit eintragen</span>
-              <span style={{ fontSize: 10, color: '#6B7280', background: '#F3F4F6', borderRadius: 10, padding: '2px 8px', marginLeft: 2 }}>empfohlen</span>
-            </div>
-            <div style={{ padding: '10px 14px' }}>
-              <div style={{ fontSize: 12, color: '#666', marginBottom: 10 }}>
-                Wer ist wann dabei? Rémy berücksichtigt das beim Planen.
-              </div>
-              <button className="btn primary" onClick={() => setView('attendance')}>
-                👥 Anwesenheit eintragen →
-              </button>
-            </div>
-          </div>
-
-          {/* Karte 2: Wochenplan erstellen */}
-          <div style={{ borderRadius: 12, border: '1px solid #e5e7eb', marginBottom: 12, overflow: 'hidden' }}>
-            <div style={{ padding: '10px 14px', background: '#f9fafb', borderBottom: '1px solid #f0f0f0', display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ width: 22, height: 22, borderRadius: '50%', background: '#1D9E75', color: 'white', fontSize: 11, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>2</span>
               <span style={{ fontSize: 13, fontWeight: 700, color: '#111' }}>Wochenplan erstellen</span>
             </div>
             <div style={{ padding: '10px 14px' }}>
@@ -2597,7 +2736,7 @@ export default function WocheScreen({
                   Wochenchef: <strong style={{ color: '#555' }}>{personNames[wochenchef]}</strong>
                 </div>
               )}
-              <button className="btn primary" onClick={startPlanning}>
+              <button className="btn primary" onClick={startPlanning} disabled={planSettingsNeeded && !canEditCurrentPlanSettings}>
                 🐀 Woche planen
               </button>
             </div>
@@ -2711,11 +2850,12 @@ export default function WocheScreen({
         {(() => {
           const ws = weekStart ?? getMondayIso()
           return (
-            <div style={{ textAlign: 'center', fontSize: 12, color: '#888', marginBottom: 10 }}>
+            <div style={{ textAlign: 'center', fontSize: 12, color: '#888', marginBottom: 8 }}>
               KW {getKW(ws)} · {getWeekRange(ws)}
             </div>
           )
         })()}
+        {renderPlanSettingsButtons('home')}
         <div style={{ borderRadius: 12, border: '1px solid #e5e7eb', marginBottom: 14, overflow: 'hidden' }}>
           <div style={{ padding: '8px 12px', background: '#f0faf5', borderBottom: '1px solid #e0f0e8', display: 'flex', alignItems: 'center', gap: 6 }}>
             <span style={{ flex: 1, fontSize: 12, fontWeight: 700, color: '#085041' }}>Heute · {today}</span>
@@ -2745,14 +2885,6 @@ export default function WocheScreen({
             style={{ border: 'none', background: 'none', color: '#1D9E75', fontSize: 13, fontWeight: 500, cursor: 'pointer' }}
           >
             📋 Ganze Woche ansehen →
-          </button>
-        </div>
-        <div style={{ textAlign: 'center', marginTop: 8 }}>
-          <button
-            onClick={() => setView('attendance')}
-            style={{ border: 'none', background: 'none', color: '#888', fontSize: 12, cursor: 'pointer' }}
-          >
-            👥 Anwesenheit
           </button>
         </div>
       </div>

@@ -1,5 +1,5 @@
 import { supabase, getFamilyId } from './supabase'
-import type { WeekPlanEntry, Rezept, Wish, RemyVorschlag, WochenSlot, DayAttendance, Chef, ShoppingItem, ChangeProposal, NextWeekData, NextWeekWish } from './state'
+import type { WeekPlanEntry, Rezept, Wish, RemyVorschlag, WochenSlot, DayAttendance, Chef, ShoppingItem, ChangeProposal, NextWeekData, NextWeekWish, PlanSettings } from './state'
 
 function toLocalDateIso(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
@@ -19,16 +19,16 @@ export function getNextMondayIso(d: Date = new Date()): string {
   return toLocalDateIso(date)
 }
 
-export async function loadWeekPlan(): Promise<{ plan: WeekPlanEntry[]; mealsData: Record<string, Rezept>; wishes: Wish[]; attendance: DayAttendance[]; attendanceConfirmed: Chef[]; shoppingList: ShoppingItem[]; proposals: ChangeProposal[]; wochenchef: Chef; planConfirmed: boolean; shopDone: boolean; shoppingDays: string[]; shoppingPersons: Record<string, Chef>; weekStart: string | null }> {
+export async function loadWeekPlan(): Promise<{ plan: WeekPlanEntry[]; mealsData: Record<string, Rezept>; wishes: Wish[]; attendance: DayAttendance[]; attendanceConfirmed: Chef[]; shoppingList: ShoppingItem[]; proposals: ChangeProposal[]; wochenchef: Chef; planConfirmed: boolean; shopDone: boolean; shoppingDays: string[]; shoppingPersons: Record<string, Chef>; weekStart: string | null; planSettings: PlanSettings | null }> {
   const { data, error } = await supabase
     .from('week_plans')
-    .select('plan_data, meals_data, wishes, attendance, shopping_list, proposals, wochenchef, plan_confirmed, shopping_done, shopping_day, shopping_persons, week_start')
+    .select('plan_data, meals_data, wishes, attendance, shopping_list, proposals, wochenchef, plan_confirmed, shopping_done, shopping_day, shopping_persons, week_start, plan_settings')
     .eq('family_id', getFamilyId())
     .order('updated_at', { ascending: false })
     .limit(1)
     .single()
 
-  if (error || !data) return { plan: [], mealsData: {}, wishes: [], attendance: [], attendanceConfirmed: [], shoppingList: [], proposals: [], wochenchef: '', planConfirmed: false, shopDone: false, shoppingDays: [], shoppingPersons: {}, weekStart: null }
+  if (error || !data) return { plan: [], mealsData: {}, wishes: [], attendance: [], attendanceConfirmed: [], shoppingList: [], proposals: [], wochenchef: '', planConfirmed: false, shopDone: false, shoppingDays: [], shoppingPersons: {}, weekStart: null, planSettings: null }
 
   const rawAttendance = data.attendance
   let attendance: DayAttendance[] = []
@@ -55,6 +55,7 @@ export async function loadWeekPlan(): Promise<{ plan: WeekPlanEntry[]; mealsData
     shoppingDays: ((data.shopping_day as string | null) ?? '').split(',').filter(Boolean),
     shoppingPersons: (data.shopping_persons as Record<string, Chef> | null) ?? {},
     weekStart: (data.week_start as string | null) ?? null,
+    planSettings: (data.plan_settings as PlanSettings | null) ?? null,
   }
 }
 
@@ -140,6 +141,7 @@ export async function activateNextWeek(): Promise<{ weekStart: string | null; ne
     shopping_done: false,
     shopping_day: null,
     shopping_persons: null,
+    plan_settings: nextData?.planSettings ?? null,
     next_week_start: null,
     next_week_data: null,
     updated_at: new Date().toISOString(),
