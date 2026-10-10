@@ -1393,7 +1393,7 @@ export default function WocheScreen({
               disabled={planSettingsSaving}
               style={{ padding: '5px 11px', borderRadius: 20, border: `1px solid ${currentPlanWE ? '#1D9E75' : '#ddd'}`, background: currentPlanWE ? '#F0FAF5' : '#f9fafb', fontSize: 11, color: currentPlanWE ? '#0F6E56' : '#888', cursor: planSettingsSaving ? 'default' : 'pointer', fontWeight: 500 }}
             >
-              📅 WE: {currentPlanWE ? 'ja' : 'nein'}
+              📅 Sa/So planen: {currentPlanWE ? 'ja' : 'nein'}
             </button>
           )}
           {canEditCurrentPlanSettings && (
@@ -2073,7 +2073,7 @@ export default function WocheScreen({
                               disabled={planSettingsSaving}
                               style={{ padding: '5px 11px', borderRadius: 20, border: `1px solid ${nwEffectivePlanWE ? '#1D9E75' : '#ddd'}`, background: nwEffectivePlanWE ? '#F0FAF5' : '#f9fafb', fontSize: 11, color: nwEffectivePlanWE ? '#0F6E56' : '#888', cursor: planSettingsSaving ? 'default' : 'pointer', fontWeight: 500 }}
                             >
-                              📅 WE: {nwEffectivePlanWE ? 'ja' : 'nein'}
+                              📅 Sa/So planen: {nwEffectivePlanWE ? 'ja' : 'nein'}
                             </button>
                           )}
                           {canEditNextPlanSettings && (
@@ -2086,7 +2086,7 @@ export default function WocheScreen({
                           )}
                           {!canEditNextPlanSettings && (nwEffectivePlanWE || nwMittagsloseTage.length > 0) && (
                             <span style={{ fontSize: 11, color: '#888' }}>
-                              {nwEffectivePlanWE ? '📅 mit WE' : ''}{nwMittagsloseTage.length > 0 ? `${nwEffectivePlanWE ? ' · ' : ''}☀ ohne ${nwMittagsloseTage.map(t => TAG_SHORT[t]).join(', ')}` : ''}
+                              {nwEffectivePlanWE ? '📅 Sa/So: ja' : ''}{nwMittagsloseTage.length > 0 ? `${nwEffectivePlanWE ? ' · ' : ''}☀ ohne ${nwMittagsloseTage.map(t => TAG_SHORT[t]).join(', ')}` : ''}
                             </span>
                           )}
                         </div>
@@ -2115,7 +2115,7 @@ export default function WocheScreen({
                         )}
                         {nwPlanSettingsNeeded && (
                           <div style={{ marginTop: 8, padding: '8px 10px', background: '#FFFBEB', borderRadius: 8, border: '1px solid #FCD34D', fontSize: 11, color: '#92400E' }}>
-                            ⚙️ Bitte Planungseinstellungen festlegen, bevor Rémy plant.
+                            ⚙️ Bitte zuerst <strong>Sa/So planen</strong> und <strong>Mittagessen</strong> festlegen – erst dann kann Rémy planen.
                           </div>
                         )}
                       </div>
@@ -2458,8 +2458,8 @@ export default function WocheScreen({
                     <div style={{ padding: '8px 12px 10px', borderTop: nwConfirmed || nwPlan.length > 0 ? '1px solid #f0f0f0' : 'none', display: 'flex', flexDirection: 'column', gap: 6 }}>
                       {/* Generate plan (when no plan yet) */}
                       {!nwPlanLoading && !nwPendingPlan && nwPlan.length === 0 && isNwChef && (
-                        <button onClick={generateNwPlan}
-                          style={{ padding: '9px 12px', border: 'none', borderRadius: 8, background: '#1D9E75', color: 'white', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+                        <button onClick={nwPlanSettingsNeeded ? undefined : generateNwPlan} disabled={nwPlanSettingsNeeded}
+                          style={{ padding: '9px 12px', border: 'none', borderRadius: 8, background: nwPlanSettingsNeeded ? '#ccc' : '#1D9E75', color: 'white', fontSize: 12, fontWeight: 700, cursor: nwPlanSettingsNeeded ? 'default' : 'pointer' }}>
                           🐀 Rémy fragen – Woche planen
                         </button>
                       )}
@@ -2698,7 +2698,7 @@ export default function WocheScreen({
           {renderPlanSettingsButtons('home')}
           {planSettingsNeeded && (
             <div style={{ background: '#FFFBEB', border: '1px solid #FCD34D', borderRadius: 10, padding: '10px 14px', marginBottom: 12, fontSize: 12, color: '#92400E' }}>
-              ⚙️ Bitte zuerst Planungseinstellungen festlegen (Wochenende, Mittag), damit Rémy die richtigen Tage plant.
+              ⚙️ Bitte zuerst <strong>Sa/So planen</strong> und <strong>Mittagessen</strong> festlegen – erst dann kann Rémy planen.
             </div>
           )}
           {error && (
@@ -2736,7 +2736,7 @@ export default function WocheScreen({
                   Wochenchef: <strong style={{ color: '#555' }}>{personNames[wochenchef]}</strong>
                 </div>
               )}
-              <button className="btn primary" onClick={startPlanning} disabled={planSettingsNeeded && !canEditCurrentPlanSettings}>
+              <button className="btn primary" onClick={startPlanning} disabled={planSettingsNeeded}>
                 🐀 Woche planen
               </button>
             </div>
