@@ -5,18 +5,23 @@ export const maxDuration = 60
 const FALLBACK = {
   name: 'Hähnchen-Pasta',
   zutaten: [
-    { menge: '400g', name: 'Hähnchenfilets (aus Gefriertruhe)', typ: 'tiefkühl' },
+    { menge: '400g', name: 'Hähnchenfilets', typ: 'tiefkühl' },
     { menge: '250g', name: 'Spaghetti', typ: 'speisekammer' },
-    { menge: '1 Dose', name: 'Tomaten (stückig)', typ: 'speisekammer' },
-    { menge: '1 Zehe', name: 'Knoblauch', typ: 'frisch' },
-    { menge: 'nach Geschmack', name: 'Olivenöl, Salz, Pfeffer', typ: 'frisch' },
+    { menge: '1 Dose (400g)', name: 'Tomaten (stückig)', typ: 'speisekammer' },
+    { menge: '1 Zehe', name: 'Knoblauch', typ: 'grundvorrat' },
+    { menge: '2 EL', name: 'Olivenöl', typ: 'grundvorrat' },
+    { menge: '1 TL', name: 'Salz', typ: 'grundvorrat' },
+    { menge: '½ TL', name: 'Pfeffer', typ: 'grundvorrat' },
+    { menge: '1 TL', name: 'getrockneter Oregano', typ: 'grundvorrat' },
   ],
   schritte: [
-    'Hähnchen auftauen und in Würfel schneiden.',
-    'Pasta nach Packungsanweisung kochen.',
-    'Hähnchen in Öl anbraten, Knoblauch dazugeben.',
-    'Tomaten hinzufügen, 10 Min. köcheln lassen.',
-    'Mit Pasta servieren.',
+    'Hähnchen auftauen, trocken tupfen und in 2 cm große Würfel schneiden.',
+    'Salzwasser zum Kochen bringen, Pasta nach Packungsanweisung (ca. 10 Min.) kochen.',
+    'Knoblauch fein hacken. Hähnchen mit Salz und Pfeffer würzen.',
+    'Olivenöl in einer Pfanne erhitzen, Hähnchen bei mittlerer Hitze 5–6 Min. goldbraun anbraten.',
+    'Knoblauch dazugeben, 1 Min. mitbraten.',
+    'Tomaten und Oregano hinzufügen, Sauce 10 Min. bei niedriger Hitze einköcheln lassen.',
+    'Pasta abgießen, mit der Sauce vermengen und sofort servieren.',
   ],
   minuten: 30,
   schwierigkeit: 'Einfach',
@@ -31,7 +36,19 @@ export async function POST(req: NextRequest) {
   }
 
   const familienProfil = familyPrompt || 'Sabine (keine Nüsse), Heiko (laktosefrei), Tim (kein Fisch)'
-  const prompt = `Du bist Rémy. Erstelle ein einfaches Familienrezept für "${gericht}". Verfügbar: Gefriertruhe: ${freezerList || 'variiert'}. Speisekammer: ${pantryList || 'variiert'}. Familie: ${familienProfil}. WICHTIG: Wähle das normale Gericht – ändere den Namen nie. Wenn eine Zutat gegen eine Unverträglichkeit verstößt (z.B. normaler Teig enthält Gluten für Heiko), trag die benötigte Ersatz-Zutat in ersetzteZutaten ein als "Menge Zutat (für Person)", z.B. "1 Packung glutenfreier Teig (für Heiko)". Wenn keine Unverträglichkeit betroffen ist, setze ersetzteZutaten auf []. Kurzes Rezept: max. 4 Zutaten, max. 3 Schritte. Antworte NUR als reines JSON ohne Markdown-Codeblock: {"name":"${gericht}","emoji":"${emoji || '🍽'}","zutaten":[{"menge":"200g","name":"...","typ":"frisch"}],"schritte":["Schritt 1..."],"minuten":30,"schwierigkeit":"Einfach","ersetzteZutaten":["1 Packung glutenfreier Teig (für Heiko)"]}`
+  const prompt = `Du bist Rémy. Erstelle ein vollständiges Familienrezept für "${gericht}" für 4 Personen. Verfügbar: Gefriertruhe: ${freezerList || 'variiert'}. Speisekammer: ${pantryList || 'variiert'}. Familie: ${familienProfil}.
+
+WICHTIG: Ändere den Namen des Gerichts NIE. Liste ALLE Zutaten mit genauen Mengen für 4 Personen auf – inklusive Gewürze, Kräuter, Öl und Aromaten. Unterscheide dabei:
+- "frisch": frische Zutaten (Gemüse, Fleisch, Fisch, Milchprodukte, frische Kräuter)
+- "tiefkühl": Tiefkühlprodukte
+- "speisekammer": Haltbare Zutaten (Nudeln, Reis, Dosentomaten, Mehl, Zucker …)
+- "grundvorrat": Zutaten die praktisch jeder zu Hause hat und die NICHT auf die Einkaufsliste kommen (Salz, Pfeffer, Öl, Butter, Knoblauch, Zwiebeln, gängige Gewürze wie Paprika/Oregano/Kreuzkümmel, Essig, Zitronensaft). Diese im Rezept aufführen, aber NICHT einkaufen.
+Zubereitung in 5–8 konkreten Schritten mit Zeiten und Temperaturen.
+
+Allergie-Regel: Wenn eine Zutat gegen eine Unverträglichkeit verstößt (z.B. Gluten für Heiko, Nüsse für Sabine, Fisch für Tim), trag NUR die nötige Ersatz-Zutat in ersetzteZutaten ein als "Menge Zutat (für Person)", z.B. "1 Packung glutenfreier Teig (für Heiko)". Betrifft keine Zutat eine Unverträglichkeit, setze ersetzteZutaten auf [].
+
+Antworte NUR als reines JSON ohne Markdown-Codeblock:
+{"name":"${gericht}","emoji":"${emoji || '🍽'}","zutaten":[{"menge":"400g","name":"...","typ":"frisch"},{"menge":"1 TL","name":"Salz","typ":"grundvorrat"}],"schritte":["Schritt 1 (5 Min.)..."],"minuten":30,"schwierigkeit":"Einfach","ersetzteZutaten":[]}`
 
   try {
     const resp = await fetch('https://api.anthropic.com/v1/messages', {
@@ -43,7 +60,7 @@ export async function POST(req: NextRequest) {
       },
       body: JSON.stringify({
         model: 'claude-haiku-4-5',
-        max_tokens: 1000,
+        max_tokens: 2000,
         messages: [{ role: 'user', content: prompt }],
       }),
     })

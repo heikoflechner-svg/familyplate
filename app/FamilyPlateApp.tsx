@@ -530,6 +530,7 @@ export default function FamilyPlateApp() {
             zutatenLaden={familyProfile.zutatenLaden}
             onZutatenLadenChange={handleZutatenLadenChange}
             canEditSettings={currentMemberRole !== 'member'}
+            planConfirmed={planConfirmed}
             shoppingDays={shoppingDays}
             nextWeekData={nextWeekData}
             freezerItems={freezerItems}

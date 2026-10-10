@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
-import { generateWeekPlan, getRemySuggestions, generateRecipe, saveLastDishes, isFullRecipe, getMondayIso, getNextMondayIso } from '../lib/mealLogic'
+import { generateWeekPlan, getRemySuggestions, generateRecipe, loadMissingRecipes, saveLastDishes, isFullRecipe, getMondayIso, getNextMondayIso } from '../lib/mealLogic'
 import { getFreezerListString, getPantryListString, addFreezerItem, deleteFreezerItem } from '../lib/freezerLogic'
 import { buildFamilyPrompt, buildMemberCfg, DEFAULT_MEMBERS } from '../lib/familyLogic'
 import type { WeekPlanEntry, Rezept, FreezerItem, PantryItem, Wish, Chef, WochenSlot, FamilyMember, DayAttendance, ChangeProposal, ShoppingItem, RemyVorschlag, NextWeekData, NextWeekWish, PlanSettings } from '../lib/state'
@@ -1236,9 +1236,15 @@ export default function WocheScreen({
 
   async function acceptPlan() {
     setSaving(true)
-    await onWeekPlanChange(pendingPlan, { ...mealsData, ...pendingPlanMeals })
+    const mergedMeals = { ...mealsData, ...pendingPlanMeals }
+    const isChefConfirm = currentUser === wochenchef
+    // Wenn der Wochenchef selbst bestätigt → planConfirmed wird true → Rezepte sofort nachladen
+    const finalMeals = isChefConfirm
+      ? await loadMissingRecipes(pendingPlan, mergedMeals, getFreezerListString(freezerItems), getPantryListString(pantryItems), familyPrompt)
+      : mergedMeals
+    await onWeekPlanChange(pendingPlan, finalMeals)
     await onPlanConfirm?.(pendingPlan)
-    await onPlanConfirmedChange(currentUser === wochenchef)
+    await onPlanConfirmedChange(isChefConfirm)
 
     // Auto-Entfernen aus Gefriertruhe: für Reste-Gerichte exakt matchen,
     // für gefriertruhe-Gerichte per exakter Namensübereinstimmung
@@ -1307,7 +1313,10 @@ export default function WocheScreen({
       const rezept = await generateRecipe(gericht, emoji, getFreezerListString(freezerItems), getPantryListString(pantryItems), familyPrompt)
       if (rezept) newMeals[gericht] = rezept
     }))
-    const updatedMealsData = { ...mealsData, ...newMeals }
+    // Alle noch fehlenden/veralteten Rezepte des gesamten Wochenplans nachladen
+    const freezerStr = getFreezerListString(freezerItems)
+    const pantryStr = getPantryListString(pantryItems)
+    const updatedMealsData = await loadMissingRecipes(finalPlan, { ...mealsData, ...newMeals }, freezerStr, pantryStr, familyPrompt)
 
     // Aktivierte Ergänzungen an Einkaufsliste übergeben
     const newItems: ShoppingItem[] = []
@@ -3530,12 +3539,15 @@ function RecipeModal({ name, rezept, loading, onClose }: { name: string; rezept:
 
             <div className="lbl">Zutaten</div>
             <div style={{ marginBottom: 20 }}>
-              {rezept.zutaten.map((z, i) => (
-                <div key={i} style={{ display: 'flex', alignItems: 'baseline', gap: 8, padding: '6px 0', borderBottom: '1px solid #f5f5f5' }}>
-                  <span style={{ fontSize: 12, color: '#aaa', minWidth: 70 }}>{z.menge}</span>
-                  <span style={{ fontSize: 13, color: '#111' }}>{z.name}</span>
-                </div>
-              ))}
+              {rezept.zutaten.map((z, i) => {
+                const isGrundvorrat = z.typ === 'grundvorrat'
+                return (
+                  <div key={i} style={{ display: 'flex', alignItems: 'baseline', gap: 8, padding: '6px 0', borderBottom: '1px solid #f5f5f5', opacity: isGrundvorrat ? 0.55 : 1 }}>
+                    <span style={{ fontSize: 12, color: '#aaa', minWidth: 70 }}>{z.menge}</span>
+                    <span style={{ fontSize: 13, color: isGrundvorrat ? '#888' : '#111', fontStyle: isGrundvorrat ? 'italic' : 'normal' }}>{z.name}{isGrundvorrat ? ' (im Haushalt vorhanden)' : ''}</span>
+                  </div>
+                )
+              })}
             </div>
 
             <div className="lbl">Zubereitung</div>

@@ -368,11 +368,13 @@ export async function generateWeekPlan(params: {
   return { plan, mealsData }
 }
 
-// Ein "volles" Rezept hat Zubereitungsschritte. Ein Stub (nur Name/Emoji/Allergie
-// aus der schnellen Wochenplanung) hat leere schritte und muss vor Verwendung in
-// Rezeptansicht/Einkaufsliste per generateRecipe nachgeladen werden.
+// Ein "volles" Rezept hat Zubereitungsschritte und mehr als 4 Zutaten oder mindestens
+// eine Grundvorrat-Zutat. Stubs aus der schnellen Wochenplanung (0 Schritte) und
+// alte Kurz-Rezepte (≤4 Zutaten, kein 'grundvorrat') werden als unvollständig
+// behandelt und beim nächsten Antippen/Neu-Klick automatisch neu geladen.
 export function isFullRecipe(r?: Rezept | null): boolean {
-  return !!r && r.schritte.length > 0
+  if (!r || r.schritte.length === 0) return false
+  return r.zutaten.length > 4 || r.zutaten.some(z => z.typ === 'grundvorrat')
 }
 
 export async function getRemySuggestions(params: {
@@ -428,4 +430,30 @@ export async function generateRecipe(
     }
   }
   return null
+}
+
+export async function loadMissingRecipes(
+  entries: WeekPlanEntry[],
+  store: Record<string, Rezept>,
+  freezerList: string,
+  pantryList: string,
+  familyPrompt: string,
+): Promise<Record<string, Rezept>> {
+  const result: Record<string, Rezept> = { ...store }
+  const seen = new Set<string>()
+  const missing = entries.filter(e => {
+    if (seen.has(e.gericht) || isFullRecipe(result[e.gericht])) return false
+    seen.add(e.gericht)
+    return true
+  })
+  await Promise.all(missing.map(async e => {
+    const r = await generateRecipe(e.gericht, e.emoji, freezerList, pantryList, familyPrompt)
+    if (r) {
+      result[e.gericht] = {
+        ...r,
+        ersetzteZutaten: r.ersetzteZutaten?.length ? r.ersetzteZutaten : (store[e.gericht]?.ersetzteZutaten ?? []),
+      }
+    }
+  }))
+  return result
 }

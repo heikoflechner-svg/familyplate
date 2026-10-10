@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import {
   generateShoppingList,
   groupShoppingByMeal,
@@ -34,6 +34,7 @@ interface Props {
   zutatenLaden: Record<string, string>
   onZutatenLadenChange: (mapping: Record<string, string>) => Promise<void>
   canEditSettings: boolean
+  planConfirmed?: boolean
   shoppingDays?: string[]
   nextWeekData?: NextWeekData | null
   freezerItems: FreezerItem[]
@@ -43,7 +44,7 @@ interface Props {
 
 type ViewMode = 'tag' | 'zusammen' | 'laden'
 
-export default function EinkaufScreen({ weekPlan, mealsData, shoppingList, onShoppingListChange, onMealsDataChange, currentUser, wochenchef, shopDone, onShopDoneChange, laeden, zutatenLaden, onZutatenLadenChange, canEditSettings, shoppingDays = [], nextWeekData = null, freezerItems, pantryItems, members }: Props) {
+export default function EinkaufScreen({ weekPlan, mealsData, shoppingList, onShoppingListChange, onMealsDataChange, currentUser, wochenchef, shopDone, onShopDoneChange, laeden, zutatenLaden, onZutatenLadenChange, canEditSettings, planConfirmed = false, shoppingDays = [], nextWeekData = null, freezerItems, pantryItems, members }: Props) {
   const [newName, setNewName] = useState('')
   const [newMenge, setNewMenge] = useState('')
   const [dayPickerOpen, setDayPickerOpen] = useState(false)
@@ -51,6 +52,30 @@ export default function EinkaufScreen({ weekPlan, mealsData, shoppingList, onSho
   const [selectedDays, setSelectedDays] = useState<Set<string>>(new Set(['alle']))
   const [selectedNextWeekDays, setSelectedNextWeekDays] = useState<Set<string>>(new Set())
   const [viewMode, setViewMode] = useState<ViewMode>('tag')
+  const autoLoadDoneRef = useRef(false)
+
+  // Sicherheitsnetz: fehlende/veraltete Rezepte einmalig nachladen sobald planConfirmed true ist
+  useEffect(() => {
+    if (!planConfirmed || weekPlan.length === 0 || autoLoadDoneRef.current) return
+    const hasMissing = weekPlan.some(e => !isFullRecipe(mealsData[e.gericht]))
+    if (!hasMissing) { autoLoadDoneRef.current = true; return }
+    autoLoadDoneRef.current = true
+    const freezerStr = getFreezerListString(freezerItems)
+    const pantryStr = getPantryListString(pantryItems)
+    const familyPrompt = buildFamilyPrompt(members.length ? members : DEFAULT_MEMBERS)
+    const store = { ...mealsData }
+    const seen = new Set<string>()
+    const missing = weekPlan.filter(e => {
+      if (seen.has(e.gericht) || isFullRecipe(store[e.gericht])) return false
+      seen.add(e.gericht)
+      return true
+    })
+    void Promise.all(missing.map(async e => {
+      const r = await generateRecipe(e.gericht, e.emoji, freezerStr, pantryStr, familyPrompt)
+      if (r) store[e.gericht] = { ...r, ersetzteZutaten: r.ersetzteZutaten?.length ? r.ersetzteZutaten : (store[e.gericht]?.ersetzteZutaten ?? []) }
+    })).then(() => onMealsDataChange(store))
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [planConfirmed])
 
   const plannedDays = WOCHENTAGE.filter(t => weekPlan.some(e => e.tag === t))
   const nwCoverageDays = computeNextWeekCoverage(shoppingDays)

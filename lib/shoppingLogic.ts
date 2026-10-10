@@ -44,6 +44,7 @@ function generateItemsForEntry(entry: WeekPlanEntry, mealsData: Record<string, R
   const items: ShoppingItem[] = []
   const seen = new Set<string>()
   for (const zutat of rezept.zutaten) {
+    if (zutat.typ === 'grundvorrat') continue
     const key = zutat.name.toLowerCase()
     if (seen.has(key)) continue
     seen.add(key)
