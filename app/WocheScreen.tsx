@@ -1238,12 +1238,9 @@ export default function WocheScreen({
     setSaving(true)
     const mergedMeals = { ...mealsData, ...pendingPlanMeals }
     const isChefConfirm = currentUser === wochenchef
-    // Wenn der Wochenchef selbst bestätigt → planConfirmed wird true → Rezepte sofort nachladen
-    const finalMeals = isChefConfirm
-      ? await loadMissingRecipes(pendingPlan, mergedMeals, getFreezerListString(freezerItems), getPantryListString(pantryItems), familyPrompt)
-      : mergedMeals
-    await onWeekPlanChange(pendingPlan, finalMeals)
-    await onPlanConfirm?.(pendingPlan)
+    const planSnapshot = pendingPlan
+    await onWeekPlanChange(planSnapshot, mergedMeals)
+    await onPlanConfirm?.(planSnapshot)
     await onPlanConfirmedChange(isChefConfirm)
 
     // Auto-Entfernen aus Gefriertruhe: für Reste-Gerichte exakt matchen,
@@ -1284,6 +1281,11 @@ export default function WocheScreen({
     setPendingPlanMeals({})
     setPlanState('options')
     setView('home')
+    // Rezepte im Hintergrund nachladen – blockiert die Oberfläche nicht
+    if (isChefConfirm) {
+      void loadMissingRecipes(planSnapshot, mergedMeals, getFreezerListString(freezerItems), getPantryListString(pantryItems), familyPrompt)
+        .then(full => onWeekPlanChange(planSnapshot, full))
+    }
   }
 
   async function confirmAsChef() {
@@ -1307,16 +1309,15 @@ export default function WocheScreen({
       if (!mealsData[wish.dishName]) confirmedAlts.push({ gericht: wish.dishName, emoji: wish.emoji })
     }
 
-    // Rezepte (inkl. ersetzteZutaten) für neu bestätigte Alternativ-Gerichte laden
+    // Rezepte für neu bestätigte Alternativ-Gerichte laden (nötig vor dem Speichern)
     const newMeals: Record<string, Rezept> = {}
     await Promise.all(confirmedAlts.map(async ({ gericht, emoji }) => {
       const rezept = await generateRecipe(gericht, emoji, getFreezerListString(freezerItems), getPantryListString(pantryItems), familyPrompt)
       if (rezept) newMeals[gericht] = rezept
     }))
-    // Alle noch fehlenden/veralteten Rezepte des gesamten Wochenplans nachladen
+    const altMealsData = { ...mealsData, ...newMeals }
     const freezerStr = getFreezerListString(freezerItems)
     const pantryStr = getPantryListString(pantryItems)
-    const updatedMealsData = await loadMissingRecipes(finalPlan, { ...mealsData, ...newMeals }, freezerStr, pantryStr, familyPrompt)
 
     // Aktivierte Ergänzungen an Einkaufsliste übergeben
     const newItems: ShoppingItem[] = []
@@ -1339,7 +1340,8 @@ export default function WocheScreen({
     }
 
     const newWishes = wishes.filter(w => w.postConfirm)
-    await onWeekPlanAndWishesChange(finalPlan, updatedMealsData, newWishes)
+    // Plan sofort mit Alt-Rezepten speichern, ohne auf alle Rezepte zu warten
+    await onWeekPlanAndWishesChange(finalPlan, altMealsData, newWishes)
     if (newItems.length > 0) {
       await onShoppingListChange([...shoppingList, ...newItems])
     }
@@ -1348,6 +1350,9 @@ export default function WocheScreen({
     setChefAltSelection({})
     setChefErgaenzungIds([])
     setSaving(false)
+    // Restliche fehlende/veraltete Rezepte im Hintergrund nachladen
+    void loadMissingRecipes(finalPlan, altMealsData, freezerStr, pantryStr, familyPrompt)
+      .then(full => onWeekPlanChange(finalPlan, full))
   }
 
   async function confirmNachtraege() {
