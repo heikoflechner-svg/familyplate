@@ -84,11 +84,12 @@ WICHTIG: Ändere den Namen des Gerichts NIE. Liste ALLE Zutaten mit genauen Meng
 Zubereitung in 5–8 konkreten Schritten mit Zeiten und Temperaturen. Kein "Schritt N:" am Anfang – die Nummerierung erfolgt automatisch in der App.
 
 Allergie-Regel: Prüfe jede Zutat gegen die Unverträglichkeiten der Familienmitglieder (Daten in "Familie:" oben).
-Wenn eine Zutat gegen eine Unverträglichkeit verstößt: Ersetze sie DIREKT in zutaten durch die allergiegerechte Version (kein Original-Eintrag) und setze das Feld "fuer":"Name" auf dieser Zutat. Trage sie zusätzlich in ersetzteZutaten ein als "Menge Ersatz-Zutat (für Name)" (für den Wochenplan-Hinweis).
+Wenn eine Zutat gegen eine Unverträglichkeit verstößt: Ersetze sie DIREKT in zutaten durch die allergiegerechte Version (kein Original-Eintrag) und setze das Feld "fuer":"Name" auf dieser Zutat. Im Zutatennamen NUR die sachliche Anpassung nennen (z.B. "Spaghetti (glutenfrei)"), NICHT den Personennamen einbauen (also NICHT "Spaghetti (glutenfrei für Heiko)"). Trage sie zusätzlich in ersetzteZutaten ein als "Menge Ersatz-Zutat (für Name)" (für den Wochenplan-Hinweis).
+Wenn eine allergiegerechte Zutat separat zubereitet werden muss (z.B. glutenfreie Nudeln in eigenem Topf): Ergänze in den schritte-Texten ausdrücklich, wann und wie die Portion für diese Person getrennt zubereitet wird – eigener Topf/Pfanne/Utensilien, Hinweis auf Kreuzkontamination vermeiden, und an welchem Schritt die Portion separat angerichtet wird.
 Betrifft keine Zutat eine Unverträglichkeit: fuer-Felder komplett weglassen, ersetzteZutaten auf [].
 
 Antworte NUR als reines JSON ohne Markdown-Codeblock:
-{"name":"${gericht}","emoji":"${emoji || '🍽'}","zutaten":[{"menge":"400g","name":"...","typ":"frisch"},{"menge":"500g","name":"... (glutenfrei)","typ":"speisekammer","fuer":"Heiko"},{"menge":"1 TL","name":"Salz","typ":"grundvorrat"}],"schritte":["(5 Min.) ...","(10 Min.) ..."],"minuten":30,"schwierigkeit":"Einfach","ersetzteZutaten":["500g ... (glutenfrei) (für Heiko)"]}`
+{"name":"${gericht}","emoji":"${emoji || '🍽'}","zutaten":[{"menge":"400g","name":"...","typ":"frisch"},{"menge":"500g","name":"... (glutenfrei)","typ":"speisekammer","fuer":"Heiko"},{"menge":"1 TL","name":"Salz","typ":"grundvorrat"}],"schritte":["(5 Min.) ...","(10 Min.) ...","(2 Min.) Portion für Heiko separat in eigenem Topf kochen (Kreuzkontamination vermeiden), dann separat anrichten."],"minuten":30,"schwierigkeit":"Einfach","ersetzteZutaten":["500g ... (glutenfrei) (für Heiko)"]}`
 
   try {
     const raw = await callClaude(apiKey, prompt)
