@@ -80,13 +80,13 @@ WICHTIG: Ändere den Namen des Gerichts NIE. Liste ALLE Zutaten mit genauen Meng
 - "frisch": frische Zutaten (Gemüse, Fleisch, Fisch, Milchprodukte, frische Kräuter)
 - "tiefkühl": Tiefkühlprodukte
 - "speisekammer": Haltbare Zutaten (Nudeln, Reis, Dosentomaten, Mehl, Zucker …)
-- "grundvorrat": Zutaten die praktisch jeder zu Hause hat und die NICHT auf die Einkaufsliste kommen (Salz, Pfeffer, Öl, Butter, Knoblauch, Zwiebeln, gängige Gewürze wie Paprika/Oregano/Kreuzkümmel, Essig, Zitronensaft). Diese im Rezept aufführen, aber NICHT einkaufen.
-Zubereitung in 5–8 konkreten Schritten mit Zeiten und Temperaturen.
+- "grundvorrat": NUR kleine Mengen allgegenwärtiger Vorratsartikel, die NICHT auf die Einkaufsliste kommen (z.B. 1–2 TL Salz, ½ TL Pfeffer, 1–2 EL Öl/Butter, 1–2 Zehen Knoblauch als Würze, 1 TL getrocknete Gewürze wie Paprika/Oregano/Kreuzkümmel, 1 EL Essig). WICHTIG: Ist eine solche Zutat Hauptbestandteil des Gerichts oder wird sie in größerer Menge benötigt (z.B. 8 Zehen Knoblauch bei Aglio e Olio, viele Zwiebeln für Suppe, viel Butter in einem Buttergebäck), dann "frisch" oder "speisekammer" verwenden – NICHT grundvorrat.
+Zubereitung in 5–8 konkreten Schritten mit Zeiten und Temperaturen. Kein "Schritt N:" am Anfang – die Nummerierung erfolgt automatisch in der App.
 
-Allergie-Regel: Wenn eine Zutat gegen eine Unverträglichkeit verstößt (z.B. Gluten für Heiko, Nüsse für Sabine, Fisch für Tim), trag NUR die nötige Ersatz-Zutat in ersetzteZutaten ein als "Menge Zutat (für Person)", z.B. "1 Packung glutenfreier Teig (für Heiko)". Betrifft keine Zutat eine Unverträglichkeit, setze ersetzteZutaten auf [].
+Allergie-Regel: Prüfe jede Zutat gegen die Unverträglichkeiten der Familienmitglieder (Daten in "Familie:" oben). Wenn eine Zutat gegen eine Unverträglichkeit verstößt, trag NUR die benötigte Ersatz-Zutat in ersetzteZutaten ein als "Menge Ersatz-Zutat (für Name)", z.B. "500g glutenfreie Spaghetti (für Name mit Glutenunverträglichkeit)". Betrifft keine Zutat eine Unverträglichkeit, setze ersetzteZutaten auf [].
 
 Antworte NUR als reines JSON ohne Markdown-Codeblock:
-{"name":"${gericht}","emoji":"${emoji || '🍽'}","zutaten":[{"menge":"400g","name":"...","typ":"frisch"},{"menge":"1 TL","name":"Salz","typ":"grundvorrat"}],"schritte":["Schritt 1 (5 Min.)..."],"minuten":30,"schwierigkeit":"Einfach","ersetzteZutaten":[]}`
+{"name":"${gericht}","emoji":"${emoji || '🍽'}","zutaten":[{"menge":"400g","name":"...","typ":"frisch"},{"menge":"1 TL","name":"Salz","typ":"grundvorrat"}],"schritte":["(5 Min.) ...","(10 Min.) ..."],"minuten":30,"schwierigkeit":"Einfach","ersetzteZutaten":[]}`
 
   try {
     const raw = await callClaude(apiKey, prompt)

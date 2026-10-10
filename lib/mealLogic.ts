@@ -445,7 +445,8 @@ export async function generateRecipe(
   return null
 }
 
-export async function rescaleRecipe(existing: Rezept, newPersonCount: number): Promise<Rezept> {
+// Returns null on failure so callers skip saving — old personenAnzahl is preserved → retry on next open.
+export async function rescaleRecipe(existing: Rezept, newPersonCount: number): Promise<Rezept | null> {
   const oldPersonCount = existing.personenAnzahl ?? 4
   if (oldPersonCount === newPersonCount) return { ...existing, personenAnzahl: newPersonCount }
   try {
@@ -465,7 +466,7 @@ export async function rescaleRecipe(existing: Rezept, newPersonCount: number): P
     if (!Array.isArray(zutaten) || zutaten.length === 0) throw new Error('No zutaten')
     return { ...existing, zutaten, personenAnzahl: newPersonCount }
   } catch {
-    return { ...existing, personenAnzahl: newPersonCount }
+    return null
   }
 }
 

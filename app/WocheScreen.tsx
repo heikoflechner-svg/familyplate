@@ -1133,8 +1133,10 @@ export default function WocheScreen({
     try {
       if (isFullRecipe(existing) && existing!.personenAnzahl !== undefined && existing!.personenAnzahl !== personCount) {
         const rescaled = await rescaleRecipe(existing!, personCount)
-        await onWeekPlanChange(weekPlan, { ...mealsData, [gericht]: rescaled })
-        await onShoppingListChange(rescaleShoppingListMengen(shoppingList, gericht, rescaled.zutaten, false))
+        if (rescaled) {
+          await onWeekPlanChange(weekPlan, { ...mealsData, [gericht]: rescaled })
+          await onShoppingListChange(rescaleShoppingListMengen(shoppingList, gericht, rescaled.zutaten, false))
+        }
       } else {
         const rezept = await generateRecipe(gericht, emoji, getFreezerListString(freezerItems), getPantryListString(pantryItems), familyPrompt, personCount)
         if (rezept) {
@@ -1162,7 +1164,7 @@ export default function WocheScreen({
     try {
       if (isFullRecipe(existing) && existing!.personenAnzahl !== undefined && existing!.personenAnzahl !== personCount) {
         const rescaled = await rescaleRecipe(existing!, personCount)
-        setNwPendingMeals(prev => ({ ...prev, [gericht]: rescaled }))
+        if (rescaled) setNwPendingMeals(prev => ({ ...prev, [gericht]: rescaled }))
       } else {
         const rezept = await generateRecipe(gericht, emoji, getFreezerListString(freezerItems), getPantryListString(pantryItems), familyPrompt, personCount)
         if (rezept) {
@@ -1187,7 +1189,7 @@ export default function WocheScreen({
     try {
       if (isFullRecipe(existing) && existing!.personenAnzahl !== undefined && existing!.personenAnzahl !== personCount) {
         const rescaled = await rescaleRecipe(existing!, personCount)
-        setPendingPlanMeals(prev => ({ ...prev, [gericht]: rescaled }))
+        if (rescaled) setPendingPlanMeals(prev => ({ ...prev, [gericht]: rescaled }))
       } else {
         const rezept = await generateRecipe(gericht, emoji, getFreezerListString(freezerItems), getPantryListString(pantryItems), familyPrompt, personCount)
         if (rezept) {
@@ -1215,8 +1217,10 @@ export default function WocheScreen({
       const nextMonday = nextWeekStart ?? getNextMondayIso()
       if (isFullRecipe(existing) && existing!.personenAnzahl !== undefined && existing!.personenAnzahl !== personCount) {
         const rescaled = await rescaleRecipe(existing!, personCount)
-        await onNextWeekDataChange({ mealsData: { ...(nextWeekData?.mealsData ?? {}), [gericht]: rescaled } }, nextMonday)
-        await onShoppingListChange(rescaleShoppingListMengen(shoppingList, gericht, rescaled.zutaten, true))
+        if (rescaled) {
+          await onNextWeekDataChange({ mealsData: { ...(nextWeekData?.mealsData ?? {}), [gericht]: rescaled } }, nextMonday)
+          await onShoppingListChange(rescaleShoppingListMengen(shoppingList, gericht, rescaled.zutaten, true))
+        }
       } else {
         const rezept = await generateRecipe(gericht, emoji, getFreezerListString(freezerItems), getPantryListString(pantryItems), familyPrompt, personCount)
         if (rezept) {
