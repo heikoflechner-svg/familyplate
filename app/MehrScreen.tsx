@@ -511,9 +511,14 @@ export default function MehrScreen({
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                 <span style={{ fontSize: 12, color: '#666' }}>Wochenchef:</span>
                 {nwChef ? (
-                  <span style={{ fontSize: 15, fontWeight: 700, color: CFG[nwChef]?.c ?? '#333' }}>
-                    {personNames[nwChef] ?? nwChef}
-                  </span>
+                  <>
+                    <span style={{ fontSize: 15, fontWeight: 700, color: CFG[nwChef]?.c ?? '#333' }}>
+                      {personNames[nwChef] ?? nwChef}
+                    </span>
+                    {nextWeekData?.wochenchefAutoAssigned && (
+                      <span style={{ fontSize: 10, color: '#6B7280' }}>(von Rémy festgelegt)</span>
+                    )}
+                  </>
                 ) : (
                   <span style={{ fontSize: 13, color: '#bbb' }}>noch nicht festgelegt</span>
                 )}
@@ -530,8 +535,8 @@ export default function MehrScreen({
                 )}
               </div>
 
-              {/* Rémy Fairplay-Empfehlung */}
-              {suggestedNextChef && (
+              {/* Rémy Fairplay-Empfehlung – nur anzeigen wenn noch kein NW-Chef gesetzt */}
+              {suggestedNextChef && !nwChef && (
                 <div style={{
                   fontSize: 11, color: '#555', background: '#F0FAF5',
                   border: '1px solid #B2DFCC', borderRadius: 8, padding: '7px 10px', marginTop: 10,
@@ -578,7 +583,7 @@ export default function MehrScreen({
                 </div>
               ) : (
                 <div style={{ fontSize: 11, color: '#aaa', marginTop: 8 }}>
-                  Nur der aktuelle Wochenchef kann das festlegen.
+                  Ändern können Organisator und Eltern.
                 </div>
               )}
             </div>
