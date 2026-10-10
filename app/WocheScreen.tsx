@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
-import { generateWeekPlan, getRemySuggestions, generateRecipe, rescaleRecipe, loadMissingRecipes, getPersonCountForSlot, saveLastDishes, isFullRecipe, getMondayIso, getNextMondayIso } from '../lib/mealLogic'
+import { generateWeekPlan, getRemySuggestions, generateRecipe, rescaleRecipe, adjustRecipe, loadMissingRecipes, getPersonCountForSlot, saveLastDishes, isFullRecipe, getMondayIso, getNextMondayIso } from '../lib/mealLogic'
 import { rescaleShoppingListMengen, rewriteShoppingItemsForDish } from '../lib/shoppingLogic'
 import { getFreezerListString, getPantryListString, addFreezerItem, deleteFreezerItem } from '../lib/freezerLogic'
 import { buildFamilyPrompt, buildMemberCfg, DEFAULT_MEMBERS } from '../lib/familyLogic'
@@ -311,6 +311,7 @@ export default function WocheScreen({
   const [selectedMealName, setSelectedMealName] = useState<string | null>(null)
   const [recipeContext, setRecipeContext] = useState<{ tag: string; slot: WochenSlot; source: 'current' | 'pending' | 'nwPending' | 'nwSaved'; emoji: string } | null>(null)
   const [recipeLoading, setRecipeLoading] = useState<string | null>(null)
+  const [adjustAllergieHinweise, setAdjustAllergieHinweise] = useState<string[]>([])
 
   const [chefAltSelection, setChefAltSelection] = useState<Record<string, string>>({})
   const [chefErgaenzungIds, setChefErgaenzungIds] = useState<string[]>([])
@@ -1276,6 +1277,43 @@ export default function WocheScreen({
     }
   }
 
+  async function handleAdjustRecipe(wunsch: string) {
+    if (!recipeContext || !selectedMealName) return
+    const { tag, slot, source, emoji } = recipeContext
+    const mbs = members.length ? members : DEFAULT_MEMBERS
+    const att = (source === 'nwPending' || source === 'nwSaved') ? (nextWeekData?.attendance ?? []) : attendance
+    const personCount = getPersonCountForSlot(tag, slot, att, mbs)
+    const existing = selectedRezept(selectedMealName)
+    if (!existing) return
+    setAdjustAllergieHinweise([])
+    setRecipeLoading(selectedMealName)
+    try {
+      const result = await adjustRecipe(existing, wunsch, personCount, getFreezerListString(freezerItems), getPantryListString(pantryItems), familyPrompt)
+      if (!result) return
+      const { rezept, allergieHinweise } = result
+      const merged: Rezept = { ...rezept, personenAnzahl: personCount, ersetzteZutaten: rezept.ersetzteZutaten?.length ? rezept.ersetzteZutaten : (existing.ersetzteZutaten ?? []) }
+      if (allergieHinweise.length > 0) setAdjustAllergieHinweise(allergieHinweise)
+      if (source === 'current') {
+        await onWeekPlanChange(weekPlan, { ...mealsData, [selectedMealName]: merged })
+        if (planConfirmed) {
+          const entry = weekPlan.find(e => e.tag === tag && e.slot === slot)
+          if (entry) await onShoppingListChange(rewriteShoppingItemsForDish(shoppingList, entry, merged, false))
+        }
+      } else if (source === 'pending') {
+        setPendingPlanMeals(prev => ({ ...prev, [selectedMealName]: merged }))
+      } else if (source === 'nwPending') {
+        setNwPendingMeals(prev => ({ ...prev, [selectedMealName]: merged }))
+      } else if (source === 'nwSaved' && onNextWeekDataChange) {
+        const nextMonday = nextWeekStart ?? getNextMondayIso()
+        await onNextWeekDataChange({ mealsData: { ...(nextWeekData?.mealsData ?? {}), [selectedMealName]: merged } }, nextMonday)
+        const entry = (nextWeekData?.plan ?? []).find(e => e.tag === tag && e.slot === slot)
+        if (entry) await onShoppingListChange(rewriteShoppingItemsForDish(shoppingList, entry, merged, true))
+      }
+    } finally {
+      setRecipeLoading(null)
+    }
+  }
+
   async function startPlanning() {
     setView('plan')
     setPlanState('loading')
@@ -1791,7 +1829,7 @@ export default function WocheScreen({
     return (
       <div className="screen active" style={{ position: 'relative' }}>
         {selectedMealName && (
-          <RecipeModal name={selectedMealName} rezept={selectedRezept(selectedMealName)} loading={recipeLoading === selectedMealName} onClose={() => { setSelectedMealName(null); setRecipeContext(null) }} canRewrite={currentUser === wochenchef || canEditSettings} onRewrite={rewriteRecipe} />
+          <RecipeModal name={selectedMealName} rezept={selectedRezept(selectedMealName)} loading={recipeLoading === selectedMealName} onClose={() => { setSelectedMealName(null); setRecipeContext(null); setAdjustAllergieHinweise([]) }} canRewrite={currentUser === wochenchef || canEditSettings} onRewrite={rewriteRecipe} onAdjust={handleAdjustRecipe} allergieHinweise={adjustAllergieHinweise} />
         )}
         <div className="topbar">
           {planState !== 'loading' && (
@@ -2006,7 +2044,7 @@ export default function WocheScreen({
     return (
       <div className="screen active" style={{ position: 'relative' }}>
         {selectedMealName && (
-          <RecipeModal name={selectedMealName} rezept={selectedRezept(selectedMealName)} loading={recipeLoading === selectedMealName} onClose={() => { setSelectedMealName(null); setRecipeContext(null) }} canRewrite={currentUser === wochenchef || canEditSettings} onRewrite={rewriteRecipe} />
+          <RecipeModal name={selectedMealName} rezept={selectedRezept(selectedMealName)} loading={recipeLoading === selectedMealName} onClose={() => { setSelectedMealName(null); setRecipeContext(null); setAdjustAllergieHinweise([]) }} canRewrite={currentUser === wochenchef || canEditSettings} onRewrite={rewriteRecipe} onAdjust={handleAdjustRecipe} allergieHinweise={adjustAllergieHinweise} />
         )}
         <div className="topbar">
           <button className="back" onClick={() => setView('home')}>‹</button>
@@ -3036,7 +3074,7 @@ export default function WocheScreen({
   return (
     <div className="screen active" style={{ position: 'relative' }}>
       {selectedMealName && (
-        <RecipeModal name={selectedMealName} rezept={selectedRezept(selectedMealName)} loading={recipeLoading === selectedMealName} onClose={() => { setSelectedMealName(null); setRecipeContext(null) }} canRewrite={currentUser === wochenchef || canEditSettings} onRewrite={rewriteRecipe} />
+        <RecipeModal name={selectedMealName} rezept={selectedRezept(selectedMealName)} loading={recipeLoading === selectedMealName} onClose={() => { setSelectedMealName(null); setRecipeContext(null); setAdjustAllergieHinweise([]) }} canRewrite={currentUser === wochenchef || canEditSettings} onRewrite={rewriteRecipe} onAdjust={handleAdjustRecipe} allergieHinweise={adjustAllergieHinweise} />
       )}
       <div className="topbar"><h1>🍽 MenuFamPlan</h1></div>
       <div className="content">
@@ -3593,10 +3631,11 @@ function WishesSection({
   )
 }
 
-function RecipeModal({ name, rezept, loading, onClose, canRewrite, onRewrite }: { name: string; rezept: import('../lib/state').Rezept | null; loading?: boolean; onClose: () => void; canRewrite?: boolean; onRewrite?: () => void }) {
+function RecipeModal({ name, rezept, loading, onClose, canRewrite, onRewrite, onAdjust, allergieHinweise }: { name: string; rezept: import('../lib/state').Rezept | null; loading?: boolean; onClose: () => void; canRewrite?: boolean; onRewrite?: () => void; onAdjust?: (wunsch: string) => void; allergieHinweise?: string[] }) {
   const [confirmRewrite, setConfirmRewrite] = useState(false)
-  // Reset confirmation when loading starts (rewrite in progress)
-  if (loading && confirmRewrite) setConfirmRewrite(false)
+  const [adjustMode, setAdjustMode] = useState(false)
+  const [adjustText, setAdjustText] = useState('')
+  useEffect(() => { if (loading) { setConfirmRewrite(false); setAdjustMode(false); setAdjustText('') } }, [loading])
   const hatRezept = !!rezept && rezept.schritte.length > 0
   return (
     <div style={{ position: 'absolute', inset: 0, zIndex: 100, background: 'white', overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
@@ -3657,18 +3696,46 @@ function RecipeModal({ name, rezept, loading, onClose, canRewrite, onRewrite }: 
               ))}
             </div>
 
-            {canRewrite && (
-              confirmRewrite ? (
-                <div style={{ marginTop: 20, padding: '12px 14px', background: '#FFFBEB', borderRadius: 10, border: '1px solid #FDE68A' }}>
-                  <div style={{ fontSize: 13, color: '#92400E', marginBottom: 10 }}>Rezept neu schreiben? Das bisherige Rezept wird ersetzt.</div>
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    <button onClick={() => { setConfirmRewrite(false); onRewrite?.() }} style={{ flex: 1, padding: '8px 0', background: '#F59E0B', color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Ja, neu schreiben</button>
-                    <button onClick={() => setConfirmRewrite(false)} style={{ flex: 1, padding: '8px 0', background: '#f0f0f0', color: '#555', border: 'none', borderRadius: 8, fontSize: 13, cursor: 'pointer' }}>Abbrechen</button>
-                  </div>
+            {(allergieHinweise?.length ?? 0) > 0 && (
+              <div style={{ marginTop: 16, padding: '10px 12px', background: '#FFFBEB', borderRadius: 8, border: '1px solid #FDE68A' }}>
+                {allergieHinweise!.map((h, i) => <div key={i} style={{ fontSize: 12, color: '#92400E', lineHeight: 1.5 }}>⚠️ {h}</div>)}
+              </div>
+            )}
+
+            {canRewrite && !confirmRewrite && !adjustMode && (
+              <div style={{ marginTop: 20, display: 'flex', gap: 8 }}>
+                <button onClick={() => setConfirmRewrite(true)} style={{ flex: 1, padding: '10px 0', background: 'none', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 13, color: '#666', cursor: 'pointer' }}>↻ Rezept neu schreiben</button>
+                <button onClick={() => setAdjustMode(true)} style={{ flex: 1, padding: '10px 0', background: 'none', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 13, color: '#666', cursor: 'pointer' }}>✏️ Rezept anpassen</button>
+              </div>
+            )}
+            {canRewrite && confirmRewrite && (
+              <div style={{ marginTop: 20, padding: '12px 14px', background: '#FFFBEB', borderRadius: 10, border: '1px solid #FDE68A' }}>
+                <div style={{ fontSize: 13, color: '#92400E', marginBottom: 10 }}>Rezept neu schreiben? Das bisherige Rezept wird ersetzt.</div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button onClick={() => { setConfirmRewrite(false); onRewrite?.() }} style={{ flex: 1, padding: '8px 0', background: '#F59E0B', color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Ja, neu schreiben</button>
+                  <button onClick={() => setConfirmRewrite(false)} style={{ flex: 1, padding: '8px 0', background: '#f0f0f0', color: '#555', border: 'none', borderRadius: 8, fontSize: 13, cursor: 'pointer' }}>Abbrechen</button>
                 </div>
-              ) : (
-                <button onClick={() => setConfirmRewrite(true)} style={{ marginTop: 20, width: '100%', padding: '10px 0', background: 'none', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 13, color: '#666', cursor: 'pointer' }}>↻ Rezept neu schreiben</button>
-              )
+              </div>
+            )}
+            {canRewrite && adjustMode && (
+              <div style={{ marginTop: 20 }}>
+                <textarea
+                  placeholder="Was soll anders sein? (z.B. ohne Sellerie, mehr Knoblauch, zusätzlich Parmesan)"
+                  maxLength={200}
+                  value={adjustText}
+                  onChange={e => setAdjustText(e.target.value)}
+                  style={{ width: '100%', fontSize: 13, padding: '8px 10px', border: '1px solid #e5e7eb', borderRadius: 8, resize: 'none', height: 80, boxSizing: 'border-box', color: '#111', lineHeight: 1.5 }}
+                />
+                <div style={{ fontSize: 11, color: '#aaa', textAlign: 'right', marginTop: 2 }}>{adjustText.length}/200</div>
+                <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                  <button onClick={() => { setAdjustMode(false); setAdjustText('') }} style={{ flex: 1, padding: '8px 0', background: '#f0f0f0', color: '#555', border: 'none', borderRadius: 8, fontSize: 13, cursor: 'pointer' }}>Abbrechen</button>
+                  <button
+                    onClick={() => { if (adjustText.trim()) { onAdjust?.(adjustText.trim()); setAdjustMode(false); setAdjustText('') } }}
+                    disabled={!adjustText.trim()}
+                    style={{ flex: 1, padding: '8px 0', background: adjustText.trim() ? '#1D9E75' : '#d1fae5', color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: adjustText.trim() ? 'pointer' : 'default' }}
+                  >Anpassen</button>
+                </div>
+              </div>
             )}
           </>
         )}

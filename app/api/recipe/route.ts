@@ -66,6 +66,48 @@ Antworte NUR als reines JSON-Array ohne Markdown: [{"menge":"...","name":"...","
     return NextResponse.json({ zutaten: existingZutaten })
   }
 
+  // ── Anpassen-Modus: bestehendes Rezept gezielt ändern ───────────────────
+  if (body.mode === 'adjust') {
+    const { gericht, existingRezept, wunsch, personCount: adjPC, familyPrompt: adjFP } = body as {
+      gericht: string; existingRezept: object; wunsch: string; personCount?: number; familyPrompt?: string
+    }
+    if (!apiKey) return NextResponse.json({ rezept: existingRezept, allergieHinweise: [] })
+    const familienProfil = adjFP || 'Sabine (keine Nüsse), Heiko (laktosefrei), Tim (kein Fisch)'
+    const anzahl = typeof adjPC === 'number' && adjPC > 0 ? adjPC : 4
+    const adjustPrompt = `Du bist Rémy. Passe dieses bestehende Rezept für "${gericht}" an.
+Gewünschte Änderung: "${wunsch}"
+Familie: ${familienProfil}
+Bestehendes Rezept: ${JSON.stringify(existingRezept)}
+
+Regeln:
+1. Ändere NUR was explizit gewünscht ist – alles andere bleibt identisch.
+2. Allergie-Schutz: Zutaten mit "fuer"-Feld sind allergiegerecht angepasst. Widerspricht ein Wunsch einer solchen Anpassung (z.B. "normale Nudeln" bei bestehender glutenfreier Variante), behalte die allergiegerechte Version und schreibe einen deutschen Hinweis in allergieHinweise, z.B. "Für Heiko bleibt die glutenfreie Variante erhalten."
+3. Neue Zutaten, die gegen eine Familienunverträglichkeit verstoßen: allergiegerechte Version eintragen mit "fuer":"Name".
+4. Grundvorrat: nur kleine Mengen allgegenwärtiger Vorratsartikel. Hauptzutaten in größerer Menge: "frisch" oder "speisekammer".
+5. ${anzahl} Person${anzahl === 1 ? '' : 'en'} – Mengen bei neuen Zutaten passend skalieren.
+6. Kein "Schritt N:" am Anfang der Schritte.
+7. allergieHinweise: [] wenn kein Konflikt.
+
+Antworte NUR als reines JSON ohne Markdown:
+{"rezept":{"name":"${gericht}","emoji":"...","zutaten":[...],"schritte":[...],"minuten":0,"schwierigkeit":"...","ersetzteZutaten":[]},"allergieHinweise":[]}`
+    try {
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const raw = await callClaude(apiKey, adjustPrompt)
+        if (!raw) continue
+        const jsonStart = raw.indexOf('{')
+        const jsonEnd = raw.lastIndexOf('}')
+        if (jsonStart === -1 || jsonEnd === -1) continue
+        const parsed = JSON.parse(raw.slice(jsonStart, jsonEnd + 1))
+        const rezept = (parsed.rezept && Array.isArray(parsed.rezept?.zutaten)) ? parsed.rezept
+          : Array.isArray(parsed.zutaten) ? parsed
+          : null
+        if (!rezept) continue
+        return NextResponse.json({ rezept, allergieHinweise: (parsed.allergieHinweise ?? []) as string[] })
+      }
+    } catch { /* fall through */ }
+    return NextResponse.json({ rezept: existingRezept, allergieHinweise: [] })
+  }
+
   // ── Normal-Modus: vollständiges Rezept generieren ────────────────────────
   const { gericht, emoji, freezerList, pantryList, familyPrompt, personCount } = body
   if (!apiKey) {

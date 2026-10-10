@@ -475,6 +475,30 @@ export async function rescaleRecipe(existing: Rezept, newPersonCount: number): P
   }
 }
 
+export async function adjustRecipe(
+  existing: Rezept,
+  wunsch: string,
+  personCount: number,
+  freezerList: string,
+  pantryList: string,
+  familyPrompt?: string,
+): Promise<{ rezept: Rezept; allergieHinweise: string[] } | null> {
+  try {
+    const resp = await fetch('/api/recipe', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode: 'adjust', gericht: existing.name, existingRezept: existing, wunsch, personCount, familyPrompt }),
+    })
+    if (!resp.ok) throw new Error('HTTP error')
+    const data = await resp.json()
+    const rezept = data.rezept as Rezept
+    if (!rezept || !Array.isArray(rezept.zutaten)) throw new Error('Invalid response')
+    return { rezept, allergieHinweise: (data.allergieHinweise as string[]) ?? [] }
+  } catch {
+    return null
+  }
+}
+
 export async function loadMissingRecipes(
   entries: WeekPlanEntry[],
   store: Record<string, Rezept>,
