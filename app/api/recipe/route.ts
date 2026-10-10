@@ -83,10 +83,12 @@ WICHTIG: Ändere den Namen des Gerichts NIE. Liste ALLE Zutaten mit genauen Meng
 - "grundvorrat": NUR kleine Mengen allgegenwärtiger Vorratsartikel, die NICHT auf die Einkaufsliste kommen (z.B. 1–2 TL Salz, ½ TL Pfeffer, 1–2 EL Öl/Butter, 1–2 Zehen Knoblauch als Würze, 1 TL getrocknete Gewürze wie Paprika/Oregano/Kreuzkümmel, 1 EL Essig). WICHTIG: Ist eine solche Zutat Hauptbestandteil des Gerichts oder wird sie in größerer Menge benötigt (z.B. 8 Zehen Knoblauch bei Aglio e Olio, viele Zwiebeln für Suppe, viel Butter in einem Buttergebäck), dann "frisch" oder "speisekammer" verwenden – NICHT grundvorrat.
 Zubereitung in 5–8 konkreten Schritten mit Zeiten und Temperaturen. Kein "Schritt N:" am Anfang – die Nummerierung erfolgt automatisch in der App.
 
-Allergie-Regel: Prüfe jede Zutat gegen die Unverträglichkeiten der Familienmitglieder (Daten in "Familie:" oben). Wenn eine Zutat gegen eine Unverträglichkeit verstößt, trag NUR die benötigte Ersatz-Zutat in ersetzteZutaten ein als "Menge Ersatz-Zutat (für Name)", z.B. "500g glutenfreie Spaghetti (für Name mit Glutenunverträglichkeit)". Betrifft keine Zutat eine Unverträglichkeit, setze ersetzteZutaten auf [].
+Allergie-Regel: Prüfe jede Zutat gegen die Unverträglichkeiten der Familienmitglieder (Daten in "Familie:" oben).
+Wenn eine Zutat gegen eine Unverträglichkeit verstößt: Ersetze sie DIREKT in zutaten durch die allergiegerechte Version (kein Original-Eintrag) und setze das Feld "fuer":"Name" auf dieser Zutat. Trage sie zusätzlich in ersetzteZutaten ein als "Menge Ersatz-Zutat (für Name)" (für den Wochenplan-Hinweis).
+Betrifft keine Zutat eine Unverträglichkeit: fuer-Felder komplett weglassen, ersetzteZutaten auf [].
 
 Antworte NUR als reines JSON ohne Markdown-Codeblock:
-{"name":"${gericht}","emoji":"${emoji || '🍽'}","zutaten":[{"menge":"400g","name":"...","typ":"frisch"},{"menge":"1 TL","name":"Salz","typ":"grundvorrat"}],"schritte":["(5 Min.) ...","(10 Min.) ..."],"minuten":30,"schwierigkeit":"Einfach","ersetzteZutaten":[]}`
+{"name":"${gericht}","emoji":"${emoji || '🍽'}","zutaten":[{"menge":"400g","name":"...","typ":"frisch"},{"menge":"500g","name":"... (glutenfrei)","typ":"speisekammer","fuer":"Heiko"},{"menge":"1 TL","name":"Salz","typ":"grundvorrat"}],"schritte":["(5 Min.) ...","(10 Min.) ..."],"minuten":30,"schwierigkeit":"Einfach","ersetzteZutaten":["500g ... (glutenfrei) (für Heiko)"]}`
 
   try {
     const raw = await callClaude(apiKey, prompt)

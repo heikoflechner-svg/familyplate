@@ -3585,13 +3585,26 @@ function RecipeModal({ name, rezept, loading, onClose }: { name: string; rezept:
             <div style={{ marginBottom: 20 }}>
               {rezept.zutaten.map((z, i) => {
                 const isGrundvorrat = z.typ === 'grundvorrat'
+                const isAllergie = !!z.fuer
                 return (
-                  <div key={i} style={{ display: 'flex', alignItems: 'baseline', gap: 8, padding: '6px 0', borderBottom: '1px solid #f5f5f5', opacity: isGrundvorrat ? 0.55 : 1 }}>
-                    <span style={{ fontSize: 12, color: '#aaa', minWidth: 70 }}>{z.menge}</span>
-                    <span style={{ fontSize: 13, color: isGrundvorrat ? '#888' : '#111', fontStyle: isGrundvorrat ? 'italic' : 'normal' }}>{z.name}{isGrundvorrat ? ' (im Haushalt vorhanden)' : ''}</span>
+                  <div key={i} style={{ display: 'flex', alignItems: 'baseline', gap: 8, padding: '6px 0', borderBottom: '1px solid #f5f5f5', opacity: isGrundvorrat ? 0.55 : 1, ...(isAllergie ? { background: '#FFFBEB', borderRadius: 6, padding: '5px 6px', margin: '2px 0' } : {}) }}>
+                    {isAllergie && <span style={{ fontSize: 12, flexShrink: 0 }}>⚠️</span>}
+                    <span style={{ fontSize: 12, color: '#aaa', minWidth: 70, flexShrink: 0 }}>{z.menge}</span>
+                    <span style={{ fontSize: 13, color: isGrundvorrat ? '#888' : '#111', fontStyle: isGrundvorrat ? 'italic' : 'normal', flex: 1 }}>
+                      {z.name}{isGrundvorrat ? ' (im Haushalt vorhanden)' : ''}
+                      {isAllergie && <span style={{ color: '#92400E', fontSize: 11 }}>{' · für '}{z.fuer}</span>}
+                    </span>
                   </div>
                 )
               })}
+              {!rezept.zutaten.some(z => z.fuer) && (rezept.ersetzteZutaten?.length ?? 0) > 0 && (
+                rezept.ersetzteZutaten!.map((s, i) => (
+                  <div key={`er-${i}`} style={{ display: 'flex', alignItems: 'baseline', gap: 8, padding: '5px 6px', borderRadius: 6, background: '#FFFBEB', margin: '2px 0', borderBottom: '1px solid #f5f5f5' }}>
+                    <span style={{ fontSize: 12, flexShrink: 0 }}>⚠️</span>
+                    <span style={{ fontSize: 13, color: '#92400E', flex: 1 }}>{s}</span>
+                  </div>
+                ))
+              )}
             </div>
 
             <div className="lbl">Zubereitung</div>

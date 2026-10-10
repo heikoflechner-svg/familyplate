@@ -464,7 +464,12 @@ export async function rescaleRecipe(existing: Rezept, newPersonCount: number): P
     const data = await resp.json()
     const zutaten = data.zutaten as Rezept['zutaten']
     if (!Array.isArray(zutaten) || zutaten.length === 0) throw new Error('No zutaten')
-    return { ...existing, zutaten, personenAnzahl: newPersonCount }
+    // API returns only {menge,name,typ} — re-apply fuer from existing by name match
+    const zutatenMitFuer = zutaten.map(z => {
+      const orig = existing.zutaten.find(e => e.name.toLowerCase() === z.name.toLowerCase())
+      return orig?.fuer ? { ...z, fuer: orig.fuer } : z
+    })
+    return { ...existing, zutaten: zutatenMitFuer, personenAnzahl: newPersonCount }
   } catch {
     return null
   }

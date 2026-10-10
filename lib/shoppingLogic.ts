@@ -60,18 +60,23 @@ function generateItemsForEntry(entry: WeekPlanEntry, mealsData: Record<string, R
       ...(nextWeek ? { nextWeek: true } : {}),
     })
   }
-  for (const ersatz of (rezept.ersetzteZutaten ?? [])) {
-    items.push({
-      id: randomId(),
-      name: ersatz,
-      menge: '',
-      kategorie: 'Ersatz-Zutat',
-      erledigt: false,
-      tag: entry.tag,
-      slot: entry.slot,
-      gericht: entry.gericht,
-      ...(nextWeek ? { nextWeek: true } : {}),
-    })
+  // Neue Rezepte markieren allergiegerechte Zutaten mit `fuer` direkt in zutaten →
+  // ersetzteZutaten nur für alte Rezepte als Fallback nutzen, sonst Duplikate.
+  const hasFuerMarkierung = rezept.zutaten.some(z => z.fuer)
+  if (!hasFuerMarkierung) {
+    for (const ersatz of (rezept.ersetzteZutaten ?? [])) {
+      items.push({
+        id: randomId(),
+        name: ersatz,
+        menge: '',
+        kategorie: 'Ersatz-Zutat',
+        erledigt: false,
+        tag: entry.tag,
+        slot: entry.slot,
+        gericht: entry.gericht,
+        ...(nextWeek ? { nextWeek: true } : {}),
+      })
+    }
   }
   return items
 }
