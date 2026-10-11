@@ -194,21 +194,21 @@ const EXCEPTIONS: Record<CanonicalAllergen, string[]> = {
 // 'laktosefrei' neutralises 'Laktose' but NOT 'Milcheiweiß' (milk-protein allergy
 // requires vegan/milchfrei — laktosefrei cheese still contains milk protein).
 const SUBSTITUTES: Record<CanonicalAllergen, string[]> = {
-  'Gluten':       ['glutenfrei', 'gluten-frei'],
+  'Gluten':       ['glutenfrei', 'gluten-frei', 'ohne gluten'],
   'Laktose':      ['laktosefrei', 'laktose-frei', 'ohne laktose', 'pflanzlich', 'vegan', 'milchfrei'],
   'Milcheiweiß':  ['pflanzlich', 'vegan', 'milchfrei'],  // laktosefrei is NOT sufficient
-  'Eier':         ['vegan', 'ei-ersatz'],
-  'Erdnüsse':     [],
-  'Nüsse':        [],
-  'Soja':         [],
-  'Fisch':        [],
-  'Krebstiere':   ['vegan', 'pflanzlich'],
-  'Weichtiere':   ['vegan', 'pflanzlich'],
+  'Eier':         ['vegan', 'ei-ersatz', 'eiersatz', 'ei-frei', 'eierfrei', 'ohne ei', 'ohne eier'],
+  'Erdnüsse':     ['erdnussfrei', 'ohne erdnuss'],
+  'Nüsse':        ['nussfrei', 'nuss-frei', 'ohne nüsse'],
+  'Soja':         ['sojafrei', 'ohne soja'],
+  'Fisch':        ['fischfrei', 'ohne fisch'],
+  'Krebstiere':   ['vegan', 'pflanzlich', 'ohne garnelen', 'ohne krebstiere'],
+  'Weichtiere':   ['vegan', 'pflanzlich', 'ohne muscheln', 'muschelfrei'],
   'Meeresfrüchte': ['vegan', 'pflanzlich'],
-  'Sellerie':     ['selleriefreiheit', 'ohne sellerie'],
-  'Senf':         ['senffreiheit', 'ohne senf'],
+  'Sellerie':     ['selleriefreiheit', 'selleriefrei', 'ohne sellerie'],
+  'Senf':         ['senffreiheit', 'senffrei', 'ohne senf'],
   'Sesam':        ['sesam-frei', 'sesamfrei', 'ohne sesam'],
-  'Lupinen':      [],
+  'Lupinen':      ['lupinenfrei', 'ohne lupinen'],
   'Sulfite':      ['ohne schwefeldioxid', 'sulfitfrei', 'schwefelfreiheit'],
   'Fleisch':      ['vegan', 'pflanzlich', 'vegetarisch'],
 }
@@ -236,6 +236,16 @@ const SUBSTITUTE_SYNONYMS: SynonymEntry[] = [
   // Tamari does NOT solve Soja — Tamari contains soy and Fix 2 will warn for it.
   { syn: 'tamari',                targets: ['sojasauce'],      solvesAllergen: 'Gluten' },
   { syn: 'glutenfreie sojasauce', targets: ['sojasauce'],      solvesAllergen: 'Gluten' },
+
+  // ── Ei-Ersatz ─────────────────────────────────────────────────────────────
+  // These products replace eggs but may themselves contain other allergens.
+  // Tofu still warns for Soja via Pass 2 (KEYWORDS['Soja'] contains 'tofu').
+  { syn: 'tofu',       targets: ['eier', 'eigelb', 'eiweiß'], solvesAllergen: 'Eier' },
+  { syn: 'leinsamen',  targets: ['eier', 'eigelb', 'eiweiß'], solvesAllergen: 'Eier' },
+  { syn: 'chiasamen',  targets: ['eier', 'eigelb', 'eiweiß'], solvesAllergen: 'Eier' },
+  { syn: 'aquafaba',   targets: ['eier', 'eigelb', 'eiweiß'], solvesAllergen: 'Eier' },
+  { syn: 'ei-ersatz',  targets: ['eier', 'eigelb', 'eiweiß'], solvesAllergen: 'Eier' },
+  { syn: 'eiersatz',   targets: ['eier', 'eigelb', 'eiweiß'], solvesAllergen: 'Eier' },
 
   // ── Milch-Ersatz ─────────────────────────────────────────────────────────
   // Each entry solves only Laktose or Milcheiweiß. The substitute's own allergens
@@ -402,8 +412,14 @@ export function checkAllergens(rezept: RezeptLike, presentMembers: CheckMember[]
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+// Internal / retry-hint format: "Zutat → Allergen (Person)"
 export function formatAllergenWarnings(issues: AllergenIssue[]): string[] {
   return issues.map(i => `${i.zutat} → ${i.allergen} (${i.person})`)
+}
+
+// Display format for meal cards and recipe modal: "Zutat enthält Allergen – Person"
+export function formatAllergenWarningsCard(issues: AllergenIssue[]): string[] {
+  return issues.map(i => `${i.zutat} enthält ${i.allergen} – ${i.person}`)
 }
 
 export function buildAllergenRetryHint(issues: AllergenIssue[]): string {

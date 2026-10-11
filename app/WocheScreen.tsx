@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { generateWeekPlan, getRemySuggestions, generateRecipe, rescaleRecipe, adjustRecipe, loadMissingRecipes, getPersonCountForSlot, saveLastDishes, isFullRecipe, getMondayIso, getNextMondayIso, applySwap, checkAllergiesForSwap, checkFreshnessWarning, loadHistoryDishes } from '../lib/mealLogic'
-import { checkAllergens, formatAllergenWarnings } from '../lib/allergenCheck'
+import { checkAllergens, formatAllergenWarningsCard } from '../lib/allergenCheck'
 import { rescaleShoppingListMengen, rewriteShoppingItemsForDish, swapShoppingItemsTags } from '../lib/shoppingLogic'
 import { getFreezerListString, getPantryListString, addFreezerItem, deleteFreezerItem } from '../lib/freezerLogic'
 import { buildFamilyPrompt, buildMemberCfg, DEFAULT_MEMBERS } from '../lib/familyLogic'
@@ -182,9 +182,14 @@ export default function WocheScreen({
   )
 
   function getRecipeAllergenWarnings(rezept: Rezept | undefined): string[] {
-    if (!rezept?.zutaten?.length || allergenCheckMembers.length === 0) return []
-    if (rezept.offeneAllergene?.length) return rezept.offeneAllergene
-    return formatAllergenWarnings(checkAllergens(rezept, allergenCheckMembers))
+    if (!isFullRecipe(rezept) || allergenCheckMembers.length === 0) return []
+    if (rezept!.offeneAllergene?.length) {
+      // Convert stored "Zutat → Allergen (Person)" to display format
+      return rezept!.offeneAllergene.map(w =>
+        w.replace(/^(.+) → (.+?) \((.+)\)$/, '$1 enthält $2 – $3'),
+      )
+    }
+    return formatAllergenWarningsCard(checkAllergens(rezept!, allergenCheckMembers))
   }
   const memberIds = activeMembers.map(m => m.id)
   const suggestedNextChef: Chef = ([...activeMembers].sort((a, b) => {
@@ -2325,7 +2330,7 @@ export default function WocheScreen({
                           <div onClick={() => openPendingPlanRecipe(e.gericht, e.emoji, e.tag, e.slot)} style={{ flex: 1, cursor: 'pointer' }}>
                             <div style={{ fontSize: 13, fontWeight: 700, color: '#111', display: 'flex', alignItems: 'center', gap: 4 }}>
                               {e.gericht}<span style={{ fontSize: 10, color: '#bbb' }}>›</span>
-                              {(pendingPlanMeals[e.gericht]?.ersetzteZutaten?.length ?? 0) > 0 && (
+                              {getRecipeAllergenWarnings(pendingPlanMeals[e.gericht]).length > 0 && (
                                 <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 14, height: 14, borderRadius: '50%', background: '#EF4444', color: 'white', fontSize: 9, fontWeight: 700, flexShrink: 0 }}>!</span>
                               )}
                             </div>
@@ -2333,7 +2338,7 @@ export default function WocheScreen({
                               <div style={{ fontSize: 10, color: '#DC2626', marginTop: 1 }}>⚠️ {pendingPlanMeals[e.gericht]!.ersetzteZutaten!.join(' · ')}</div>
                             )}
                             {getRecipeAllergenWarnings(pendingPlanMeals[e.gericht]).length > 0 && (
-                              <div style={{ fontSize: 10, color: '#991B1B', marginTop: 1 }}>⚠️ Allergie: {getRecipeAllergenWarnings(pendingPlanMeals[e.gericht]).join(' · ')}</div>
+                              <div style={{ fontSize: 10, color: '#991B1B', marginTop: 1 }}>⚠️ Prüfen: {getRecipeAllergenWarnings(pendingPlanMeals[e.gericht]).join(' · ')}</div>
                             )}
                             <div style={{ fontSize: 11, color: '#aaa' }}>{e.minuten} min</div>
                           </div>
@@ -2839,7 +2844,7 @@ export default function WocheScreen({
                           <div style={{ flex: 1 }}>
                             <div style={{ fontSize: 13, fontWeight: 700, color: '#111', display: 'flex', alignItems: 'center', gap: 4 }}>
                               {e.gericht}<span style={{ fontSize: 10, color: '#bbb' }}>›</span>
-                              {(mealsData[e.gericht]?.ersetzteZutaten?.length ?? 0) > 0 && (
+                              {getRecipeAllergenWarnings(mealsData[e.gericht]).length > 0 && (
                                 <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 14, height: 14, borderRadius: '50%', background: '#EF4444', color: 'white', fontSize: 9, fontWeight: 700, flexShrink: 0 }}>!</span>
                               )}
                             </div>
@@ -2847,7 +2852,7 @@ export default function WocheScreen({
                               <div style={{ fontSize: 10, color: '#DC2626', marginTop: 1 }}>⚠️ {mealsData[e.gericht]!.ersetzteZutaten!.join(' · ')}</div>
                             )}
                             {getRecipeAllergenWarnings(mealsData[e.gericht]).length > 0 && (
-                              <div style={{ fontSize: 10, color: '#991B1B', marginTop: 1 }}>⚠️ Allergie: {getRecipeAllergenWarnings(mealsData[e.gericht]).join(' · ')}</div>
+                              <div style={{ fontSize: 10, color: '#991B1B', marginTop: 1 }}>⚠️ Prüfen: {getRecipeAllergenWarnings(mealsData[e.gericht]).join(' · ')}</div>
                             )}
                             <div style={{ fontSize: 11, color: '#aaa' }}>{e.minuten} min</div>
                           </div>
@@ -3236,7 +3241,7 @@ export default function WocheScreen({
                                         <div onClick={() => openNwPendingRecipe(e!.gericht, e!.emoji, e!.tag, e!.slot)} style={{ flex: 1, cursor: 'pointer' }}>
                                           <div style={{ fontSize: 12, fontWeight: 600, color: '#111', display: 'flex', alignItems: 'center', gap: 4 }}>
                                             {e!.gericht}<span style={{ fontSize: 10, color: '#bbb' }}>›</span>
-                                            {(nwPendingMeals[e!.gericht]?.ersetzteZutaten?.length ?? 0) > 0 && (
+                                            {getRecipeAllergenWarnings(nwPendingMeals[e!.gericht]).length > 0 && (
                                               <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 14, height: 14, borderRadius: '50%', background: '#EF4444', color: 'white', fontSize: 9, fontWeight: 700, flexShrink: 0 }}>!</span>
                                             )}
                                           </div>
@@ -3244,7 +3249,7 @@ export default function WocheScreen({
                                             <div style={{ fontSize: 10, color: '#DC2626', marginTop: 1 }}>⚠️ {nwPendingMeals[e!.gericht]!.ersetzteZutaten!.join(' · ')}</div>
                                           )}
                                           {getRecipeAllergenWarnings(nwPendingMeals[e!.gericht]).length > 0 && (
-                                            <div style={{ fontSize: 10, color: '#991B1B', marginTop: 1 }}>⚠️ Allergie: {getRecipeAllergenWarnings(nwPendingMeals[e!.gericht]).join(' · ')}</div>
+                                            <div style={{ fontSize: 10, color: '#991B1B', marginTop: 1 }}>⚠️ Prüfen: {getRecipeAllergenWarnings(nwPendingMeals[e!.gericht]).join(' · ')}</div>
                                           )}
                                         </div>
                                         <span style={{ fontSize: 10, color: '#bbb' }}>{e!.minuten} min</span>
@@ -3287,7 +3292,7 @@ export default function WocheScreen({
                                   <div onClick={() => openNwSavedRecipe(e!.gericht, e!.emoji, e!.tag, e!.slot)} style={{ flex: 1, cursor: 'pointer' }}>
                                     <div style={{ fontSize: 12, color: '#333', display: 'flex', alignItems: 'center', gap: 4 }}>
                                       {e!.gericht}<span style={{ fontSize: 10, color: '#bbb' }}>›</span>
-                                      {(nwr?.ersetzteZutaten?.length ?? 0) > 0 && (
+                                      {getRecipeAllergenWarnings(nwr).length > 0 && (
                                         <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 14, height: 14, borderRadius: '50%', background: '#EF4444', color: 'white', fontSize: 9, fontWeight: 700, flexShrink: 0 }}>!</span>
                                       )}
                                     </div>
@@ -3295,7 +3300,7 @@ export default function WocheScreen({
                                       <div style={{ fontSize: 10, color: '#DC2626', marginTop: 1 }}>⚠️ {nwr!.ersetzteZutaten!.join(' · ')}</div>
                                     )}
                                     {getRecipeAllergenWarnings(nwr).length > 0 && (
-                                      <div style={{ fontSize: 10, color: '#991B1B', marginTop: 1 }}>⚠️ Allergie: {getRecipeAllergenWarnings(nwr).join(' · ')}</div>
+                                      <div style={{ fontSize: 10, color: '#991B1B', marginTop: 1 }}>⚠️ Prüfen: {getRecipeAllergenWarnings(nwr).join(' · ')}</div>
                                     )}
                                   </div>
                                   <span style={{ fontSize: 10, color: '#bbb' }}>{e!.minuten} min</span>
@@ -3462,7 +3467,7 @@ export default function WocheScreen({
                                   <div style={{ flex: 1 }}>
                                     <div style={{ fontSize: 13, fontWeight: 700, color: '#111', display: 'flex', alignItems: 'center', gap: 4 }}>
                                       {e.gericht}<span style={{ fontSize: 10, color: '#bbb' }}>›</span>
-                                      {(nextWeekData?.mealsData?.[e.gericht]?.ersetzteZutaten?.length ?? 0) > 0 && (
+                                      {getRecipeAllergenWarnings(nextWeekData?.mealsData?.[e.gericht]).length > 0 && (
                                         <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 14, height: 14, borderRadius: '50%', background: '#EF4444', color: 'white', fontSize: 9, fontWeight: 700, flexShrink: 0 }}>!</span>
                                       )}
                                     </div>
@@ -3470,7 +3475,7 @@ export default function WocheScreen({
                                       <div style={{ fontSize: 10, color: '#DC2626', marginTop: 1 }}>⚠️ {nextWeekData!.mealsData![e.gericht]!.ersetzteZutaten!.join(' · ')}</div>
                                     )}
                                     {getRecipeAllergenWarnings(nextWeekData?.mealsData?.[e.gericht]).length > 0 && (
-                                      <div style={{ fontSize: 10, color: '#991B1B', marginTop: 1 }}>⚠️ Allergie: {getRecipeAllergenWarnings(nextWeekData?.mealsData?.[e.gericht]).join(' · ')}</div>
+                                      <div style={{ fontSize: 10, color: '#991B1B', marginTop: 1 }}>⚠️ Prüfen: {getRecipeAllergenWarnings(nextWeekData?.mealsData?.[e.gericht]).join(' · ')}</div>
                                     )}
                                     <div style={{ fontSize: 11, color: '#aaa' }}>{e.minuten} min</div>
                                   </div>
@@ -3714,12 +3719,15 @@ export default function WocheScreen({
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 13, fontWeight: 700, color: '#111', display: 'flex', alignItems: 'center', gap: 4 }}>
               {entry.gericht}<span style={{ fontSize: 10, color: '#bbb' }}>›</span>
-              {(mealsData[entry.gericht]?.ersetzteZutaten?.length ?? 0) > 0 && (
+              {getRecipeAllergenWarnings(mealsData[entry.gericht]).length > 0 && (
                 <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 14, height: 14, borderRadius: '50%', background: '#EF4444', color: 'white', fontSize: 9, fontWeight: 700, flexShrink: 0 }}>!</span>
               )}
             </div>
             {(mealsData[entry.gericht]?.ersetzteZutaten?.length ?? 0) > 0 && (
               <div style={{ fontSize: 10, color: '#DC2626', marginTop: 1 }}>⚠️ {mealsData[entry.gericht]!.ersetzteZutaten!.join(' · ')}</div>
+            )}
+            {getRecipeAllergenWarnings(mealsData[entry.gericht]).length > 0 && (
+              <div style={{ fontSize: 10, color: '#991B1B', marginTop: 1 }}>⚠️ Prüfen: {getRecipeAllergenWarnings(mealsData[entry.gericht]).join(' · ')}</div>
             )}
             <div style={{ fontSize: 11, color: '#aaa' }}>{entry.minuten} min</div>
           </div>
@@ -3798,7 +3806,7 @@ export default function WocheScreen({
   return (
     <div className="screen active" style={{ position: 'relative' }}>
       {selectedMealName && (
-        <RecipeModal name={selectedMealName} rezept={selectedRezept(selectedMealName)} loading={recipeLoading === selectedMealName} onClose={() => { setSelectedMealName(null); setRecipeContext(null); setAdjustAllergieHinweise([]) }} canRewrite={currentUser === wochenchef || canEditSettings} onRewrite={rewriteRecipe} onAdjust={handleAdjustRecipe} allergieHinweise={adjustAllergieHinweise} />
+        <RecipeModal name={selectedMealName} rezept={selectedRezept(selectedMealName)} loading={recipeLoading === selectedMealName} onClose={() => { setSelectedMealName(null); setRecipeContext(null); setAdjustAllergieHinweise([]) }} canRewrite={currentUser === wochenchef || canEditSettings} onRewrite={rewriteRecipe} onAdjust={handleAdjustRecipe} allergieHinweise={adjustAllergieHinweise} offeneAllergene={getRecipeAllergenWarnings(selectedRezept(selectedMealName) ?? undefined)} />
       )}
       {swapTarget && swapSource && (() => {
         const { tag: t1, slot: s1, entry: e1 } = swapSource
