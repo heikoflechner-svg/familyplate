@@ -321,6 +321,7 @@ export default function WocheScreen({
   const [kochPanelKey, setKochPanelKey] = useState<string | null>(null)
   const [restPortionen, setRestPortionen] = useState<Record<string, number>>({})
   const [vorratHinweis, setVorratHinweis] = useState(false)
+  const [showPastDays, setShowPastDays] = useState(false)
 
   const [swapSource, setSwapSource] = useState<{ tag: string; slot: WochenSlot; entry: WeekPlanEntry } | null>(null)
   const [swapTarget, setSwapTarget] = useState<{ tag: string; slot: WochenSlot; entry: WeekPlanEntry } | null>(null)
@@ -1224,6 +1225,9 @@ export default function WocheScreen({
   const weekMonday = weekStart || getMondayIso()
   const activeDays = planWE ? WOCHENTAGE : WOCHENTAGE.slice(0, 5)
   const plannedDays = WOCHENTAGE.filter(t => weekPlan.some(e => e.tag === t))
+  const todayWocheIdx = WOCHENTAGE.indexOf(today)
+  const pastPlannedDays = plannedDays.filter(t => WOCHENTAGE.indexOf(t) < todayWocheIdx)
+  const futurePlannedDays = plannedDays.filter(t => WOCHENTAGE.indexOf(t) >= todayWocheIdx)
   const todayIdx = activeDays.indexOf(today)
   const nextDays = activeDays.slice(todayIdx + 1, todayIdx + 3)
   const allChefIds = (members.length ? members : DEFAULT_MEMBERS).map(m => m.id as Chef)
@@ -2424,7 +2428,16 @@ export default function WocheScreen({
               <div style={{ fontSize: 13, color: '#aaa' }}>Noch kein Plan – Rémy wartet!</div>
             </div>
           ) : (
-            plannedDays.map(tag => {
+            <>
+              {pastPlannedDays.length > 0 && (
+                <button
+                  onClick={() => setShowPastDays(v => !v)}
+                  style={{ background: 'none', border: 'none', color: '#aaa', fontSize: 11, cursor: 'pointer', padding: '0 0 10px', display: 'block' }}
+                >
+                  {showPastDays ? '↑ Vergangene Tage ausblenden' : `↓ Vergangene Tage anzeigen (${pastPlannedDays.length})`}
+                </button>
+              )}
+              {(showPastDays ? plannedDays : futurePlannedDays).map(tag => {
               const mittag = getSlot(weekPlan, tag, 'Mittag')
               const abend = getSlot(weekPlan, tag, 'Abend')
               const isLoading = dayLoading === tag
@@ -2649,7 +2662,8 @@ export default function WocheScreen({
                   })}
                 </div>
               )
-            })
+            })}
+            </>
           )}
           {currentUser === wochenchef && !planConfirmed && (
             <button className="btn soft" style={{ marginTop: 8 }} onClick={startPlanning}>
@@ -3735,6 +3749,27 @@ export default function WocheScreen({
           )
         })()}
         {renderPlanSettingsButtons('home')}
+        {pastPlannedDays.length > 0 && (
+          <button
+            onClick={() => setShowPastDays(v => !v)}
+            style={{ background: 'none', border: 'none', color: '#aaa', fontSize: 11, cursor: 'pointer', padding: '0 0 10px', display: 'block' }}
+          >
+            {showPastDays ? '↑ Vergangene Tage ausblenden' : `↓ Vergangene Tage anzeigen (${pastPlannedDays.length})`}
+          </button>
+        )}
+        {showPastDays && pastPlannedDays.map(tag => {
+          const pastMittag = getSlot(weekPlan, tag, 'Mittag')
+          const pastAbend = getSlot(weekPlan, tag, 'Abend')
+          return (
+            <div key={tag} style={{ borderRadius: 12, border: '1px solid #e5e7eb', marginBottom: 14, overflow: 'hidden' }}>
+              <div style={{ padding: '8px 12px', background: '#f9fafb', borderBottom: '1px solid #f0f0f0' }}>
+                <span style={{ fontSize: 12, fontWeight: 700, color: '#aaa' }}>{tag}<span style={{ fontWeight: 400, color: '#bbb' }}>, {getTagDate(weekMonday, tag)}</span></span>
+              </div>
+              {hasMittag(tag) && renderHomeSlot(tag, 'Mittag', pastMittag)}
+              {renderHomeSlot(tag, 'Abend', pastAbend)}
+            </div>
+          )
+        })}
         <div style={{ borderRadius: 12, border: '1px solid #e5e7eb', marginBottom: 14, overflow: 'hidden' }}>
           <div style={{ padding: '8px 12px', background: '#f0faf5', borderBottom: '1px solid #e0f0e8', display: 'flex', alignItems: 'center', gap: 6 }}>
             <span style={{ flex: 1, fontSize: 12, fontWeight: 700, color: '#085041' }}>Heute · {today}</span>
