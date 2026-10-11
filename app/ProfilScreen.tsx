@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import type { Chef, FamilyMember, FamilyProfile, MemberRole } from '../lib/state'
 import { changePassword } from '../lib/auth'
 import { supabase } from '../lib/supabase'
+import { getAllergenLabel } from '../lib/allergenOptions'
 
 const MEMBER_PALETTE = [
   { bg: '#E6F1FB', c: '#0C447C' },
@@ -254,7 +255,9 @@ export default function ProfilScreen({
         {familyProfile.members.map((m, idx) => {
           const col = MEMBER_PALETTE[idx % MEMBER_PALETTE.length]
           const isMe = m.id === currentUser
-          const allergienText = (m.allergien ?? []).length ? (m.allergien ?? []).join(', ') : null
+          const allergienRaw = m.allergien ?? []
+          const allergienText = allergienRaw.length ? allergienRaw.map(getAllergenLabel).join(', ') : null
+          const hasMilchFreitext = allergienRaw.some(a => a === 'milch' || a === 'Milch')
           const vorliebText = (m.vorlieben ?? []).length ? (m.vorlieben ?? []).join(', ') : null
           const stat = m.chefStat
           const barPct = stat ? Math.round((stat.count / maxCount) * 100) : 0
@@ -309,6 +312,11 @@ export default function ProfilScreen({
                 {allergienText && (
                   <div style={{ fontSize: 12, color: '#888' }}>
                     <span style={{ color: '#c0392b' }}>✗</span> {allergienText}
+                  </div>
+                )}
+                {hasMilchFreitext && (
+                  <div style={{ fontSize: 11, color: '#92400E', background: '#FEF3C7', border: '1px solid #F59E0B', borderRadius: 8, padding: '5px 9px', lineHeight: 1.4, marginTop: 2 }}>
+                    Bitte genauer angeben: <strong>Laktose-Unverträglichkeit</strong> oder <strong>Milch-Allergie (Milcheiweiß)</strong> – Profil bearbeiten.
                   </div>
                 )}
                 {vorliebText && (

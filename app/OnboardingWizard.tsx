@@ -4,6 +4,7 @@ import { saveFamilyProfile, loadFamilyProfile, DEFAULT_MEMBERS } from '../lib/fa
 import { supabase } from '../lib/supabase'
 import type { FamilyMember, FamilyProfile } from '../lib/state'
 import { DEFAULT_LAEDEN } from '../lib/state'
+import { ALLERGIE_OPTIONS } from '../lib/allergenOptions'
 
 const MEMBER_PALETTE = [
   { bg: '#E6F1FB', c: '#0C447C' },
@@ -13,7 +14,6 @@ const MEMBER_PALETTE = [
 ]
 function memberColor(idx: number) { return MEMBER_PALETTE[idx % MEMBER_PALETTE.length] }
 
-const ALLERGIE_OPTIONS = ['Nüsse', 'Laktose', 'Gluten', 'Fisch', 'Fleisch', 'Meeresfrüchte', 'Eier', 'Soja']
 const VORLIEBE_OPTIONS = ['Pasta', 'Pizza', 'Reis-Gerichte', 'Suppen', 'Asiatisch', 'Mediterran', 'Vegetarisch', 'Schnell (<20 Min)']
 
 interface Props {
@@ -29,7 +29,7 @@ export default function OnboardingWizard({ onDone, initialProfile, onCancel, own
     if (initialProfile) {
       return initialProfile.members.map(m => ({
         ...m,
-        allergien: (m.allergien ?? []).filter(a => ALLERGIE_OPTIONS.includes(a)),
+        allergien: (m.allergien ?? []).filter(a => ALLERGIE_OPTIONS.some(o => o.value === a)),
         vorlieben: (m.vorlieben ?? []).filter(v => VORLIEBE_OPTIONS.includes(v)),
       }))
     }
@@ -46,7 +46,7 @@ export default function OnboardingWizard({ onDone, initialProfile, onCancel, own
     if (initialProfile) {
       return Object.fromEntries(
         initialProfile.members.map(m => [m.id, {
-          a: (m.allergien ?? []).filter(a => !ALLERGIE_OPTIONS.includes(a)).join(', '),
+          a: (m.allergien ?? []).filter(a => !ALLERGIE_OPTIONS.some(o => o.value === a)).join(', '),
           v: (m.vorlieben ?? []).filter(v => !VORLIEBE_OPTIONS.includes(v)).join(', '),
         }])
       )
@@ -183,10 +183,10 @@ export default function OnboardingWizard({ onDone, initialProfile, onCancel, own
                   <div style={{ fontSize: 13, fontWeight: 700, color: col.c }}>{m.name}</div>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                     {ALLERGIE_OPTIONS.map(opt => {
-                      const active = m.allergien.includes(opt)
+                      const active = m.allergien.includes(opt.value)
                       return (
-                        <button key={opt} onClick={() => toggle(m.id, 'allergien', opt)} style={{ padding: '5px 12px', borderRadius: 20, fontSize: 12, cursor: 'pointer', border: `1px solid ${active ? col.c : '#ddd'}`, background: active ? col.bg : 'white', color: active ? col.c : '#999' }}>
-                          {opt}
+                        <button key={opt.value} onClick={() => toggle(m.id, 'allergien', opt.value)} style={{ padding: '5px 12px', borderRadius: 20, fontSize: 12, cursor: 'pointer', border: `1px solid ${active ? col.c : '#ddd'}`, background: active ? col.bg : 'white', color: active ? col.c : '#999' }}>
+                          {opt.label}
                         </button>
                       )
                     })}
@@ -197,6 +197,11 @@ export default function OnboardingWizard({ onDone, initialProfile, onCancel, own
                     onChange={e => setFreitext(f => ({ ...f, [m.id]: { ...f[m.id], a: e.target.value } }))}
                     style={{ padding: '9px 12px', fontSize: 13, borderRadius: 10, border: '1px solid #ddd', outline: 'none' }}
                   />
+                  {freitext[m.id]?.a?.toLowerCase().includes('milch') && (
+                    <div style={{ fontSize: 11, color: '#92400E', background: '#FEF3C7', border: '1px solid #F59E0B', borderRadius: 8, padding: '6px 10px', lineHeight: 1.4 }}>
+                      Hinweis: Bitte oben genauer angeben – <strong>Laktose (Unverträglichkeit)</strong> oder <strong>Milch (Allergie, Milcheiweiß)</strong>.
+                    </div>
+                  )}
                 </div>
               )
             })}
