@@ -27,14 +27,19 @@ const FALLBACK = {
   schwierigkeit: 'Einfach',
 }
 
-async function callClaude(apiKey: string, prompt: string, maxTokens = 2000): Promise<string | null> {
+const MODEL_SONNET = 'claude-sonnet-4-6'
+const MODEL_HAIKU  = 'claude-haiku-4-5'
+
+async function callClaude(apiKey: string, prompt: string, maxTokens = 2000, model = MODEL_HAIKU): Promise<string | null> {
   const resp = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
-    body: JSON.stringify({ model: 'claude-haiku-4-5', max_tokens: maxTokens, messages: [{ role: 'user', content: prompt }] }),
+    body: JSON.stringify({ model, max_tokens: maxTokens, messages: [{ role: 'user', content: prompt }] }),
   })
   const data = await resp.json()
-  return data?.content?.[0]?.text ?? null
+  // Find the first text block explicitly (guards against thinking blocks appearing first)
+  const textBlock = (data?.content as { type: string; text?: string }[] | undefined)?.find(b => b.type === 'text')
+  return textBlock?.text ?? null
 }
 
 export async function POST(req: NextRequest) {
@@ -92,7 +97,7 @@ Antworte NUR als reines JSON ohne Markdown:
 {"rezept":{"name":"${gericht}","emoji":"...","zutaten":[...],"schritte":[...],"minuten":0,"schwierigkeit":"...","ersetzteZutaten":[]},"allergieHinweise":[]}`
     try {
       for (let attempt = 0; attempt < 2; attempt++) {
-        const raw = await callClaude(apiKey, adjustPrompt)
+        const raw = await callClaude(apiKey, adjustPrompt, 2000, MODEL_SONNET)
         if (!raw) continue
         const jsonStart = raw.indexOf('{')
         const jsonEnd = raw.lastIndexOf('}')
@@ -137,7 +142,7 @@ Antworte NUR als reines JSON ohne Markdown-Codeblock:
 {"name":"${gericht}","emoji":"${emoji || '🍽'}","zutaten":[{"menge":"400g","name":"...","typ":"frisch"},{"menge":"222g","name":"Weizenmehl","typ":"speisekammer"},{"menge":"111g","name":"Mehl (glutenfrei)","typ":"speisekammer","fuer":"Heiko"},{"menge":"222g","name":"Mozzarella","typ":"frisch"},{"menge":"111g","name":"Mozzarella (laktosefrei)","typ":"frisch","fuer":"Heiko"},{"menge":"1 TL","name":"Salz","typ":"grundvorrat"}],"schritte":["(5 Min.) ...","(10 Min.) ...","(2 Min.) Heikos Portion mit glutenfreiem Mehl und laktosefreiem Mozzarella separat zubereiten (Kreuzkontamination vermeiden)."],"minuten":30,"schwierigkeit":"Einfach","ersetzteZutaten":["111g Mehl (glutenfrei) (für Heiko)","111g Mozzarella (laktosefrei) (für Heiko)"]}`
 
   try {
-    const raw = await callClaude(apiKey, prompt)
+    const raw = await callClaude(apiKey, prompt, 2000, MODEL_SONNET)
     if (!raw) throw new Error('No content')
     const jsonStart = raw.indexOf('{')
     const jsonEnd = raw.lastIndexOf('}')
