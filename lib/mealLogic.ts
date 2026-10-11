@@ -521,17 +521,22 @@ export function applySwap(
 
 export function checkAllergiesForSwap(
   rezept: Rezept,
+  fromTag: string,
+  fromSlot: WochenSlot,
   toTag: string,
   toSlot: WochenSlot,
   members: FamilyMember[],
   attendance: DayAttendance[],
 ): string[] {
   const allChefs = members.map(m => m.id as Chef)
-  const day = getAttendanceForDay(attendance, toTag, allChefs)
-  const anwesend = toSlot === 'Mittag' ? day.mittagAnwesend : day.abendAnwesend
+  const fromDay = getAttendanceForDay(attendance, fromTag, allChefs)
+  const toDay = getAttendanceForDay(attendance, toTag, allChefs)
+  const fromAnwesend = fromSlot === 'Mittag' ? fromDay.mittagAnwesend : fromDay.abendAnwesend
+  const toAnwesend = toSlot === 'Mittag' ? toDay.mittagAnwesend : toDay.abendAnwesend
+  const newlyPresent = toAnwesend.filter(c => !fromAnwesend.includes(c))
   const warnings: string[] = []
   for (const member of members) {
-    if (!anwesend.includes(member.id as Chef)) continue
+    if (!newlyPresent.includes(member.id as Chef)) continue
     if (!member.allergien || member.allergien.length === 0) continue
     const hasAdaptation = rezept.zutaten.some(z => z.fuer === member.id || z.fuer === member.name)
     if (!hasAdaptation) warnings.push(`${member.name} (${member.allergien.join(', ')})`)

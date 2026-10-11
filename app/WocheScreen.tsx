@@ -2211,14 +2211,14 @@ export default function WocheScreen({
           const chef2MissingAtSlot1 = !anw1.includes(e2.chef)
           const rezept1 = mealsData[e1.gericht]
           const rezept2 = mealsData[e2.gericht]
-          const allergie1 = rezept1 ? checkAllergiesForSwap(rezept1, t2, s2, mbs, attendance) : []
-          const allergie2 = rezept2 ? checkAllergiesForSwap(rezept2, t1, s1, mbs, attendance) : []
+          const allergie1 = rezept1 ? checkAllergiesForSwap(rezept1, t1, s1, t2, s2, mbs, attendance) : []
+          const allergie2 = rezept2 ? checkAllergiesForSwap(rezept2, t2, s2, t1, s1, mbs, attendance) : []
           const fresh1 = rezept1 ? checkFreshnessWarning(rezept1, t1, t2) : false
           const fresh2 = rezept2 ? checkFreshnessWarning(rezept2, t2, t1) : false
           const canSwapDirectly = currentUser === wochenchef || canEditSettings
           const hasWarnings = chef1MissingAtSlot2 || chef2MissingAtSlot1 || allergie1.length > 0 || allergie2.length > 0 || fresh1 || fresh2 || pc1 !== pc2
           return (
-            <div style={{ position: 'absolute', inset: 0, zIndex: 50, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
+            <div style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
               <div style={{ flex: 1, background: 'rgba(0,0,0,0.35)' }} onClick={() => setSwapTarget(null)} />
               <div style={{ background: 'white', borderRadius: '16px 16px 0 0', padding: '18px 16px 28px', maxHeight: '80vh', overflowY: 'auto' }}>
                 <div style={{ fontSize: 14, fontWeight: 700, textAlign: 'center', marginBottom: 14 }}>↔ Tauschen bestätigen</div>
@@ -2239,8 +2239,8 @@ export default function WocheScreen({
                 {(allergie1.length > 0 || allergie2.length > 0) && (
                   <div style={{ background: '#FFFBEB', border: '1px solid #FCD34D', borderRadius: 8, padding: '8px 10px', marginBottom: 8 }}>
                     <div style={{ fontSize: 11, fontWeight: 700, color: '#92400E', marginBottom: 4 }}>⚠️ Allergie-Hinweis</div>
-                    {allergie1.map((w, i) => <div key={`a1-${i}`} style={{ fontSize: 11, color: '#92400E' }}>{e1.gericht} → {t2}: {w} nicht angepasst</div>)}
-                    {allergie2.map((w, i) => <div key={`a2-${i}`} style={{ fontSize: 11, color: '#92400E' }}>{e2.gericht} → {t1}: {w} nicht angepasst</div>)}
+                    {allergie1.map((w, i) => <div key={`a1-${i}`} style={{ fontSize: 11, color: '#92400E', display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 }}><span>{w} bei {e1.gericht} → {t2}</span><button onClick={() => { handleSwapCancel(); setSelectedMealName(e1.gericht) }} style={{ fontSize: 10, color: '#92400E', background: 'none', border: '1px solid #FCD34D', borderRadius: 4, padding: '1px 5px', cursor: 'pointer', marginLeft: 6, whiteSpace: 'nowrap' }}>Rezept anpassen</button></div>)}
+                    {allergie2.map((w, i) => <div key={`a2-${i}`} style={{ fontSize: 11, color: '#92400E', display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 }}><span>{w} bei {e2.gericht} → {t1}</span><button onClick={() => { handleSwapCancel(); setSelectedMealName(e2.gericht) }} style={{ fontSize: 10, color: '#92400E', background: 'none', border: '1px solid #FCD34D', borderRadius: 4, padding: '1px 5px', cursor: 'pointer', marginLeft: 6, whiteSpace: 'nowrap' }}>Rezept anpassen</button></div>)}
                   </div>
                 )}
                 {(fresh1 || fresh2) && (
@@ -2407,7 +2407,7 @@ export default function WocheScreen({
                           {!wvIsSwapMode && !shopDone && hasPendingSwapProposal(tag, slot) && (
                             <span style={{ marginLeft: 'auto', fontSize: 10, color: '#92400E', background: '#FFFBEB', border: '1px solid #FCD34D', borderRadius: 5, padding: '1px 6px' }}>⏳ Tausch-Vorschlag</span>
                           )}
-                          {planConfirmed && !shopDone && !wvIsSwapMode && (
+                          {planConfirmed && !shopDone && !wvIsSwapMode && WOCHENTAGE.indexOf(tag) >= WOCHENTAGE.indexOf(today) && (
                             <button
                               onClick={() => handleSwapStart(tag, slot, e)}
                               style={{ marginLeft: 'auto', fontSize: 10, color: '#555', background: 'none', border: '1px solid #ddd', borderRadius: 6, padding: '2px 7px', cursor: 'pointer', lineHeight: 1.4 }}
@@ -2416,7 +2416,7 @@ export default function WocheScreen({
                           {wvIsSwapSource && (
                             <span style={{ marginLeft: 'auto', fontSize: 10, color: '#0F6E56', fontWeight: 700 }}>← Quelle</span>
                           )}
-                          {wvIsSwapMode && !wvIsSwapSource && (
+                          {wvIsSwapMode && !wvIsSwapSource && WOCHENTAGE.indexOf(tag) >= WOCHENTAGE.indexOf(today) && (
                             <button
                               onClick={() => handleSwapSelectTarget(tag, slot, e)}
                               style={{ marginLeft: 'auto', fontSize: 10, color: '#1D9E75', background: '#E1F5EE', border: '1px solid #B2DFCC', borderRadius: 6, padding: '2px 7px', cursor: 'pointer', fontWeight: 700 }}
@@ -3164,7 +3164,7 @@ export default function WocheScreen({
           {!isSwapMode && !shopDone && hasPendingSwapProposal(tag, slot) && (
             <span style={{ marginLeft: 'auto', fontSize: 10, color: '#92400E', background: '#FFFBEB', border: '1px solid #FCD34D', borderRadius: 5, padding: '1px 6px' }}>⏳ Tausch-Vorschlag</span>
           )}
-          {planConfirmed && !shopDone && !isSwapMode && (
+          {planConfirmed && !shopDone && !isSwapMode && WOCHENTAGE.indexOf(tag) >= WOCHENTAGE.indexOf(today) && (
             <button
               onClick={() => handleSwapStart(tag, slot, entry)}
               style={{ marginLeft: 'auto', fontSize: 10, color: '#555', background: 'none', border: '1px solid #ddd', borderRadius: 6, padding: '2px 7px', cursor: 'pointer', lineHeight: 1.4 }}
@@ -3173,7 +3173,7 @@ export default function WocheScreen({
           {isSwapSource && (
             <span style={{ marginLeft: 'auto', fontSize: 10, color: '#0F6E56', fontWeight: 700 }}>← Quelle</span>
           )}
-          {isSwapMode && !isSwapSource && (
+          {isSwapMode && !isSwapSource && WOCHENTAGE.indexOf(tag) >= WOCHENTAGE.indexOf(today) && (
             <button
               onClick={() => handleSwapSelectTarget(tag, slot, entry)}
               style={{ marginLeft: 'auto', fontSize: 10, color: '#1D9E75', background: '#E1F5EE', border: '1px solid #B2DFCC', borderRadius: 6, padding: '2px 7px', cursor: 'pointer', fontWeight: 700 }}
@@ -3381,14 +3381,14 @@ export default function WocheScreen({
         const chef2MissingAtSlot1 = !anw1.includes(e2.chef)
         const rezept1 = mealsData[e1.gericht]
         const rezept2 = mealsData[e2.gericht]
-        const allergie1 = rezept1 ? checkAllergiesForSwap(rezept1, t2, s2, mbs, attendance) : []
-        const allergie2 = rezept2 ? checkAllergiesForSwap(rezept2, t1, s1, mbs, attendance) : []
+        const allergie1 = rezept1 ? checkAllergiesForSwap(rezept1, t1, s1, t2, s2, mbs, attendance) : []
+        const allergie2 = rezept2 ? checkAllergiesForSwap(rezept2, t2, s2, t1, s1, mbs, attendance) : []
         const fresh1 = rezept1 ? checkFreshnessWarning(rezept1, t1, t2) : false
         const fresh2 = rezept2 ? checkFreshnessWarning(rezept2, t2, t1) : false
         const canSwapDirectly = currentUser === wochenchef || canEditSettings
         const hasWarnings = chef1MissingAtSlot2 || chef2MissingAtSlot1 || allergie1.length > 0 || allergie2.length > 0 || fresh1 || fresh2 || pc1 !== pc2
         return (
-          <div style={{ position: 'absolute', inset: 0, zIndex: 50, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
+          <div style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
             <div style={{ flex: 1, background: 'rgba(0,0,0,0.35)' }} onClick={() => { setSwapTarget(null) }} />
             <div style={{ background: 'white', borderRadius: '16px 16px 0 0', padding: '18px 16px 28px', maxHeight: '80vh', overflowY: 'auto' }}>
               <div style={{ fontSize: 14, fontWeight: 700, textAlign: 'center', marginBottom: 14 }}>↔ Tauschen bestätigen</div>
@@ -3416,10 +3416,16 @@ export default function WocheScreen({
                 <div style={{ background: '#FFFBEB', border: '1px solid #FCD34D', borderRadius: 8, padding: '8px 10px', marginBottom: 8 }}>
                   <div style={{ fontSize: 11, fontWeight: 700, color: '#92400E', marginBottom: 4 }}>⚠️ Allergie-Hinweis</div>
                   {allergie1.map((w, i) => (
-                    <div key={`a1-${i}`} style={{ fontSize: 11, color: '#92400E' }}>{e1.gericht} → {t2}: {w} nicht angepasst</div>
+                    <div key={`a1-${i}`} style={{ fontSize: 11, color: '#92400E', display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 }}>
+                      <span>{w} bei {e1.gericht} → {t2}</span>
+                      <button onClick={() => { handleSwapCancel(); setSelectedMealName(e1.gericht) }} style={{ fontSize: 10, color: '#92400E', background: 'none', border: '1px solid #FCD34D', borderRadius: 4, padding: '1px 5px', cursor: 'pointer', marginLeft: 6, whiteSpace: 'nowrap' }}>Rezept anpassen</button>
+                    </div>
                   ))}
                   {allergie2.map((w, i) => (
-                    <div key={`a2-${i}`} style={{ fontSize: 11, color: '#92400E' }}>{e2.gericht} → {t1}: {w} nicht angepasst</div>
+                    <div key={`a2-${i}`} style={{ fontSize: 11, color: '#92400E', display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 }}>
+                      <span>{w} bei {e2.gericht} → {t1}</span>
+                      <button onClick={() => { handleSwapCancel(); setSelectedMealName(e2.gericht) }} style={{ fontSize: 10, color: '#92400E', background: 'none', border: '1px solid #FCD34D', borderRadius: 4, padding: '1px 5px', cursor: 'pointer', marginLeft: 6, whiteSpace: 'nowrap' }}>Rezept anpassen</button>
+                    </div>
                   ))}
                 </div>
               )}
