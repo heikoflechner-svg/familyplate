@@ -1227,7 +1227,7 @@ export default function WocheScreen({
   const plannedDays = WOCHENTAGE.filter(t => weekPlan.some(e => e.tag === t))
   const todayWocheIdx = WOCHENTAGE.indexOf(today)
   const pastPlannedDays = plannedDays.filter(t => WOCHENTAGE.indexOf(t) < todayWocheIdx)
-  const futurePlannedDays = plannedDays.filter(t => WOCHENTAGE.indexOf(t) >= todayWocheIdx)
+  const futureActiveDays = activeDays.filter(t => WOCHENTAGE.indexOf(t) >= todayWocheIdx)
   const todayIdx = activeDays.indexOf(today)
   const nextDays = activeDays.slice(todayIdx + 1, todayIdx + 3)
   const allChefIds = (members.length ? members : DEFAULT_MEMBERS).map(m => m.id as Chef)
@@ -2437,7 +2437,7 @@ export default function WocheScreen({
                   {showPastDays ? '↑ Vergangene Tage ausblenden' : `↓ Vergangene Tage anzeigen (${pastPlannedDays.length})`}
                 </button>
               )}
-              {(showPastDays ? plannedDays : futurePlannedDays).map(tag => {
+              {(showPastDays ? [...pastPlannedDays, ...futureActiveDays] : futureActiveDays).map(tag => {
               const mittag = getSlot(weekPlan, tag, 'Mittag')
               const abend = getSlot(weekPlan, tag, 'Abend')
               const isLoading = dayLoading === tag
@@ -2494,7 +2494,7 @@ export default function WocheScreen({
                     const slot = (i === 0 ? 'Mittag' : 'Abend') as WochenSlot
                     if (!e) {
                       if (slot === 'Mittag' && !hasMittag(tag)) return null
-                      if (!planConfirmed) return null
+                      if (WOCHENTAGE.indexOf(tag) < todayWocheIdx) return null
                       return renderNewSlotPicker(tag, slot)
                     }
                     const key = `${tag}-${slot}`
@@ -3243,16 +3243,9 @@ export default function WocheScreen({
   const todayMittag = getSlot(weekPlan, today, 'Mittag')
   const todayAbend = getSlot(weekPlan, today, 'Abend')
 
-  function renderHomeSlot(tag: string, slot: WochenSlot, entry: WeekPlanEntry | null) {
+  function renderHomeSlot(tag: string, slot: WochenSlot, entry: WeekPlanEntry | null, isPast = false) {
     if (!entry) {
-      if (!planConfirmed) {
-        return (
-          <div key={slot} style={{ padding: '10px 12px', borderTop: '1px solid #f0f0f0', display: 'flex', alignItems: 'center', gap: 8 }}>
-            <SlotPill slot={slot} />
-            <span style={{ fontSize: 12, color: '#bbb' }}>noch nicht geplant</span>
-          </div>
-        )
-      }
+      if (isPast) return null
       return renderNewSlotPicker(tag, slot)
     }
     const key = `${tag}-${slot}`
@@ -3765,8 +3758,8 @@ export default function WocheScreen({
               <div style={{ padding: '8px 12px', background: '#f9fafb', borderBottom: '1px solid #f0f0f0' }}>
                 <span style={{ fontSize: 12, fontWeight: 700, color: '#aaa' }}>{tag}<span style={{ fontWeight: 400, color: '#bbb' }}>, {getTagDate(weekMonday, tag)}</span></span>
               </div>
-              {hasMittag(tag) && renderHomeSlot(tag, 'Mittag', pastMittag)}
-              {renderHomeSlot(tag, 'Abend', pastAbend)}
+              {hasMittag(tag) && renderHomeSlot(tag, 'Mittag', pastMittag, true)}
+              {renderHomeSlot(tag, 'Abend', pastAbend, true)}
             </div>
           )
         })}
