@@ -82,7 +82,7 @@ Bestehendes Rezept: ${JSON.stringify(existingRezept)}
 Regeln:
 1. Ändere NUR was explizit gewünscht ist – alles andere bleibt identisch.
 2. Allergie-Schutz: Zutaten mit "fuer"-Feld sind allergiegerecht angepasst. Widerspricht ein Wunsch einer solchen Anpassung (z.B. "normale Nudeln" bei bestehender glutenfreier Variante), behalte die allergiegerechte Version und schreibe einen deutschen Hinweis in allergieHinweise, z.B. "Für Heiko bleibt die glutenfreie Variante erhalten."
-3. Neue Zutaten, die gegen eine Familienunverträglichkeit verstoßen: allergiegerechte Version eintragen mit "fuer":"Name".
+3. Neue Zutaten, die gegen eine Familienunverträglichkeit verstoßen (eine Person kann MEHRERE Unverträglichkeiten haben – alle prüfen): Behalte die Original-Zutat mit reduzierter Menge für die nicht-betroffenen Personen (Menge × nicht-Betroffene/${anzahl}); füge die allergiegerechte Ersatz-Zutat mit anteiliger Menge für die betroffene Person hinzu (Menge × Betroffene/${anzahl}), setze "fuer":"Name". Im Zutatennamen nur sachliche Anpassung in Klammern, keinen Personennamen einbauen.
 4. Grundvorrat: nur kleine Mengen allgegenwärtiger Vorratsartikel. Hauptzutaten in größerer Menge: "frisch" oder "speisekammer".
 5. ${anzahl} Person${anzahl === 1 ? '' : 'en'} – Mengen bei neuen Zutaten passend skalieren.
 6. Kein "Schritt N:" am Anfang der Schritte.
@@ -125,13 +125,16 @@ WICHTIG: Ändere den Namen des Gerichts NIE. Liste ALLE Zutaten mit genauen Meng
 - "grundvorrat": NUR kleine Mengen allgegenwärtiger Vorratsartikel, die NICHT auf die Einkaufsliste kommen (z.B. 1–2 TL Salz, ½ TL Pfeffer, 1–2 EL Öl/Butter, 1–2 Zehen Knoblauch als Würze, 1 TL getrocknete Gewürze wie Paprika/Oregano/Kreuzkümmel, 1 EL Essig). WICHTIG: Ist eine solche Zutat Hauptbestandteil des Gerichts oder wird sie in größerer Menge benötigt (z.B. 8 Zehen Knoblauch bei Aglio e Olio, viele Zwiebeln für Suppe, viel Butter in einem Buttergebäck), dann "frisch" oder "speisekammer" verwenden – NICHT grundvorrat.
 Zubereitung in 5–8 konkreten Schritten mit Zeiten und Temperaturen. Kein "Schritt N:" am Anfang – die Nummerierung erfolgt automatisch in der App.
 
-Allergie-Regel: Prüfe jede Zutat gegen die Unverträglichkeiten der Familienmitglieder (Daten in "Familie:" oben).
-Wenn eine Zutat gegen eine Unverträglichkeit verstößt: Ersetze sie DIREKT in zutaten durch die allergiegerechte Version (kein Original-Eintrag) und setze das Feld "fuer":"Name" auf dieser Zutat. Im Zutatennamen NUR die sachliche Anpassung nennen (z.B. "Spaghetti (glutenfrei)"), NICHT den Personennamen einbauen (also NICHT "Spaghetti (glutenfrei für Heiko)"). Trage sie zusätzlich in ersetzteZutaten ein als "Menge Ersatz-Zutat (für Name)" (für den Wochenplan-Hinweis).
-Wenn eine allergiegerechte Zutat separat zubereitet werden muss (z.B. glutenfreie Nudeln in eigenem Topf): Ergänze in den schritte-Texten ausdrücklich, wann und wie die Portion für diese Person getrennt zubereitet wird – eigener Topf/Pfanne/Utensilien, Hinweis auf Kreuzkontamination vermeiden, und an welchem Schritt die Portion separat angerichtet wird.
+Allergie-Regel: Prüfe jede Zutat gegen ALLE Unverträglichkeiten JEDER anwesenden Person – eine Person kann MEHRERE Unverträglichkeiten gleichzeitig haben, alle müssen einzeln geprüft werden.
+Wenn eine Zutat für eine Person X nicht verträglich ist (X ist eine von ${anzahl} Personen):
+a) Behalte die Original-Zutat in zutaten MIT REDUZIERTER MENGE für die nicht-betroffenen Personen: OriginalMenge × (nicht-betroffene Personen / ${anzahl}). Kein fuer-Feld.
+b) Füge die allergiegerechte Ersatz-Zutat als SEPARATEN Eintrag hinzu mit anteiliger Menge: OriginalMenge × (betroffene Personen / ${anzahl}). Setze "fuer":"Name". Im Zutatennamen NUR die sachliche Anpassung in Klammern (z.B. "Spaghetti (glutenfrei)"), NICHT den Personennamen einbauen.
+c) Trage die Ersatz-Zutat in ersetzteZutaten ein: "Menge Ersatz-Zutat (für Name)".
+d) Wenn separate Zubereitung nötig: ergänze in schritte ausdrücklich, wann und wie die Portion für diese Person getrennt zubereitet wird (eigener Topf/Utensilien, Kreuzkontamination vermeiden).
 Betrifft keine Zutat eine Unverträglichkeit: fuer-Felder komplett weglassen, ersetzteZutaten auf [].
 
 Antworte NUR als reines JSON ohne Markdown-Codeblock:
-{"name":"${gericht}","emoji":"${emoji || '🍽'}","zutaten":[{"menge":"400g","name":"...","typ":"frisch"},{"menge":"500g","name":"... (glutenfrei)","typ":"speisekammer","fuer":"Heiko"},{"menge":"1 TL","name":"Salz","typ":"grundvorrat"}],"schritte":["(5 Min.) ...","(10 Min.) ...","(2 Min.) Portion für Heiko separat in eigenem Topf kochen (Kreuzkontamination vermeiden), dann separat anrichten."],"minuten":30,"schwierigkeit":"Einfach","ersetzteZutaten":["500g ... (glutenfrei) (für Heiko)"]}`
+{"name":"${gericht}","emoji":"${emoji || '🍽'}","zutaten":[{"menge":"400g","name":"...","typ":"frisch"},{"menge":"222g","name":"Weizenmehl","typ":"speisekammer"},{"menge":"111g","name":"Mehl (glutenfrei)","typ":"speisekammer","fuer":"Heiko"},{"menge":"1 TL","name":"Salz","typ":"grundvorrat"}],"schritte":["(5 Min.) ...","(10 Min.) ...","(2 Min.) Heikos Portion separat in eigenem Topf kochen (Kreuzkontamination vermeiden), dann separat anrichten."],"minuten":30,"schwierigkeit":"Einfach","ersetzteZutaten":["111g Mehl (glutenfrei) (für Heiko)"]}`
 
   try {
     const raw = await callClaude(apiKey, prompt)

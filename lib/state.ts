@@ -94,6 +94,7 @@ export interface ShoppingItem {
   gericht?: string
   nextWeek?: boolean
   fromLastWeek?: boolean
+  fuer?: string
 }
 
 export interface DayAttendance {

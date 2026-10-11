@@ -38,6 +38,12 @@ export function computeNextWeekCoverage(shoppingDays: string[]): string[] {
   return WOCHENTAGE.slice(0, firstNextShopIndex)
 }
 
+function isWaterIngredient(name: string): boolean {
+  const n = name.trim().toLowerCase()
+  return n === 'wasser' || n === 'leitungswasser' || n === 'salzwasser' ||
+    n.startsWith('wasser ') || n.startsWith('wasser,')
+}
+
 function generateItemsForEntry(entry: WeekPlanEntry, mealsData: Record<string, Rezept>, nextWeek = false): ShoppingItem[] {
   const rezept = mealsData[entry.gericht]
   if (!rezept) return []
@@ -45,6 +51,7 @@ function generateItemsForEntry(entry: WeekPlanEntry, mealsData: Record<string, R
   const seen = new Set<string>()
   for (const zutat of rezept.zutaten) {
     if (zutat.typ === 'grundvorrat') continue
+    if (isWaterIngredient(zutat.name)) continue
     const key = zutat.name.toLowerCase()
     if (seen.has(key)) continue
     seen.add(key)
@@ -58,6 +65,7 @@ function generateItemsForEntry(entry: WeekPlanEntry, mealsData: Record<string, R
       slot: entry.slot,
       gericht: entry.gericht,
       ...(nextWeek ? { nextWeek: true } : {}),
+      ...(zutat.fuer ? { fuer: zutat.fuer } : {}),
     })
   }
   // Neue Rezepte markieren allergiegerechte Zutaten mit `fuer` direkt in zutaten →

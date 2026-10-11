@@ -104,7 +104,9 @@ export function buildFamilyPrompt(members: FamilyMember[]): string {
     .map(m => {
       const allergien = m.allergien ?? []
       const vorlieben = m.vorlieben ?? []
-      const a = allergien.length ? `kein(e) ${allergien.join(', ')}` : 'keine Einschränkungen'
+      const a = allergien.length
+        ? `Unverträglichkeiten: ${allergien.join(', ')}`
+        : 'keine Unverträglichkeiten'
       const v = vorlieben.length ? `mag ${vorlieben.join(', ')}` : ''
       return `${m.name} (${m.id}): ${[a, v].filter(Boolean).join('; ')}`
     })
