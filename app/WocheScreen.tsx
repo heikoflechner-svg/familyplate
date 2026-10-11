@@ -379,6 +379,92 @@ export default function WocheScreen({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [planConfirmed, nextWeekData?.wochenchef])
 
+  // ── Hintergrund-Migration: ältere Haiku-Rezepte (ohne rezeptVersion) neu erstellen ─
+  const migrationRunRef = useRef(false)
+  useEffect(() => {
+    if (migrationRunRef.current) return
+    if (weekPlan.length === 0) return
+    migrationRunRef.current = true
+
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    const mondayDate = new Date((weekStart ?? getMondayIso()) + 'T00:00:00')
+    const mbs = members.length ? members : DEFAULT_MEMBERS
+
+    const tasks: { entry: WeekPlanEntry; isNextWeek: boolean }[] = []
+
+    for (const entry of weekPlan) {
+      const dayIdx = WOCHENTAGE.indexOf(entry.tag)
+      if (dayIdx === -1) continue
+      const entryDate = new Date(mondayDate)
+      entryDate.setDate(mondayDate.getDate() + dayIdx)
+      if (entryDate < today) continue
+      const r = mealsData[entry.gericht]
+      if (!r || !isFullRecipe(r)) continue
+      if ((r.rezeptVersion ?? 0) >= 2) continue
+      tasks.push({ entry, isNextWeek: false })
+    }
+
+    if (onNextWeekDataChange && nextWeekData?.plan && nextWeekData.mealsData) {
+      for (const entry of nextWeekData.plan) {
+        const r = nextWeekData.mealsData[entry.gericht]
+        if (!r || !isFullRecipe(r)) continue
+        if ((r.rezeptVersion ?? 0) >= 2) continue
+        tasks.push({ entry, isNextWeek: true })
+      }
+    }
+
+    if (tasks.length === 0) return
+
+    async function runMigration() {
+      let accMeals = { ...mealsData }
+      let accShoppingList = [...shoppingList]
+      let accNwMeals = { ...(nextWeekData?.mealsData ?? {}) }
+      let accNwShoppingList = [...(nextWeekData?.shoppingList ?? [])]
+
+      for (const { entry, isNextWeek } of tasks) {
+        try {
+          const att = isNextWeek ? (nextWeekData?.attendance ?? []) : attendance
+          const personCount = getPersonCountForSlot(entry.tag, entry.slot, att, mbs)
+          const rezept = await generateRecipe(
+            entry.gericht, entry.emoji,
+            getFreezerListString(freezerItems), getPantryListString(pantryItems),
+            familyPrompt, personCount,
+          )
+          if (!rezept) continue
+          const merged: Rezept = {
+            ...rezept,
+            personenAnzahl: personCount,
+            ersetzteZutaten: rezept.ersetzteZutaten?.length ? rezept.ersetzteZutaten : [],
+            rezeptVersion: 2,
+          }
+          if (!isNextWeek) {
+            accMeals = { ...accMeals, [entry.gericht]: merged }
+            await onWeekPlanChange(weekPlan, accMeals)
+            if (planConfirmed) {
+              accShoppingList = rewriteShoppingItemsForDish(accShoppingList, entry, merged, false)
+              await onShoppingListChange(accShoppingList)
+            }
+          } else if (onNextWeekDataChange) {
+            const nextMonday = nextWeekStart ?? getNextMondayIso()
+            accNwMeals = { ...accNwMeals, [entry.gericht]: merged }
+            accNwShoppingList = rewriteShoppingItemsForDish(accNwShoppingList, entry, merged, false)
+            await onNextWeekDataChange({ mealsData: accNwMeals, shoppingList: accNwShoppingList }, nextMonday)
+            if (shoppingList.some(i => i.gericht === entry.gericht && !!i.nextWeek && !i.erledigt)) {
+              accShoppingList = rewriteShoppingItemsForDish(accShoppingList, entry, merged, true)
+              await onShoppingListChange(accShoppingList)
+            }
+          }
+        } catch {
+          // Skip failed recipe silently
+        }
+      }
+    }
+
+    void runMigration()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [weekPlan.length])
+
   // ── Nächste Woche – Plan-State ────────────────────────────────────────────
   const [nwExpanded, setNwExpanded] = useState(false)
   const [nwAttendanceOpen, setNwAttendanceOpen] = useState(false)

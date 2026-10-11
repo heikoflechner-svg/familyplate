@@ -107,7 +107,7 @@ Antworte NUR als reines JSON ohne Markdown:
           : Array.isArray(parsed.zutaten) ? parsed
           : null
         if (!rezept) continue
-        return NextResponse.json({ rezept, allergieHinweise: (parsed.allergieHinweise ?? []) as string[] })
+        return NextResponse.json({ rezept: { ...rezept, rezeptVersion: 2 }, allergieHinweise: (parsed.allergieHinweise ?? []) as string[] })
       }
     } catch { /* fall through */ }
     return NextResponse.json({ rezept: existingRezept, allergieHinweise: [] })
@@ -148,7 +148,7 @@ Antworte NUR als reines JSON ohne Markdown-Codeblock:
     const jsonEnd = raw.lastIndexOf('}')
     if (jsonStart === -1 || jsonEnd === -1) throw new Error('No JSON found')
     const parsed = JSON.parse(raw.slice(jsonStart, jsonEnd + 1))
-    return NextResponse.json({ rezept: parsed })
+    return NextResponse.json({ rezept: { ...parsed, rezeptVersion: 2 } })
   } catch {
     return NextResponse.json({ rezept: { ...FALLBACK, name: gericht || FALLBACK.name, emoji: emoji || '🍗' } })
   }

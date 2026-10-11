@@ -81,6 +81,7 @@ export interface Rezept {
   schwierigkeit: string
   ersetzteZutaten?: string[]
   personenAnzahl?: number
+  rezeptVersion?: number
 }
 
 export interface ShoppingItem {
