@@ -30,8 +30,10 @@ const CANONICAL: readonly CanonicalAllergen[] = [
 
 // ─── Synonym normalization ────────────────────────────────────────────────────
 // Maps lowercase free-text entries to canonical allergen names.
-// 'milch' → 'Laktose' (intolerance, laktosefrei substitute is valid).
+// 'laktose' → 'Laktose' (intolerance, laktosefrei substitute is valid).
 // 'milcheiweiß' → stricter milk-protein allergy (only vegan/milchfrei accepted).
+// 'milch' → BOTH Laktose AND Milcheiweiß via MULTI_SYNONYMS (safe default for
+//   ambiguous free-text until user picks a specific option in their profile).
 const SYNONYMS: Record<string, CanonicalAllergen> = {
   // Laktose group (intolerance)
   'laktose': 'Laktose', 'milch': 'Laktose', 'milchzucker': 'Laktose',
@@ -69,6 +71,23 @@ export function normalizeAllergen(raw: string): CanonicalAllergen | null {
   const lower = raw.toLowerCase().trim()
   if (lower in SYNONYMS) return SYNONYMS[lower]
   return (CANONICAL.find(c => c.toLowerCase() === lower) ?? null) as CanonicalAllergen | null
+}
+
+// Ambiguous free-text that maps to multiple allergens.
+// 'milch' → both Laktose AND Milcheiweiß: the user hasn't specified intolerance vs. allergy,
+// so we apply the strictest safe default (both) until they update their profile.
+const MULTI_SYNONYMS: Record<string, CanonicalAllergen[]> = {
+  'milch':            ['Laktose', 'Milcheiweiß'],
+  'milchprodukte':    ['Laktose', 'Milcheiweiß'],
+  'molkereiprodukte': ['Laktose', 'Milcheiweiß'],
+}
+
+function normalizeAllergens(raw: string): CanonicalAllergen[] {
+  const lower = raw.toLowerCase().trim()
+  const multi = MULTI_SYNONYMS[lower]
+  if (multi) return multi
+  const single = normalizeAllergen(raw)
+  return single ? [single] : []
 }
 
 // ─── Allergen keywords ────────────────────────────────────────────────────────
@@ -218,7 +237,7 @@ const SUBSTITUTES: Record<CanonicalAllergen, string[]> = {
 // but ONLY for the single allergen each substitution resolves.
 //
 // Safety rule: each entry solves exactly ONE allergen. Other allergens in the substitute
-// product (e.g. Soja in Tamari, Nüsse in Mandelmilch) are caught by Fix 2 (fuer-ingredient
+// product (e.g. Soja in Tamari, Nüsse in Mandelmilch) are caught by Pass 2 (fuer-ingredient
 // self-check) and are NOT listed here — they remain warnings.
 //
 // 'Margarine' is intentionally absent: generic margarine may contain milk or soy
@@ -233,21 +252,24 @@ interface SynonymEntry {
 
 const SUBSTITUTE_SYNONYMS: SynonymEntry[] = [
   // ── Sojasauce → Tamari (gluten-free soy sauce, still contains soy) ────────
-  // Tamari does NOT solve Soja — Tamari contains soy and Fix 2 will warn for it.
+  // Tamari does NOT solve Soja — Tamari contains soy and Pass 2 will warn for it.
   { syn: 'tamari',                targets: ['sojasauce'],      solvesAllergen: 'Gluten' },
   { syn: 'glutenfreie sojasauce', targets: ['sojasauce'],      solvesAllergen: 'Gluten' },
 
   // ── Ei-Ersatz ─────────────────────────────────────────────────────────────
   // These products replace eggs but may themselves contain other allergens.
   // Tofu still warns for Soja via Pass 2 (KEYWORDS['Soja'] contains 'tofu').
-  { syn: 'tofu',       targets: ['eier', 'eigelb', 'eiweiß'], solvesAllergen: 'Eier' },
-  { syn: 'leinsamen',  targets: ['eier', 'eigelb', 'eiweiß'], solvesAllergen: 'Eier' },
-  { syn: 'chiasamen',  targets: ['eier', 'eigelb', 'eiweiß'], solvesAllergen: 'Eier' },
-  { syn: 'aquafaba',   targets: ['eier', 'eigelb', 'eiweiß'], solvesAllergen: 'Eier' },
-  { syn: 'ei-ersatz',  targets: ['eier', 'eigelb', 'eiweiß'], solvesAllergen: 'Eier' },
-  { syn: 'eiersatz',   targets: ['eier', 'eigelb', 'eiweiß'], solvesAllergen: 'Eier' },
+  { syn: 'tofu',         targets: ['eier', 'eigelb', 'eiweiß'], solvesAllergen: 'Eier' },
+  { syn: 'leinsamen',    targets: ['eier', 'eigelb', 'eiweiß'], solvesAllergen: 'Eier' },
+  { syn: 'chiasamen',    targets: ['eier', 'eigelb', 'eiweiß'], solvesAllergen: 'Eier' },
+  { syn: 'aquafaba',     targets: ['eier', 'eigelb', 'eiweiß'], solvesAllergen: 'Eier' },
+  { syn: 'ei-ersatz',    targets: ['eier', 'eigelb', 'eiweiß'], solvesAllergen: 'Eier' },
+  { syn: 'eiersatz',     targets: ['eier', 'eigelb', 'eiweiß'], solvesAllergen: 'Eier' },
+  { syn: 'apfelmus',     targets: ['eier', 'eigelb', 'eiweiß'], solvesAllergen: 'Eier' },
+  { syn: 'banane',       targets: ['eier', 'eigelb', 'eiweiß'], solvesAllergen: 'Eier' },
+  { syn: 'bananenpüree', targets: ['eier', 'eigelb', 'eiweiß'], solvesAllergen: 'Eier' },
 
-  // ── Milch-Ersatz ─────────────────────────────────────────────────────────
+  // ── Milch-Ersatz (Drinks) ─────────────────────────────────────────────────
   // Each entry solves only Laktose or Milcheiweiß. The substitute's own allergens
   // (Gluten in Hafer, Nüsse in Mandel, Soja in Soja*) → caught by fuer-self-check.
   { syn: 'pflanzendrink',  targets: ['milch'],          solvesAllergen: 'Laktose' },
@@ -282,6 +304,31 @@ const SUBSTITUTE_SYNONYMS: SynonymEntry[] = [
   { syn: 'haferjoghurt',   targets: ['joghurt'],        solvesAllergen: 'Milcheiweiß' },
   { syn: 'mandeljoghurt',  targets: ['joghurt'],        solvesAllergen: 'Laktose' },
   { syn: 'mandeljoghurt',  targets: ['joghurt'],        solvesAllergen: 'Milcheiweiß' },
+
+  // ── Öl als Butter-/Sahne-Ersatz ───────────────────────────────────────────
+  // Pure plant oils contain neither lactose nor milk protein.
+  // Erdnussöl would trigger Erdnüsse via KEYWORDS — intentionally absent here.
+  { syn: 'pflanzenöl',     targets: ['butter', 'sahne'], solvesAllergen: 'Laktose' },
+  { syn: 'pflanzenöl',     targets: ['butter', 'sahne'], solvesAllergen: 'Milcheiweiß' },
+  { syn: 'olivenöl',       targets: ['butter', 'sahne'], solvesAllergen: 'Laktose' },
+  { syn: 'olivenöl',       targets: ['butter', 'sahne'], solvesAllergen: 'Milcheiweiß' },
+  { syn: 'rapsöl',         targets: ['butter', 'sahne'], solvesAllergen: 'Laktose' },
+  { syn: 'rapsöl',         targets: ['butter', 'sahne'], solvesAllergen: 'Milcheiweiß' },
+  { syn: 'sonnenblumenöl', targets: ['butter', 'sahne'], solvesAllergen: 'Laktose' },
+  { syn: 'sonnenblumenöl', targets: ['butter', 'sahne'], solvesAllergen: 'Milcheiweiß' },
+  { syn: 'kokosöl',        targets: ['butter', 'sahne'], solvesAllergen: 'Laktose' },
+  { syn: 'kokosöl',        targets: ['butter', 'sahne'], solvesAllergen: 'Milcheiweiß' },
+  { syn: 'distelöl',       targets: ['butter', 'sahne'], solvesAllergen: 'Laktose' },
+  { syn: 'distelöl',       targets: ['butter', 'sahne'], solvesAllergen: 'Milcheiweiß' },
+
+  // ── Gluten-Ersatz (Getreide/Knollen für Pasta und Körner) ─────────────────
+  // Quinoa/Hirse/Kartoffel/Mais/Reis don't share KEYWORDS with their targets
+  // (e.g. 'quinoa' ∉ KEYWORDS['Gluten']), so Options A/B can't solve them — only C.
+  { syn: 'quinoa',    targets: ['couscous', 'bulgur', 'nudeln', 'pasta', 'spaghetti'], solvesAllergen: 'Gluten' },
+  { syn: 'hirse',     targets: ['couscous', 'bulgur', 'nudeln'],                        solvesAllergen: 'Gluten' },
+  { syn: 'kartoffel', targets: ['nudeln', 'pasta', 'spaghetti', 'couscous', 'bulgur'],  solvesAllergen: 'Gluten' },
+  { syn: 'mais',      targets: ['mehl', 'paniermehl', 'semmelmehl', 'couscous'],        solvesAllergen: 'Gluten' },
+  { syn: 'reis',      targets: ['nudeln', 'pasta', 'spaghetti', 'couscous', 'bulgur'],  solvesAllergen: 'Gluten' },
 ]
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -292,6 +339,21 @@ type RezeptLike = { zutaten: { name: string; fuer?: string }[] }
 
 function baseName(name: string): string {
   return name.toLowerCase().replace(/\s*\([^)]*\)/g, '').replace(/\s+/g, ' ').trim()
+}
+
+// Strips substitute-qualifier patterns from an ingredient name for keyword checking only.
+// Does NOT remove general parentheticals — they may contain allergens:
+//   "Pesto (mit Pinienkernen)" → parenthetical preserved, 'pinienkerne'/'pesto' still checked
+//   "Gemüsebrühe (enthält Sellerie)" → '(enthält Sellerie)' preserved
+// Only removes:
+//   "(als …)", "(statt …)", "(ohne …)"  — substitution qualifiers
+//   words ending in "-ersatz" (incl. German umlauts) — e.g. Butterersatz, Käseersatz
+function stripSubstituteQualifiers(name: string): string {
+  return name.toLowerCase()
+    .replace(/\(\s*(als|statt|ohne)\s+[^)]*\)/g, '')
+    .replace(/[a-zA-ZäöüÄÖÜß]+ersatz/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
 }
 
 // ─── Main check function ──────────────────────────────────────────────────────
@@ -305,9 +367,7 @@ export function checkAllergens(rezept: RezeptLike, presentMembers: CheckMember[]
   const membersWithAllergies = presentMembers
     .map(m => ({
       name: m.name,
-      allergien: m.allergien
-        .map(normalizeAllergen)
-        .filter((a): a is CanonicalAllergen => a !== null),
+      allergien: [...new Set(m.allergien.flatMap(normalizeAllergens))],
     }))
     .filter(m => m.allergien.length > 0)
 
@@ -357,9 +417,11 @@ export function checkAllergens(rezept: RezeptLike, presentMembers: CheckMember[]
             return true
           }
 
-          // B: fuer-ingredient is in the same food category AND is the allergen-safe variant
-          //    (e.g. "Reisnudeln" for Gluten: triggers "nudeln" keyword, in Gluten exceptions)
-          const fueTriggers = keywords.some(k => fl.includes(k))
+          // B: fuer-ingredient is in the same food category AND is the allergen-safe variant.
+          //    Use stripped name for keyword check — "(als Butterersatz)" must not trigger
+          //    'butter' keyword, but "(mit Pinienkernen)" must still trigger 'mandel'/'nuss'.
+          const fueStripped = stripSubstituteQualifiers(z.name)
+          const fueTriggers = keywords.some(k => fueStripped.includes(k))
           if (fueTriggers && (fueHasSub || fueIsExcept)) return true
 
           // C: substitute synonym table — only resolves the ONE allergen it was designed for.
@@ -388,7 +450,8 @@ export function checkAllergens(rezept: RezeptLike, presentMembers: CheckMember[]
     const member = membersWithAllergies.find(m => m.name === zutat.fuer)
     if (!member) continue
 
-    const fl = zutat.name.toLowerCase()
+    const fl        = zutat.name.toLowerCase()
+    const flKeyword = stripSubstituteQualifiers(zutat.name)
 
     for (const allergen of CANONICAL) {
       if (!member.allergien.includes(allergen)) continue
@@ -398,7 +461,9 @@ export function checkAllergens(rezept: RezeptLike, presentMembers: CheckMember[]
       const substitutes = SUBSTITUTES[allergen]
 
       if (exceptions.some(ex => fl.includes(ex))) continue
-      if (!keywords.some(k => fl.includes(k))) continue
+      // Use stripped name for keyword check: "(als Butterersatz)" must not trigger 'butter',
+      // but "(enthält Sellerie)" and "(mit Pinienkernen)" must still trigger their keywords.
+      if (!keywords.some(k => flKeyword.includes(k))) continue
       if (substitutes.some(s => fl.includes(s))) continue
 
       issues.push({ person: member.name, allergen, zutat: zutat.name })

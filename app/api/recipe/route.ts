@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { checkAllergens, formatAllergenWarnings, buildAllergenRetryHint } from '../../../lib/allergenCheck'
+import { checkAllergens, buildAllergenRetryHint } from '../../../lib/allergenCheck'
 
 export const maxDuration = 60
 
@@ -136,7 +136,6 @@ Antworte NUR als reines JSON ohne Markdown im Format: {"rezept":{...},"allergieH
               } catch { /* keep original */ }
             }
           }
-          if (issues.length > 0) finalRezept.offeneAllergene = formatAllergenWarnings(issues)
         }
 
         return NextResponse.json({ rezept: finalRezept, allergieHinweise: (parsed.allergieHinweise ?? []) as string[] })
@@ -205,7 +204,6 @@ Antworte NUR als reines JSON ohne Markdown.`
           } catch { /* keep original */ }
         }
       }
-      if (issues.length > 0) parsed.offeneAllergene = formatAllergenWarnings(issues)
     }
 
     return NextResponse.json({ rezept: { ...parsed, rezeptVersion: 2 } })

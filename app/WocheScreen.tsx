@@ -183,12 +183,6 @@ export default function WocheScreen({
 
   function getRecipeAllergenWarnings(rezept: Rezept | undefined): string[] {
     if (!isFullRecipe(rezept) || allergenCheckMembers.length === 0) return []
-    if (rezept!.offeneAllergene?.length) {
-      // Convert stored "Zutat → Allergen (Person)" to display format
-      return rezept!.offeneAllergene.map(w =>
-        w.replace(/^(.+) → (.+?) \((.+)\)$/, '$1 enthält $2 – $3'),
-      )
-    }
     return formatAllergenWarningsCard(checkAllergens(rezept!, allergenCheckMembers))
   }
   const memberIds = activeMembers.map(m => m.id)
