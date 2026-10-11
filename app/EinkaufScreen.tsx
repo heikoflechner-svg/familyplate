@@ -5,7 +5,6 @@ import {
   groupShoppingByMeal,
   consolidateShoppingList,
   groupByLaden,
-  toggleConsolidatedItem,
   addShoppingItem,
   toggleShoppingItem,
   removeShoppingItem,
@@ -13,12 +12,13 @@ import {
   computeNextWeekCoverage,
 } from '../lib/shoppingLogic'
 import type { ConsolidatedItem } from '../lib/shoppingLogic'
-import { generateRecipe, isFullRecipe, getPersonCountForSlot, getNextMondayIso } from '../lib/mealLogic'
+import { generateRecipe, isFullRecipe, getPersonCountForSlot, getMondayIso, getNextMondayIso } from '../lib/mealLogic'
 import { getFreezerListString, getPantryListString } from '../lib/freezerLogic'
 import { buildFamilyPrompt, DEFAULT_MEMBERS } from '../lib/familyLogic'
 import type { WeekPlanEntry, Rezept, ShoppingItem, Chef, NextWeekData, FreezerItem, PantryItem, FamilyMember, DayAttendance } from '../lib/state'
 
 const WOCHENTAGE = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag']
+const SEL_KEY = 'einkauf-day-sel'
 
 function todayGerman(): string {
   return WOCHENTAGE[(new Date().getDay() + 6) % 7]
@@ -31,6 +31,38 @@ function getKW(isoDate: string): number {
   const yearStart = new Date(thu.getFullYear(), 0, 1)
   const days = Math.round((thu.getTime() - yearStart.getTime()) / 86400000)
   return Math.ceil((days + 1) / 7)
+}
+
+function toIsoDate(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+function getTagIsoDate(tag: string, mondayIso: string): string {
+  const idx = WOCHENTAGE.indexOf(tag)
+  if (idx < 0) return ''
+  const d = new Date(mondayIso + 'T00:00:00')
+  d.setDate(d.getDate() + idx)
+  return toIsoDate(d)
+}
+
+function todayIso(): string {
+  return toIsoDate(new Date())
+}
+
+interface BarDay {
+  isoDate: string
+  tag: string
+  label: string
+  isNw: boolean
+}
+
+function computeAutoSelection(barDays: BarDay[], shoppingDays: string[]): Set<string> {
+  if (barDays.length === 0) return new Set()
+  if (shoppingDays.length === 0) return new Set(barDays.map(d => d.isoDate))
+  const shopDaySet = new Set(shoppingDays)
+  const cutoffIdx = barDays.findIndex(bd => shopDaySet.has(bd.tag))
+  const end = cutoffIdx >= 0 ? cutoffIdx : barDays.length - 1
+  return new Set(barDays.slice(0, end + 1).map(bd => bd.isoDate))
 }
 
 interface Props {
@@ -61,33 +93,111 @@ interface Props {
 
 type ViewMode = 'tag' | 'zusammen' | 'laden'
 
-export default function EinkaufScreen({ weekPlan, mealsData, shoppingList, onShoppingListChange, onMealsDataChange, currentUser, wochenchef, shopDone, onShopDoneChange, laeden, zutatenLaden, onZutatenLadenChange, canEditSettings, planConfirmed = false, attendance = [], shoppingDays = [], nextWeekData = null, freezerItems, pantryItems, members, onNextWeekDataChange, weekStart = null, nextWeekStart = null }: Props) {
+export default function EinkaufScreen({
+  weekPlan, mealsData, shoppingList, onShoppingListChange, onMealsDataChange,
+  currentUser, wochenchef, shopDone, onShopDoneChange, laeden, zutatenLaden,
+  onZutatenLadenChange, canEditSettings, planConfirmed = false, attendance = [],
+  shoppingDays = [], nextWeekData = null, freezerItems, pantryItems, members,
+  onNextWeekDataChange, weekStart = null, nextWeekStart = null,
+}: Props) {
   const [newName, setNewName] = useState('')
   const [newMenge, setNewMenge] = useState('')
   const [dayPickerOpen, setDayPickerOpen] = useState(false)
   const [generating, setGenerating] = useState(false)
   const [selectedDays, setSelectedDays] = useState<Set<string>>(new Set(['alle']))
-  const [selectedNextWeekDays, setSelectedNextWeekDays] = useState<Set<string>>(new Set())
+  const [selectedNwPickerDays, setSelectedNwPickerDays] = useState<Set<string>>(new Set())
   const [viewMode, setViewMode] = useState<ViewMode>('tag')
+  const [selectedDates, setSelectedDates] = useState<Set<string>>(new Set())
   const autoLoadDoneRef = useRef(false)
-  const [weekTab, setWeekTab] = useState<'current' | 'next'>('current')
-  const [nwDayPickerOpen, setNwDayPickerOpen] = useState(false)
-  const [nwSelectedDays, setNwSelectedDays] = useState<Set<string>>(new Set())
-  const [nwGenerating, setNwGenerating] = useState(false)
   const nwAutoLoadRef = useRef(false)
+  const selInitRef = useRef(false)
 
-  // Computed NW values (before effects so closures capture them correctly)
+  // Computed NW values
   const nwPlan = nextWeekData?.plan ?? []
   const nwMeals = nextWeekData?.mealsData ?? {}
   const nwConfirmed = nextWeekData?.planConfirmed ?? false
   const nwShoppingList = nextWeekData?.shoppingList ?? []
   const nwCoverageDays = computeNextWeekCoverage(shoppingDays)
   const nwAvailableDays = nwCoverageDays.filter(d => nwPlan.some(e => e.tag === d))
-  // Days of NW that are NOT already covered by current-list (Punkt 3)
   const nwListableDays = WOCHENTAGE.filter(d => nwPlan.some(e => e.tag === d) && !nwCoverageDays.includes(d))
-  const showNwTab = nwConfirmed && nwPlan.length > 0
 
-  // Auto-load missing recipes for current week (unchanged)
+  const effectiveWeekStart = weekStart ?? getMondayIso()
+  const effectiveNwStart = nextWeekStart ?? getNextMondayIso()
+
+  function itemIso(item: ShoppingItem): string | null {
+    if (!item.tag) return null
+    return getTagIsoDate(item.tag, item.nextWeek ? effectiveNwStart : effectiveWeekStart)
+  }
+
+  // Build unified day bar: current week days from today + NW days (coverage items + confirmed plan)
+  const allBarDays: BarDay[] = (() => {
+    const todayVal = todayIso()
+    const map = new Map<string, BarDay>()
+
+    for (let i = 0; i < 7; i++) {
+      const tag = WOCHENTAGE[i]
+      const iso = getTagIsoDate(tag, effectiveWeekStart)
+      if (iso < todayVal) continue
+      if (!weekPlan.some(e => e.tag === tag)) continue
+      const d = new Date(iso + 'T00:00:00')
+      map.set(iso, { isoDate: iso, tag, label: `${tag.slice(0, 2)} ${d.getDate()}.`, isNw: false })
+    }
+
+    // Coverage items from shoppingList with nextWeek:true → show as NW days in bar
+    for (const item of shoppingList) {
+      if (!item.nextWeek || !item.tag) continue
+      const iso = getTagIsoDate(item.tag, effectiveNwStart)
+      if (!iso || map.has(iso)) continue
+      const d = new Date(iso + 'T00:00:00')
+      map.set(iso, { isoDate: iso, tag: item.tag, label: `${item.tag.slice(0, 2)} ${d.getDate()}.`, isNw: true })
+    }
+
+    // NW plan days when confirmed
+    if (nwConfirmed && nwPlan.length > 0) {
+      for (let i = 0; i < 7; i++) {
+        const tag = WOCHENTAGE[i]
+        const iso = getTagIsoDate(tag, effectiveNwStart)
+        if (!nwPlan.some(e => e.tag === tag) || map.has(iso)) continue
+        const d = new Date(iso + 'T00:00:00')
+        map.set(iso, { isoDate: iso, tag, label: `${tag.slice(0, 2)} ${d.getDate()}.`, isNw: true })
+      }
+    }
+
+    return [...map.values()].sort((a, b) => a.isoDate.localeCompare(b.isoDate))
+  })()
+
+  // NW item ID set for mutation routing
+  const nwIdSet = new Set(nwShoppingList.map(i => i.id))
+
+  function persistSelectedDates(next: Set<string>) {
+    setSelectedDates(next)
+    try { localStorage.setItem(SEL_KEY, JSON.stringify([...next])) } catch {}
+  }
+
+  // Init selection once bar days are available; run again when bar length grows
+  useEffect(() => {
+    if (allBarDays.length === 0) return
+    if (selInitRef.current) return
+    selInitRef.current = true
+    const todayVal = todayIso()
+    let stored: string | null = null
+    try { stored = localStorage.getItem(SEL_KEY) } catch {}
+    if (stored) {
+      try {
+        const parsed: string[] = JSON.parse(stored)
+        const barSet = new Set(allBarDays.map(d => d.isoDate))
+        const valid = parsed.filter(d => d >= todayVal && barSet.has(d))
+        if (valid.length > 0) {
+          setSelectedDates(new Set(valid))
+          return
+        }
+      } catch {}
+    }
+    setSelectedDates(computeAutoSelection(allBarDays, shoppingDays))
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allBarDays.length])
+
+  // Auto-load missing recipes for current week
   useEffect(() => {
     if (!planConfirmed || weekPlan.length === 0 || autoLoadDoneRef.current) return
     const hasMissing = weekPlan.some(e => !isFullRecipe(mealsData[e.gericht]))
@@ -112,25 +222,22 @@ export default function EinkaufScreen({ weekPlan, mealsData, shoppingList, onSho
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [planConfirmed])
 
-  // Punkt 5: remove past-meal items on mount
+  // Remove past-meal items on mount; never remove nextWeek items (bugfix)
   useEffect(() => {
     const todayIdx = WOCHENTAGE.indexOf(todayGerman())
-    const cleaned = shoppingList.filter(i => !i.gericht || !i.tag || WOCHENTAGE.indexOf(i.tag) >= todayIdx)
+    const cleaned = shoppingList.filter(i =>
+      !i.gericht || !i.tag || i.nextWeek || WOCHENTAGE.indexOf(i.tag) >= todayIdx,
+    )
     if (cleaned.length < shoppingList.length) onShoppingListChange(cleaned)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Punkt 2: auto-generate NW shopping list when confirmed and empty
+  // Auto-generate NW shopping list when confirmed and empty
   useEffect(() => {
-    if (!nwConfirmed) {
-      nwAutoLoadRef.current = false
-      return
-    }
+    if (!nwConfirmed) { nwAutoLoadRef.current = false; return }
     if (nwPlan.length === 0 || !onNextWeekDataChange) return
-    if (nwShoppingList.length > 0) return
-    if (nwAutoLoadRef.current) return
+    if (nwShoppingList.length > 0 || nwAutoLoadRef.current) return
     nwAutoLoadRef.current = true
-
     void (async () => {
       const daysToInclude = nwListableDays
       if (daysToInclude.length === 0) return
@@ -156,9 +263,13 @@ export default function EinkaufScreen({ weekPlan, mealsData, shoppingList, onSho
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nwConfirmed, nwPlan.length])
 
+  // All NW days for the "🔄 Neu" picker (coverage + own list)
+  const allNwPickerDays = [
+    ...nwAvailableDays.map(d => ({ tag: d, isCoverage: true })),
+    ...nwListableDays.map(d => ({ tag: d, isCoverage: false })),
+  ]
   const plannedDays = WOCHENTAGE.filter(t => weekPlan.some(e => e.tag === t))
 
-  // Current week day picker
   function toggleDay(day: string) {
     const s = new Set(selectedDays)
     if (day === 'alle') {
@@ -171,21 +282,23 @@ export default function EinkaufScreen({ weekPlan, mealsData, shoppingList, onSho
     setSelectedDays(s)
   }
 
-  function toggleNextWeekDay(day: string) {
-    const s = new Set(selectedNextWeekDays)
+  function toggleNwPickerDay(day: string) {
+    const s = new Set(selectedNwPickerDays)
     s.has(day) ? s.delete(day) : s.add(day)
-    setSelectedNextWeekDays(s)
+    setSelectedNwPickerDays(s)
   }
 
   function openDayPicker() {
     setSelectedDays(new Set(['alle']))
-    setSelectedNextWeekDays(nwConfirmed ? new Set(nwAvailableDays) : new Set())
+    setSelectedNwPickerDays(nwConfirmed ? new Set(allNwPickerDays.map(d => d.tag)) : new Set())
     setDayPickerOpen(true)
   }
 
   async function confirmGenerate() {
-    const days = selectedDays.has('alle') ? undefined : [...selectedDays]
-    const nwDays = selectedNextWeekDays.size > 0 ? [...selectedNextWeekDays] : undefined
+    const cwDays = selectedDays.has('alle') ? undefined : [...selectedDays]
+    const nwCoverageSet = new Set(nwAvailableDays)
+    const selectedCovDays = [...selectedNwPickerDays].filter(d => nwCoverageSet.has(d))
+    const selectedNwOwnDays = [...selectedNwPickerDays].filter(d => !nwCoverageSet.has(d))
 
     setGenerating(true)
     try {
@@ -193,11 +306,11 @@ export default function EinkaufScreen({ weekPlan, mealsData, shoppingList, onSho
       const pantryStr = getPantryListString(pantryItems)
       const familyPrompt = buildFamilyPrompt(members.length ? members : DEFAULT_MEMBERS)
 
-      const thisWeekEntries = days ? weekPlan.filter(e => days.includes(e.tag)) : weekPlan
-      const nwEntries = nwDays ? nwPlan.filter(e => nwDays.includes(e.tag)) : []
+      const thisWeekEntries = cwDays ? weekPlan.filter(e => cwDays.includes(e.tag)) : weekPlan
+      const covEntries = nwPlan.filter(e => selectedCovDays.includes(e.tag))
 
       const thisWeekMeals = { ...mealsData }
-      const nextWeekMeals = { ...nwMeals }
+      const nwMealsStore = { ...nwMeals }
 
       async function loadInto(entries: WeekPlanEntry[], store: Record<string, Rezept>) {
         const seen = new Set<string>()
@@ -218,81 +331,75 @@ export default function EinkaufScreen({ weekPlan, mealsData, shoppingList, onSho
       }
 
       await loadInto(thisWeekEntries, thisWeekMeals)
-      if (nwDays) await loadInto(nwEntries, nextWeekMeals)
-
+      if (selectedCovDays.length > 0) await loadInto(covEntries, nwMealsStore)
       await onMealsDataChange(thisWeekMeals)
 
       onShoppingListChange(generateShoppingList(
-        weekPlan, thisWeekMeals, days,
-        nwDays ? nwPlan : undefined,
-        nwDays ? nextWeekMeals : undefined,
-        nwDays,
+        weekPlan, thisWeekMeals, cwDays,
+        selectedCovDays.length > 0 ? nwPlan : undefined,
+        selectedCovDays.length > 0 ? nwMealsStore : undefined,
+        selectedCovDays.length > 0 ? selectedCovDays : undefined,
       ))
+
+      if (selectedNwOwnDays.length > 0) {
+        const nwOwnEntries = nwPlan.filter(e => selectedNwOwnDays.includes(e.tag))
+        await loadInto(nwOwnEntries, nwMealsStore)
+        const nwList = generateShoppingList(nwPlan, nwMealsStore, selectedNwOwnDays)
+        await onNextWeekDataChange?.({ shoppingList: nwList, mealsData: nwMealsStore }, nextWeekStart ?? getNextMondayIso())
+      }
+
       setDayPickerOpen(false)
     } finally {
       setGenerating(false)
     }
   }
 
-  // NW day picker
-  function openNwDayPicker() {
-    setNwSelectedDays(new Set(nwListableDays))
-    setNwDayPickerOpen(true)
-  }
+  // Combined list (current + NW), marking NW items so itemIso routes correctly
+  const combinedItems: ShoppingItem[] = [
+    ...shoppingList,
+    ...nwShoppingList.map(i => ({ ...i, nextWeek: true as const })),
+  ]
 
-  function toggleNwDay(day: string) {
-    const s = new Set(nwSelectedDays)
-    s.has(day) ? s.delete(day) : s.add(day)
-    setNwSelectedDays(s)
-  }
+  const filteredItems = combinedItems.filter(item => {
+    if (!item.gericht || !item.tag || item.fromLastWeek) return true
+    const iso = itemIso(item)
+    return iso !== null && selectedDates.has(iso)
+  })
 
-  async function confirmNwGenerate() {
-    const daysToInclude = nwSelectedDays.size > 0 ? [...nwSelectedDays] : nwListableDays
-    setNwGenerating(true)
-    try {
-      const store = { ...nwMeals }
-      const seen = new Set<string>()
-      const missing = nwPlan.filter(e => {
-        if (seen.has(e.gericht) || isFullRecipe(store[e.gericht])) return false
-        seen.add(e.gericht)
-        return true
-      })
-      if (missing.length > 0) {
-        const freezerStr = getFreezerListString(freezerItems)
-        const pantryStr = getPantryListString(pantryItems)
-        const familyPrompt = buildFamilyPrompt(members.length ? members : DEFAULT_MEMBERS)
-        await Promise.all(missing.map(async e => {
-          const r = await generateRecipe(e.gericht, e.emoji, freezerStr, pantryStr, familyPrompt)
-          if (r) store[e.gericht] = { ...r, ersetzteZutaten: r.ersetzteZutaten?.length ? r.ersetzteZutaten : (store[e.gericht]?.ersetzteZutaten ?? []) }
-        }))
-      }
-      const list = generateShoppingList(nwPlan, store, daysToInclude)
-      await onNextWeekDataChange?.({ shoppingList: list, mealsData: store }, nextWeekStart ?? getNextMondayIso())
-      setNwDayPickerOpen(false)
-    } finally {
-      setNwGenerating(false)
-    }
-  }
+  const fromLastWeekItems = shoppingList.filter(i => i.fromLastWeek)
+  const recipeItems = filteredItems.filter(i => i.gericht)
+  const manualItems = filteredItems.filter(i => !i.gericht && !i.fromLastWeek)
+  const hasNwItems = recipeItems.some(i => i.nextWeek)
+  const groups = groupShoppingByMeal(recipeItems, weekPlan, hasNwItems ? nwPlan : undefined)
+  const consolidated = consolidateShoppingList(recipeItems)
+  const doneCount = filteredItems.filter(i => i.erledigt).length
+  const dayCount = new Set(recipeItems.map(i => itemIso(i)).filter(Boolean)).size
+  const gerichtCount = new Set(recipeItems.map(i => i.gericht)).size
+  const hasAnyItems = shoppingList.length > 0 || nwShoppingList.length > 0
 
-  // Current week operations
-  function toggle(id: string) { onShoppingListChange(toggleShoppingItem(shoppingList, id)) }
-  function remove(id: string) { onShoppingListChange(removeShoppingItem(shoppingList, id)) }
-  function toggleConsolidated(ids: string[]) { onShoppingListChange(toggleConsolidatedItem(shoppingList, ids)) }
-
-  // NW operations
+  // Combined mutations — route by ID to correct list
   function nwUpdate(updated: ShoppingItem[]) {
     void onNextWeekDataChange?.({ shoppingList: updated }, nextWeekStart ?? getNextMondayIso())
   }
-
-  // Active list abstraction
-  const isNwTab = weekTab === 'next'
-  const activeList = isNwTab ? nwShoppingList : shoppingList
-  const activeWeekPlan = isNwTab ? nwPlan : weekPlan
-  const activeMeals = isNwTab ? nwMeals : mealsData
-
-  function activeToggle(id: string) { isNwTab ? nwUpdate(toggleShoppingItem(nwShoppingList, id)) : toggle(id) }
-  function activeRemove(id: string) { isNwTab ? nwUpdate(removeShoppingItem(nwShoppingList, id)) : remove(id) }
-  function activeToggleConsolidated(ids: string[]) { isNwTab ? nwUpdate(toggleConsolidatedItem(nwShoppingList, ids)) : toggleConsolidated(ids) }
+  function combinedToggle(id: string) {
+    if (nwIdSet.has(id)) nwUpdate(toggleShoppingItem(nwShoppingList, id))
+    else onShoppingListChange(toggleShoppingItem(shoppingList, id))
+  }
+  function combinedRemove(id: string) {
+    if (nwIdSet.has(id)) nwUpdate(removeShoppingItem(nwShoppingList, id))
+    else onShoppingListChange(removeShoppingItem(shoppingList, id))
+  }
+  function combinedToggleConsolidated(ids: string[]) {
+    const allItems = [...shoppingList, ...nwShoppingList]
+    const allDone = ids.every(id => allItems.find(i => i.id === id)?.erledigt)
+    const newState = !allDone
+    const nwArr = ids.filter(id => nwIdSet.has(id))
+    const cwArr = ids.filter(id => !nwIdSet.has(id))
+    const cwSet = new Set(cwArr)
+    const nwSet = new Set(nwArr)
+    if (cwArr.length > 0) onShoppingListChange(shoppingList.map(i => cwSet.has(i.id) ? { ...i, erledigt: newState } : i))
+    if (nwArr.length > 0) nwUpdate(nwShoppingList.map(i => nwSet.has(i.id) ? { ...i, erledigt: newState } : i))
+  }
 
   function addManual() {
     if (!newName.trim()) return
@@ -301,33 +408,14 @@ export default function EinkaufScreen({ weekPlan, mealsData, shoppingList, onSho
     setNewMenge('')
   }
 
-  function addManualNw() {
-    if (!newName.trim()) return
-    nwUpdate(addShoppingItem(nwShoppingList, newName.trim(), newMenge.trim()))
-    setNewName('')
-    setNewMenge('')
-  }
-
-  // Derived from active list
-  // fromLastWeek items are only in current list; exclude them from normal manualItems display
-  const fromLastWeekItems = !isNwTab ? shoppingList.filter(i => i.fromLastWeek) : []
-  const recipeItems = activeList.filter(i => i.gericht)
-  const manualItems = activeList.filter(i => !i.gericht && !i.fromLastWeek)
-  const hasNwItems = !isNwTab && recipeItems.some(i => i.nextWeek)
-  const groups = groupShoppingByMeal(recipeItems, activeWeekPlan, (!isNwTab && hasNwItems) ? nwPlan : undefined)
-  const consolidated = consolidateShoppingList(recipeItems)
-  const doneCount = activeList.filter(i => i.erledigt).length
-  const dayCount = new Set(recipeItems.map(i => i.tag)).size
-  const gerichtCount = new Set(recipeItems.map(i => i.gericht)).size
-
   return (
     <div className="screen active">
       <div className="topbar">
         <h1>🛒 Einkauf</h1>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
-          {(isNwTab ? nwShoppingList.length > 0 : shoppingList.length > 0) && (
+          {hasAnyItems && (
             <button
-              onClick={isNwTab ? openNwDayPicker : openDayPicker}
+              onClick={openDayPicker}
               style={{ border: 'none', background: 'none', color: '#1D9E75', fontSize: 12, cursor: 'pointer' }}
             >
               🔄 Neu
@@ -335,7 +423,10 @@ export default function EinkaufScreen({ weekPlan, mealsData, shoppingList, onSho
           )}
           {doneCount > 0 && (
             <button
-              onClick={() => isNwTab ? nwUpdate(clearCompleted(nwShoppingList)) : onShoppingListChange(clearCompleted(shoppingList))}
+              onClick={() => {
+                onShoppingListChange(clearCompleted(shoppingList))
+                if (nwShoppingList.some(i => i.erledigt)) nwUpdate(clearCompleted(nwShoppingList))
+              }}
               style={{ border: 'none', background: 'none', color: '#aaa', fontSize: 12, cursor: 'pointer' }}
             >
               Erledigtes löschen
@@ -345,26 +436,42 @@ export default function EinkaufScreen({ weekPlan, mealsData, shoppingList, onSho
       </div>
       <div className="content">
 
-        {/* Umschalter Diese Woche / Nächste Woche (Punkt 4) */}
-        {showNwTab && (
-          <div style={{ display: 'flex', border: '1px solid #e0e0e0', borderRadius: 10, overflow: 'hidden', marginBottom: 12 }}>
-            <button
-              onClick={() => setWeekTab('current')}
-              style={{ flex: 1, padding: '9px', border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: weekTab === 'current' ? 700 : 400, background: weekTab === 'current' ? '#1D9E75' : 'white', color: weekTab === 'current' ? 'white' : '#666' }}
-            >
-              Diese Woche{weekStart ? ` (KW ${getKW(weekStart)})` : ''}
-            </button>
-            <button
-              onClick={() => setWeekTab('next')}
-              style={{ flex: 1, padding: '9px', border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: weekTab === 'next' ? 700 : 400, background: weekTab === 'next' ? '#1D9E75' : 'white', color: weekTab === 'next' ? 'white' : '#666' }}
-            >
-              Nächste Woche{nextWeekStart ? ` (KW ${getKW(nextWeekStart)})` : ''}
-            </button>
+        {/* Unified day bar */}
+        {allBarDays.length > 0 && (
+          <div style={{ overflowX: 'auto', marginBottom: 14, paddingBottom: 2 }}>
+            <div style={{ display: 'flex', gap: 6, minWidth: 'max-content' }}>
+              {allBarDays.map(bd => {
+                const sel = selectedDates.has(bd.isoDate)
+                return (
+                  <button
+                    key={bd.isoDate}
+                    onClick={() => {
+                      const next = new Set(selectedDates)
+                      sel ? next.delete(bd.isoDate) : next.add(bd.isoDate)
+                      persistSelectedDates(next)
+                    }}
+                    style={{
+                      padding: '5px 11px',
+                      border: `1.5px solid ${sel ? '#1D9E75' : '#ddd'}`,
+                      borderRadius: 20,
+                      background: sel ? '#1D9E75' : 'white',
+                      color: sel ? 'white' : bd.isNw ? '#1D6E9E' : '#444',
+                      fontSize: 12,
+                      fontWeight: sel ? 700 : 400,
+                      cursor: 'pointer',
+                      flexShrink: 0,
+                    }}
+                  >
+                    {bd.label}
+                  </button>
+                )
+              })}
+            </div>
           </div>
         )}
 
-        {/* NW coverage warning (current week tab only) */}
-        {!isNwTab && nwCoverageDays.length > 0 && !nwConfirmed && (
+        {/* NW coverage warning when plan not yet confirmed */}
+        {nwCoverageDays.length > 0 && !nwConfirmed && (
           <div style={{ background: '#FFF3CD', border: '1px solid #FFC107', borderRadius: 10, padding: '10px 14px', marginBottom: 12 }}>
             <div style={{ fontSize: 12, fontWeight: 600, color: '#856404', marginBottom: 2 }}>
               ⚠️ Nächste Woche noch nicht freigegeben
@@ -375,8 +482,8 @@ export default function EinkaufScreen({ weekPlan, mealsData, shoppingList, onSho
           </div>
         )}
 
-        {/* Current week day picker */}
-        {!isNwTab && dayPickerOpen && (
+        {/* 🔄 Neu day picker */}
+        {dayPickerOpen && (
           <div style={{ background: '#f9f9f9', borderRadius: 12, padding: 14, marginBottom: 16, border: '1px solid #eee' }}>
             <div style={{ fontSize: 12, fontWeight: 600, color: '#555', marginBottom: 10 }}>
               Für welche Tage einkaufen?
@@ -398,20 +505,20 @@ export default function EinkaufScreen({ weekPlan, mealsData, shoppingList, onSho
                 </button>
               ))}
             </div>
-            {nwCoverageDays.length > 0 && (
+            {(allNwPickerDays.length > 0 || (nwCoverageDays.length > 0 && !nwConfirmed)) && (
               <div style={{ marginBottom: 12 }}>
                 <div style={{ fontSize: 11, color: '#888', marginBottom: 6, fontWeight: 500 }}>
                   Nächste Woche miteinschließen:
                 </div>
-                {nwConfirmed && nwAvailableDays.length > 0 ? (
+                {nwConfirmed && allNwPickerDays.length > 0 ? (
                   <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                    {nwAvailableDays.map(d => (
+                    {allNwPickerDays.map(d => (
                       <button
-                        key={d}
-                        className={`menu-tab${selectedNextWeekDays.has(d) ? ' on' : ''}`}
-                        onClick={() => toggleNextWeekDay(d)}
+                        key={d.tag}
+                        className={`menu-tab${selectedNwPickerDays.has(d.tag) ? ' on' : ''}`}
+                        onClick={() => toggleNwPickerDay(d.tag)}
                       >
-                        {d.slice(0, 2)} ⁺¹
+                        {d.tag.slice(0, 2)} ⁺¹
                       </button>
                     ))}
                   </div>
@@ -442,63 +549,22 @@ export default function EinkaufScreen({ weekPlan, mealsData, shoppingList, onSho
           </div>
         )}
 
-        {/* NW day picker */}
-        {isNwTab && nwDayPickerOpen && (
-          <div style={{ background: '#f9f9f9', borderRadius: 12, padding: 14, marginBottom: 16, border: '1px solid #eee' }}>
-            <div style={{ fontSize: 12, fontWeight: 600, color: '#555', marginBottom: 10 }}>
-              Nächste Woche – für welche Tage einkaufen?
-            </div>
-            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
-              {nwListableDays.map(d => (
-                <button
-                  key={d}
-                  className={`menu-tab${nwSelectedDays.has(d) ? ' on' : ''}`}
-                  onClick={() => toggleNwDay(d)}
-                >
-                  {d.slice(0, 2)}
-                </button>
-              ))}
-            </div>
-            {nwCoverageDays.length > 0 && (
-              <div style={{ fontSize: 11, color: '#888', marginBottom: 10 }}>
-                {nwCoverageDays.join(', ')} bereits in dieser Woche eingeplant
-              </div>
-            )}
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button
-                className="btn primary"
-                onClick={confirmNwGenerate}
-                disabled={nwGenerating}
-                style={{ flex: 1, padding: '10px', opacity: nwGenerating ? 0.6 : 1, cursor: nwGenerating ? 'default' : 'pointer' }}
-              >
-                {nwGenerating ? '🐀 Rémy holt Rezepte…' : '📋 Liste erstellen'}
-              </button>
-              <button
-                onClick={() => setNwDayPickerOpen(false)}
-                disabled={nwGenerating}
-                style={{ padding: '10px 16px', border: '1px solid #ddd', borderRadius: 10, background: 'white', cursor: nwGenerating ? 'default' : 'pointer', color: '#888', fontSize: 13, opacity: nwGenerating ? 0.6 : 1 }}
-              >
-                ✕
-              </button>
-            </div>
-          </div>
-        )}
-
         {/* Missing recipes warning */}
         {(() => {
-          const missing = activeList.length > 0
-            ? activeWeekPlan.filter(e => !isFullRecipe(activeMeals[e.gericht]))
-            : []
-          if (missing.length === 0) return null
+          const allMissing = [
+            ...weekPlan.filter(e => !isFullRecipe(mealsData[e.gericht]) && shoppingList.some(i => i.gericht === e.gericht)),
+            ...nwPlan.filter(e => !isFullRecipe(nwMeals[e.gericht]) && nwShoppingList.some(i => i.gericht === e.gericht)),
+          ]
+          if (allMissing.length === 0) return null
           return (
             <div style={{ background: '#FFFBEB', border: '1px solid #FCD34D', borderRadius: 10, padding: '10px 14px', marginBottom: 12 }}>
               <div style={{ fontSize: 12, color: '#92400E', fontWeight: 600, marginBottom: 4 }}>
-                ⚠️ Fehlende Rezepte ({missing.length})
+                ⚠️ Fehlende Rezepte ({allMissing.length})
               </div>
               <div style={{ fontSize: 11, color: '#555', marginBottom: 6 }}>
                 Für diese Gerichte fehlen Zutaten in der Einkaufsliste:
               </div>
-              {missing.map(e => (
+              {allMissing.map(e => (
                 <div key={`${e.tag}-${e.slot}`} style={{ fontSize: 11, color: '#92400E', marginTop: 2 }}>
                   {e.emoji} {e.gericht} · {e.tag} {e.slot === 'Mittag' ? '🌞' : '🌙'}
                 </div>
@@ -508,17 +574,15 @@ export default function EinkaufScreen({ weekPlan, mealsData, shoppingList, onSho
         })()}
 
         {/* Empty state */}
-        {activeList.length === 0 && !dayPickerOpen && !nwDayPickerOpen && (
+        {!hasAnyItems && !dayPickerOpen && (
           <div style={{ textAlign: 'center', padding: '40px 0' }}>
             <div style={{ fontSize: 36, marginBottom: 12 }}>🛒</div>
             <div style={{ fontSize: 13, color: '#aaa', marginBottom: 20 }}>
-              {activeWeekPlan.length === 0
+              {weekPlan.length === 0
                 ? 'Zuerst den Wochenplan erstellen.'
-                : isNwTab
-                  ? '🐀 Rémy erstellt die Einkaufsliste…'
-                  : 'Einkaufsliste aus dem Wochenplan generieren?'}
+                : 'Einkaufsliste aus dem Wochenplan generieren?'}
             </div>
-            {activeWeekPlan.length > 0 && !isNwTab && (
+            {weekPlan.length > 0 && (
               <button
                 className="btn primary"
                 style={{ width: 'auto', padding: '10px 24px', margin: '0 auto' }}
@@ -527,34 +591,30 @@ export default function EinkaufScreen({ weekPlan, mealsData, shoppingList, onSho
                 📋 Liste generieren
               </button>
             )}
-            {activeWeekPlan.length > 0 && isNwTab && (
-              <button
-                className="btn primary"
-                style={{ width: 'auto', padding: '10px 24px', margin: '0 auto' }}
-                onClick={openNwDayPicker}
-              >
-                📋 Liste generieren
-              </button>
-            )}
           </div>
         )}
 
-        {/* Punkt 1: "Noch offen aus letzter Woche" box */}
+        {/* "Noch offen aus letzter Woche" box */}
         {fromLastWeekItems.length > 0 && (
           <div style={{ background: '#FFF9F0', border: '1px solid #FFD8A0', borderRadius: 10, padding: '10px 14px', marginBottom: 12 }}>
             <div style={{ fontSize: 12, fontWeight: 600, color: '#8B4E00', marginBottom: 4 }}>⏳ Noch offen aus letzter Woche</div>
             {fromLastWeekItems.map(item => (
-              <ItemRow key={item.id} item={item} onToggle={() => toggle(item.id)} onRemove={() => remove(item.id)} />
+              <ItemRow
+                key={item.id}
+                item={item}
+                onToggle={() => onShoppingListChange(toggleShoppingItem(shoppingList, item.id))}
+                onRemove={() => onShoppingListChange(removeShoppingItem(shoppingList, item.id))}
+              />
             ))}
           </div>
         )}
 
-        {activeList.length > 0 && (
+        {hasAnyItems && (
           <>
             <div style={{ display: 'flex', alignItems: 'center', marginBottom: 12, gap: 12 }}>
               {recipeItems.length > 0 && (
                 <span style={{ fontSize: 11, color: '#aaa', flex: 1 }}>
-                  {dayCount} {dayCount === 1 ? 'Tag' : 'Tage'} · {gerichtCount} {gerichtCount === 1 ? 'Gericht' : 'Gerichte'} · {doneCount}/{activeList.length} erledigt
+                  {dayCount} {dayCount === 1 ? 'Tag' : 'Tage'} · {gerichtCount} {gerichtCount === 1 ? 'Gericht' : 'Gerichte'} · {doneCount}/{filteredItems.length} erledigt
                 </span>
               )}
               {(recipeItems.length > 0 || manualItems.length > 0) && (
@@ -590,7 +650,7 @@ export default function EinkaufScreen({ weekPlan, mealsData, shoppingList, onSho
                       <span style={{ fontSize: 12, fontWeight: 600, color: '#333' }}>{group.gericht}</span>
                     </div>
                     {group.items.map(item => (
-                      <ItemRow key={item.id} item={item} onToggle={() => activeToggle(item.id)} onRemove={() => activeRemove(item.id)} />
+                      <ItemRow key={item.id} item={item} onToggle={() => combinedToggle(item.id)} onRemove={() => combinedRemove(item.id)} />
                     ))}
                   </div>
                 ))}
@@ -600,7 +660,7 @@ export default function EinkaufScreen({ weekPlan, mealsData, shoppingList, onSho
             {viewMode === 'zusammen' && (
               <>
                 {consolidated.map(item => (
-                  <ConsolidatedRow key={item.name} item={item} onToggle={() => activeToggleConsolidated(item.ids)} />
+                  <ConsolidatedRow key={item.name} item={item} onToggle={() => combinedToggleConsolidated(item.ids)} />
                 ))}
               </>
             )}
@@ -614,7 +674,7 @@ export default function EinkaufScreen({ weekPlan, mealsData, shoppingList, onSho
                     </div>
                     {group.items.map(item => (
                       <div key={item.name}>
-                        <ConsolidatedRow item={item} onToggle={() => activeToggleConsolidated(item.ids)} />
+                        <ConsolidatedRow item={item} onToggle={() => combinedToggleConsolidated(item.ids)} />
                         {group.unassigned ? (
                           canEditSettings ? (
                             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', paddingLeft: 42, paddingBottom: 10, marginTop: -4 }}>
@@ -653,7 +713,7 @@ export default function EinkaufScreen({ weekPlan, mealsData, shoppingList, onSho
                         const key = mi.name.toLowerCase()
                         return (
                           <div key={mi.id}>
-                            <ItemRow item={mi} onToggle={() => activeToggle(mi.id)} onRemove={() => activeRemove(mi.id)} />
+                            <ItemRow item={mi} onToggle={() => combinedToggle(mi.id)} onRemove={() => combinedRemove(mi.id)} />
                             <div style={{ paddingLeft: 42, paddingBottom: 8, marginTop: -4 }}>
                               <button
                                 onClick={() => { const next = { ...zutatenLaden }; delete next[key]; onZutatenLadenChange(next) }}
@@ -677,7 +737,7 @@ export default function EinkaufScreen({ weekPlan, mealsData, shoppingList, onSho
                       const key = item.name.toLowerCase()
                       return (
                         <div key={item.id}>
-                          <ItemRow item={item} onToggle={() => activeToggle(item.id)} onRemove={() => activeRemove(item.id)} />
+                          <ItemRow item={item} onToggle={() => combinedToggle(item.id)} onRemove={() => combinedRemove(item.id)} />
                           {canEditSettings && (
                             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', paddingLeft: 42, paddingBottom: 10, marginTop: -4 }}>
                               {laeden.map(l => (
@@ -703,7 +763,7 @@ export default function EinkaufScreen({ weekPlan, mealsData, shoppingList, onSho
               <div style={{ marginBottom: 16 }}>
                 <div className="lbl">Weitere Artikel</div>
                 {manualItems.map(item => (
-                  <ItemRow key={item.id} item={item} onToggle={() => activeToggle(item.id)} onRemove={() => activeRemove(item.id)} />
+                  <ItemRow key={item.id} item={item} onToggle={() => combinedToggle(item.id)} onRemove={() => combinedRemove(item.id)} />
                 ))}
               </div>
             )}
@@ -716,26 +776,25 @@ export default function EinkaufScreen({ weekPlan, mealsData, shoppingList, onSho
             <input
               value={newName}
               onChange={e => setNewName(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && (isNwTab ? addManualNw() : addManual())}
+              onKeyDown={e => e.key === 'Enter' && addManual()}
               placeholder="Artikel"
               style={{ flex: 1, border: '1px solid #ddd', borderRadius: 10, padding: '8px 12px', fontSize: 13, outline: 'none' }}
             />
             <input
               value={newMenge}
               onChange={e => setNewMenge(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && (isNwTab ? addManualNw() : addManual())}
+              onKeyDown={e => e.key === 'Enter' && addManual()}
               placeholder="Menge"
               style={{ width: 76, border: '1px solid #ddd', borderRadius: 10, padding: '8px 10px', fontSize: 13, outline: 'none' }}
             />
             <button
-              onClick={isNwTab ? addManualNw : addManual}
+              onClick={addManual}
               style={{ border: 'none', background: '#1D9E75', color: '#fff', borderRadius: 10, padding: '8px 14px', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}
             >+</button>
           </div>
         </div>
 
-        {/* "Einkauf erledigt" only for current week */}
-        {!isNwTab && currentUser === wochenchef && !shopDone && shoppingList.length > 0 && (
+        {currentUser === wochenchef && !shopDone && shoppingList.length > 0 && (
           <div style={{ marginTop: 24, borderTop: '2px solid #f0f0f0', paddingTop: 20 }}>
             <button
               onClick={() => onShopDoneChange(true)}
@@ -750,7 +809,7 @@ export default function EinkaufScreen({ weekPlan, mealsData, shoppingList, onSho
           </div>
         )}
 
-        {!isNwTab && shopDone && (
+        {shopDone && (
           <div style={{ marginTop: 24, textAlign: 'center', color: '#1D9E75', fontSize: 13, fontWeight: 600, padding: '12px 0' }}>
             ✓ Einkauf abgeschlossen
           </div>
