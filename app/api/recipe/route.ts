@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { checkAllergens, formatAllergenWarnings, buildAllergenRetryHint } from '../../../lib/allergenCheck'
 
 export const maxDuration = 60
 
@@ -73,8 +74,9 @@ Antworte NUR als reines JSON-Array ohne Markdown: [{"menge":"...","name":"...","
 
   // ── Anpassen-Modus: bestehendes Rezept gezielt ändern ───────────────────
   if (body.mode === 'adjust') {
-    const { gericht, existingRezept, wunsch, personCount: adjPC, familyPrompt: adjFP } = body as {
+    const { gericht, existingRezept, wunsch, personCount: adjPC, familyPrompt: adjFP, familyMembersForCheck: adjFM } = body as {
       gericht: string; existingRezept: object; wunsch: string; personCount?: number; familyPrompt?: string
+      familyMembersForCheck?: { name: string; allergien: string[] }[]
     }
     if (!apiKey) return NextResponse.json({ rezept: existingRezept, allergieHinweise: [] })
     const familienProfil = adjFP || 'Sabine (keine Nüsse), Heiko (laktosefrei), Tim (kein Fisch)'
@@ -107,14 +109,44 @@ Antworte NUR als reines JSON ohne Markdown:
           : Array.isArray(parsed.zutaten) ? parsed
           : null
         if (!rezept) continue
-        return NextResponse.json({ rezept: { ...rezept, rezeptVersion: 2 }, allergieHinweise: (parsed.allergieHinweise ?? []) as string[] })
+
+        // Deterministic allergen check + one Rémy retry
+        let finalRezept = { ...rezept, rezeptVersion: 2 }
+        const adjMembers = adjFM ?? []
+        if (adjMembers.length > 0 && Array.isArray(rezept.zutaten)) {
+          let issues = checkAllergens(rezept, adjMembers)
+          if (issues.length > 0) {
+            const retryHint = buildAllergenRetryHint(issues)
+            const retryPrompt = `Korrigiere dieses Rezept: fehlende allergiegerechte Alternativen für ${retryHint}.
+Aktuelles Rezept: ${JSON.stringify(rezept)}
+Ergänze die fehlenden fuer-Zutaten (Original-Zutat mit reduzierter Menge behalten, Ersatz mit "fuer":"Name" hinzufügen). Ändere NICHTS anderes.
+Antworte NUR als reines JSON ohne Markdown im Format: {"rezept":{...},"allergieHinweise":[]}`
+            const retryRaw = await callClaude(apiKey, retryPrompt, 2000, MODEL_SONNET)
+            if (retryRaw) {
+              try {
+                const rs = retryRaw.indexOf('{'), re = retryRaw.lastIndexOf('}')
+                if (rs !== -1 && re !== -1) {
+                  const retried = JSON.parse(retryRaw.slice(rs, re + 1))
+                  const retriedRezept = retried.rezept ?? (Array.isArray(retried.zutaten) ? retried : null)
+                  if (retriedRezept && Array.isArray(retriedRezept.zutaten)) {
+                    finalRezept = { ...retriedRezept, rezeptVersion: 2 }
+                    issues = checkAllergens(retriedRezept, adjMembers)
+                  }
+                }
+              } catch { /* keep original */ }
+            }
+          }
+          if (issues.length > 0) finalRezept.offeneAllergene = formatAllergenWarnings(issues)
+        }
+
+        return NextResponse.json({ rezept: finalRezept, allergieHinweise: (parsed.allergieHinweise ?? []) as string[] })
       }
     } catch { /* fall through */ }
     return NextResponse.json({ rezept: existingRezept, allergieHinweise: [] })
   }
 
   // ── Normal-Modus: vollständiges Rezept generieren ────────────────────────
-  const { gericht, emoji, freezerList, pantryList, familyPrompt, personCount } = body
+  const { gericht, emoji, freezerList, pantryList, familyPrompt, personCount, familyMembersForCheck } = body
   if (!apiKey) {
     return NextResponse.json({ rezept: { ...FALLBACK, name: gericht || FALLBACK.name, emoji: emoji || '🍗' } })
   }
@@ -147,7 +179,35 @@ Antworte NUR als reines JSON ohne Markdown-Codeblock:
     const jsonStart = raw.indexOf('{')
     const jsonEnd = raw.lastIndexOf('}')
     if (jsonStart === -1 || jsonEnd === -1) throw new Error('No JSON found')
-    const parsed = JSON.parse(raw.slice(jsonStart, jsonEnd + 1))
+    let parsed = JSON.parse(raw.slice(jsonStart, jsonEnd + 1))
+
+    // Deterministic allergen check + one Rémy retry
+    const members = (familyMembersForCheck as { name: string; allergien: string[] }[] | undefined) ?? []
+    if (members.length > 0 && Array.isArray(parsed.zutaten)) {
+      let issues = checkAllergens(parsed, members)
+      if (issues.length > 0) {
+        const retryHint = buildAllergenRetryHint(issues)
+        const retryPrompt = `Korrigiere dieses Rezept: fehlende allergiegerechte Alternativen für ${retryHint}.
+Aktuelles Rezept: ${JSON.stringify(parsed)}
+Ergänze die fehlenden fuer-Zutaten (Original-Zutat mit reduzierter Menge behalten, Ersatz mit "fuer":"Name" hinzufügen). Ändere NICHTS anderes.
+Antworte NUR als reines JSON ohne Markdown.`
+        const retryRaw = await callClaude(apiKey, retryPrompt, 2000, MODEL_SONNET)
+        if (retryRaw) {
+          try {
+            const rs = retryRaw.indexOf('{'), re = retryRaw.lastIndexOf('}')
+            if (rs !== -1 && re !== -1) {
+              const retried = JSON.parse(retryRaw.slice(rs, re + 1))
+              if (Array.isArray(retried?.zutaten)) {
+                parsed = retried
+                issues = checkAllergens(retried, members)
+              }
+            }
+          } catch { /* keep original */ }
+        }
+      }
+      if (issues.length > 0) parsed.offeneAllergene = formatAllergenWarnings(issues)
+    }
+
     return NextResponse.json({ rezept: { ...parsed, rezeptVersion: 2 } })
   } catch {
     return NextResponse.json({ rezept: { ...FALLBACK, name: gericht || FALLBACK.name, emoji: emoji || '🍗' } })

@@ -492,13 +492,14 @@ export async function generateRecipe(
   pantryList: string,
   familyPrompt?: string,
   personCount?: number,
+  familyMembersForCheck?: { name: string; allergien: string[] }[],
 ): Promise<Rezept | null> {
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
       const resp = await fetch('/api/recipe', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gericht, emoji, freezerList, pantryList, familyPrompt, personCount }),
+        body: JSON.stringify({ gericht, emoji, freezerList, pantryList, familyPrompt, personCount, familyMembersForCheck }),
       })
       if (!resp.ok) {
         if (attempt === 0) continue
@@ -553,12 +554,13 @@ export async function adjustRecipe(
   freezerList: string,
   pantryList: string,
   familyPrompt?: string,
+  familyMembersForCheck?: { name: string; allergien: string[] }[],
 ): Promise<{ rezept: Rezept; allergieHinweise: string[] } | null> {
   try {
     const resp = await fetch('/api/recipe', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ mode: 'adjust', gericht: existing.name, existingRezept: existing, wunsch, personCount, familyPrompt }),
+      body: JSON.stringify({ mode: 'adjust', gericht: existing.name, existingRezept: existing, wunsch, personCount, familyPrompt, familyMembersForCheck }),
     })
     if (!resp.ok) throw new Error('HTTP error')
     const data = await resp.json()
@@ -631,6 +633,7 @@ export async function loadMissingRecipes(
   pantryList: string,
   familyPrompt: string,
   getPersonCount?: (tag: string, slot: WochenSlot) => number,
+  familyMembersForCheck?: { name: string; allergien: string[] }[],
 ): Promise<Record<string, Rezept>> {
   const result: Record<string, Rezept> = { ...store }
   const seen = new Set<string>()
@@ -641,7 +644,7 @@ export async function loadMissingRecipes(
   })
   await Promise.all(missing.map(async e => {
     const personCount = getPersonCount ? getPersonCount(e.tag, e.slot) : undefined
-    const r = await generateRecipe(e.gericht, e.emoji, freezerList, pantryList, familyPrompt, personCount)
+    const r = await generateRecipe(e.gericht, e.emoji, freezerList, pantryList, familyPrompt, personCount, familyMembersForCheck)
     if (r) {
       result[e.gericht] = {
         ...r,

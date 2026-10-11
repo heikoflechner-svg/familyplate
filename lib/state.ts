@@ -82,6 +82,7 @@ export interface Rezept {
   ersetzteZutaten?: string[]
   personenAnzahl?: number
   rezeptVersion?: number
+  offeneAllergene?: string[]  // deterministic post-check: unresolved issues after Rémy retry
 }
 
 export interface ShoppingItem {

@@ -1,6 +1,7 @@
 'use client'
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { generateWeekPlan, getRemySuggestions, generateRecipe, rescaleRecipe, adjustRecipe, loadMissingRecipes, getPersonCountForSlot, saveLastDishes, isFullRecipe, getMondayIso, getNextMondayIso, applySwap, checkAllergiesForSwap, checkFreshnessWarning, loadHistoryDishes } from '../lib/mealLogic'
+import { checkAllergens, formatAllergenWarnings } from '../lib/allergenCheck'
 import { rescaleShoppingListMengen, rewriteShoppingItemsForDish, swapShoppingItemsTags } from '../lib/shoppingLogic'
 import { getFreezerListString, getPantryListString, addFreezerItem, deleteFreezerItem } from '../lib/freezerLogic'
 import { buildFamilyPrompt, buildMemberCfg, DEFAULT_MEMBERS } from '../lib/familyLogic'
@@ -174,6 +175,17 @@ export default function WocheScreen({
   const gaesteProTag = attendance.filter(a => (a.gaeste ?? 0) > 0).map(a => ({ tag: a.tag, gaeste: a.gaeste }))
   const activeMembers = members.length ? members : DEFAULT_MEMBERS
   const CFG = buildMemberCfg(activeMembers)
+
+  const allergenCheckMembers = useMemo(
+    () => activeMembers.filter(m => m.allergien.length > 0).map(m => ({ name: m.name, allergien: m.allergien })),
+    [activeMembers],
+  )
+
+  function getRecipeAllergenWarnings(rezept: Rezept | undefined): string[] {
+    if (!rezept?.zutaten?.length || allergenCheckMembers.length === 0) return []
+    if (rezept.offeneAllergene?.length) return rezept.offeneAllergene
+    return formatAllergenWarnings(checkAllergens(rezept, allergenCheckMembers))
+  }
   const memberIds = activeMembers.map(m => m.id)
   const suggestedNextChef: Chef = ([...activeMembers].sort((a, b) => {
     const aCount = a.wochenchefStat?.count ?? 0
@@ -436,7 +448,7 @@ export default function WocheScreen({
           const rezept = await generateRecipe(
             entry.gericht, entry.emoji,
             getFreezerListString(freezerItems), getPantryListString(pantryItems),
-            familyPrompt, personCount,
+            familyPrompt, personCount, allergenCheckMembers,
           )
           if (!rezept) continue
           const merged: Rezept = {
@@ -1595,7 +1607,7 @@ export default function WocheScreen({
           }
         }
       } else {
-        const rezept = await generateRecipe(gericht, emoji, getFreezerListString(freezerItems), getPantryListString(pantryItems), familyPrompt, personCount)
+        const rezept = await generateRecipe(gericht, emoji, getFreezerListString(freezerItems), getPantryListString(pantryItems), familyPrompt, personCount, allergenCheckMembers)
         if (rezept) {
           const merged: Rezept = { ...rezept, personenAnzahl: personCount, ersetzteZutaten: rezept.ersetzteZutaten?.length ? rezept.ersetzteZutaten : (existing?.ersetzteZutaten ?? []) }
           await onNextWeekDataChange({ mealsData: { ...(nextWeekData?.mealsData ?? {}), [gericht]: merged } }, nextMonday)
@@ -1620,7 +1632,7 @@ export default function WocheScreen({
     const personCount = getPersonCountForSlot(tag, slot, att, mbs)
     setRecipeLoading(selectedMealName)
     try {
-      const rezept = await generateRecipe(selectedMealName, emoji, getFreezerListString(freezerItems), getPantryListString(pantryItems), familyPrompt, personCount)
+      const rezept = await generateRecipe(selectedMealName, emoji, getFreezerListString(freezerItems), getPantryListString(pantryItems), familyPrompt, personCount, allergenCheckMembers)
       if (!rezept) return
       const merged: Rezept = { ...rezept, personenAnzahl: personCount, ersetzteZutaten: rezept.ersetzteZutaten?.length ? rezept.ersetzteZutaten : [] }
       if (source === 'current') {
@@ -1661,7 +1673,7 @@ export default function WocheScreen({
     setAdjustAllergieHinweise([])
     setRecipeLoading(selectedMealName)
     try {
-      const result = await adjustRecipe(existing, wunsch, personCount, getFreezerListString(freezerItems), getPantryListString(pantryItems), familyPrompt)
+      const result = await adjustRecipe(existing, wunsch, personCount, getFreezerListString(freezerItems), getPantryListString(pantryItems), familyPrompt, allergenCheckMembers)
       if (!result) return
       const { rezept, allergieHinweise } = result
       const merged: Rezept = { ...rezept, personenAnzahl: personCount, ersetzteZutaten: rezept.ersetzteZutaten?.length ? rezept.ersetzteZutaten : (existing.ersetzteZutaten ?? []) }
@@ -1774,7 +1786,7 @@ export default function WocheScreen({
     if (isChefConfirm) {
       const mbs = members.length ? members : DEFAULT_MEMBERS
       const pc = (tag: string, slot: WochenSlot) => getPersonCountForSlot(tag, slot, attendance, mbs)
-      void loadMissingRecipes(planSnapshot, mergedMeals, getFreezerListString(freezerItems), getPantryListString(pantryItems), familyPrompt, pc)
+      void loadMissingRecipes(planSnapshot, mergedMeals, getFreezerListString(freezerItems), getPantryListString(pantryItems), familyPrompt, pc, allergenCheckMembers)
         .then(full => onWeekPlanChange(planSnapshot, full))
     }
   }
@@ -1845,7 +1857,7 @@ export default function WocheScreen({
     setChefErgaenzungIds([])
     setSaving(false)
     // Restliche fehlende/veraltete Rezepte im Hintergrund nachladen
-    void loadMissingRecipes(finalPlan, altMealsData, freezerStr, pantryStr, familyPrompt, pcCallback)
+    void loadMissingRecipes(finalPlan, altMealsData, freezerStr, pantryStr, familyPrompt, pcCallback, allergenCheckMembers)
       .then(full => onWeekPlanChange(finalPlan, full))
   }
 
@@ -2210,7 +2222,7 @@ export default function WocheScreen({
     return (
       <div className="screen active" style={{ position: 'relative' }}>
         {selectedMealName && (
-          <RecipeModal name={selectedMealName} rezept={selectedRezept(selectedMealName)} loading={recipeLoading === selectedMealName} onClose={() => { setSelectedMealName(null); setRecipeContext(null); setAdjustAllergieHinweise([]) }} canRewrite={currentUser === wochenchef || canEditSettings} onRewrite={rewriteRecipe} onAdjust={handleAdjustRecipe} allergieHinweise={adjustAllergieHinweise} />
+          <RecipeModal name={selectedMealName} rezept={selectedRezept(selectedMealName)} loading={recipeLoading === selectedMealName} onClose={() => { setSelectedMealName(null); setRecipeContext(null); setAdjustAllergieHinweise([]) }} canRewrite={currentUser === wochenchef || canEditSettings} onRewrite={rewriteRecipe} onAdjust={handleAdjustRecipe} allergieHinweise={adjustAllergieHinweise} offeneAllergene={getRecipeAllergenWarnings(selectedRezept(selectedMealName) ?? undefined)} />
         )}
         <div className="topbar">
           {planState !== 'loading' && (
@@ -2320,6 +2332,9 @@ export default function WocheScreen({
                             {(pendingPlanMeals[e.gericht]?.ersetzteZutaten?.length ?? 0) > 0 && (
                               <div style={{ fontSize: 10, color: '#DC2626', marginTop: 1 }}>⚠️ {pendingPlanMeals[e.gericht]!.ersetzteZutaten!.join(' · ')}</div>
                             )}
+                            {getRecipeAllergenWarnings(pendingPlanMeals[e.gericht]).length > 0 && (
+                              <div style={{ fontSize: 10, color: '#991B1B', marginTop: 1 }}>⚠️ Allergie: {getRecipeAllergenWarnings(pendingPlanMeals[e.gericht]).join(' · ')}</div>
+                            )}
                             <div style={{ fontSize: 11, color: '#aaa' }}>{e.minuten} min</div>
                           </div>
                           <button
@@ -2425,7 +2440,7 @@ export default function WocheScreen({
     return (
       <div className="screen active" style={{ position: 'relative' }}>
         {selectedMealName && (
-          <RecipeModal name={selectedMealName} rezept={selectedRezept(selectedMealName)} loading={recipeLoading === selectedMealName} onClose={() => { setSelectedMealName(null); setRecipeContext(null); setAdjustAllergieHinweise([]) }} canRewrite={currentUser === wochenchef || canEditSettings} onRewrite={rewriteRecipe} onAdjust={handleAdjustRecipe} allergieHinweise={adjustAllergieHinweise} />
+          <RecipeModal name={selectedMealName} rezept={selectedRezept(selectedMealName)} loading={recipeLoading === selectedMealName} onClose={() => { setSelectedMealName(null); setRecipeContext(null); setAdjustAllergieHinweise([]) }} canRewrite={currentUser === wochenchef || canEditSettings} onRewrite={rewriteRecipe} onAdjust={handleAdjustRecipe} allergieHinweise={adjustAllergieHinweise} offeneAllergene={getRecipeAllergenWarnings(selectedRezept(selectedMealName) ?? undefined)} />
         )}
         {swapTarget && swapSource && (() => {
           const { tag: t1, slot: s1, entry: e1 } = swapSource
@@ -2831,6 +2846,9 @@ export default function WocheScreen({
                             {(mealsData[e.gericht]?.ersetzteZutaten?.length ?? 0) > 0 && (
                               <div style={{ fontSize: 10, color: '#DC2626', marginTop: 1 }}>⚠️ {mealsData[e.gericht]!.ersetzteZutaten!.join(' · ')}</div>
                             )}
+                            {getRecipeAllergenWarnings(mealsData[e.gericht]).length > 0 && (
+                              <div style={{ fontSize: 10, color: '#991B1B', marginTop: 1 }}>⚠️ Allergie: {getRecipeAllergenWarnings(mealsData[e.gericht]).join(' · ')}</div>
+                            )}
                             <div style={{ fontSize: 11, color: '#aaa' }}>{e.minuten} min</div>
                           </div>
                         </div>
@@ -3225,6 +3243,9 @@ export default function WocheScreen({
                                           {(nwPendingMeals[e!.gericht]?.ersetzteZutaten?.length ?? 0) > 0 && (
                                             <div style={{ fontSize: 10, color: '#DC2626', marginTop: 1 }}>⚠️ {nwPendingMeals[e!.gericht]!.ersetzteZutaten!.join(' · ')}</div>
                                           )}
+                                          {getRecipeAllergenWarnings(nwPendingMeals[e!.gericht]).length > 0 && (
+                                            <div style={{ fontSize: 10, color: '#991B1B', marginTop: 1 }}>⚠️ Allergie: {getRecipeAllergenWarnings(nwPendingMeals[e!.gericht]).join(' · ')}</div>
+                                          )}
                                         </div>
                                         <span style={{ fontSize: 10, color: '#bbb' }}>{e!.minuten} min</span>
                                         <button onClick={() => replanNwPendingSlot(e!.tag, e!.slot)} disabled={nwSlotLoading !== null}
@@ -3272,6 +3293,9 @@ export default function WocheScreen({
                                     </div>
                                     {(nwr?.ersetzteZutaten?.length ?? 0) > 0 && (
                                       <div style={{ fontSize: 10, color: '#DC2626', marginTop: 1 }}>⚠️ {nwr!.ersetzteZutaten!.join(' · ')}</div>
+                                    )}
+                                    {getRecipeAllergenWarnings(nwr).length > 0 && (
+                                      <div style={{ fontSize: 10, color: '#991B1B', marginTop: 1 }}>⚠️ Allergie: {getRecipeAllergenWarnings(nwr).join(' · ')}</div>
                                     )}
                                   </div>
                                   <span style={{ fontSize: 10, color: '#bbb' }}>{e!.minuten} min</span>
@@ -3444,6 +3468,9 @@ export default function WocheScreen({
                                     </div>
                                     {(nextWeekData?.mealsData?.[e.gericht]?.ersetzteZutaten?.length ?? 0) > 0 && (
                                       <div style={{ fontSize: 10, color: '#DC2626', marginTop: 1 }}>⚠️ {nextWeekData!.mealsData![e.gericht]!.ersetzteZutaten!.join(' · ')}</div>
+                                    )}
+                                    {getRecipeAllergenWarnings(nextWeekData?.mealsData?.[e.gericht]).length > 0 && (
+                                      <div style={{ fontSize: 10, color: '#991B1B', marginTop: 1 }}>⚠️ Allergie: {getRecipeAllergenWarnings(nextWeekData?.mealsData?.[e.gericht]).join(' · ')}</div>
                                     )}
                                     <div style={{ fontSize: 11, color: '#aaa' }}>{e.minuten} min</div>
                                   </div>
@@ -4487,7 +4514,7 @@ function WishesSection({
   )
 }
 
-function RecipeModal({ name, rezept, loading, onClose, canRewrite, onRewrite, onAdjust, allergieHinweise }: { name: string; rezept: import('../lib/state').Rezept | null; loading?: boolean; onClose: () => void; canRewrite?: boolean; onRewrite?: () => void; onAdjust?: (wunsch: string) => void; allergieHinweise?: string[] }) {
+function RecipeModal({ name, rezept, loading, onClose, canRewrite, onRewrite, onAdjust, allergieHinweise, offeneAllergene }: { name: string; rezept: import('../lib/state').Rezept | null; loading?: boolean; onClose: () => void; canRewrite?: boolean; onRewrite?: () => void; onAdjust?: (wunsch: string) => void; allergieHinweise?: string[]; offeneAllergene?: string[] }) {
   const [confirmRewrite, setConfirmRewrite] = useState(false)
   const [adjustMode, setAdjustMode] = useState(false)
   const [adjustText, setAdjustText] = useState('')
@@ -4557,6 +4584,17 @@ function RecipeModal({ name, rezept, loading, onClose, canRewrite, onRewrite, on
                 {allergieHinweise!.map((h, i) => <div key={i} style={{ fontSize: 12, color: '#92400E', lineHeight: 1.5 }}>⚠️ {h}</div>)}
               </div>
             )}
+
+            {(offeneAllergene?.length ?? 0) > 0 && (
+              <div style={{ marginTop: 12, padding: '10px 12px', background: '#FEF2F2', borderRadius: 8, border: '1px solid #FECACA' }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: '#991B1B', marginBottom: 4 }}>⚠️ Allergie nicht abgedeckt</div>
+                {offeneAllergene!.map((w, i) => <div key={i} style={{ fontSize: 12, color: '#991B1B', lineHeight: 1.5 }}>{w}</div>)}
+              </div>
+            )}
+
+            <div style={{ marginTop: 12, padding: '8px 10px', background: '#F9FAFB', borderRadius: 8, border: '1px solid #E5E7EB' }}>
+              <span style={{ fontSize: 11, color: '#6B7280' }}>ℹ️ Bitte Packungsangaben selbst prüfen.</span>
+            </div>
 
             {canRewrite && !confirmRewrite && !adjustMode && (
               <div style={{ marginTop: 20, display: 'flex', gap: 8 }}>
