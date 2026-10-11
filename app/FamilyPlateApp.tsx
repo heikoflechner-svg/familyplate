@@ -537,6 +537,9 @@ export default function FamilyPlateApp() {
             freezerItems={freezerItems}
             pantryItems={pantryItems}
             members={members}
+            onNextWeekDataChange={handleNextWeekDataChange}
+            weekStart={weekStart}
+            nextWeekStart={nextWeekStart}
           />
         )}
         {activeTab === 'rezepte' && (

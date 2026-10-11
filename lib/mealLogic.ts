@@ -116,7 +116,7 @@ export async function saveNextWeekData(weekStart: string, data: NextWeekData): P
 export async function activateNextWeek(): Promise<{ weekStart: string | null; nextWeekData: NextWeekData | null }> {
   const { data: existing } = await supabase
     .from('week_plans')
-    .select('id, next_week_start, next_week_data')
+    .select('id, next_week_start, next_week_data, shopping_list')
     .eq('family_id', getFamilyId())
     .limit(1)
     .single()
@@ -125,6 +125,14 @@ export async function activateNextWeek(): Promise<{ weekStart: string | null; ne
 
   const nextStart = existing.next_week_start as string | null
   const nextData = existing.next_week_data as NextWeekData | null
+
+  // Carry over manual undone items from old list into new week (Punkt 1)
+  const oldList = Array.isArray(existing.shopping_list) ? (existing.shopping_list as ShoppingItem[]) : []
+  const carryOver: ShoppingItem[] = oldList
+    .filter(i => !i.erledigt && !i.gericht)
+    .map(i => ({ ...i, fromLastWeek: true }))
+  const nwList = nextData?.shoppingList ?? []
+  const newShoppingList: ShoppingItem[] = [...carryOver, ...nwList]
 
   const { error: updateError } = await supabase.from('week_plans').update({
     week_start: nextStart ?? getMondayIso(),
@@ -137,7 +145,7 @@ export async function activateNextWeek(): Promise<{ weekStart: string | null; ne
       ? { v: 2, days: nextData.attendance, confirmed: nextData.attendanceConfirmed ?? [] }
       : [],
     plan_confirmed: false,
-    shopping_list: [],
+    shopping_list: newShoppingList,
     shopping_done: false,
     shopping_day: null,
     shopping_persons: null,

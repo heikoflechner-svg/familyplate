@@ -93,6 +93,7 @@ export interface ShoppingItem {
   slot?: WochenSlot
   gericht?: string
   nextWeek?: boolean
+  fromLastWeek?: boolean
 }
 
 export interface DayAttendance {
@@ -123,6 +124,7 @@ export interface NextWeekData {
   attendanceConfirmed?: Chef[]
   planSettings?: PlanSettings
   wochenchefAutoAssigned?: boolean
+  shoppingList?: ShoppingItem[]
 }
 
 export interface ChefStat {
