@@ -184,7 +184,7 @@ export async function loadWeekHistory(n = 8): Promise<Array<{
   plan: WeekPlanEntry[]
   mealsData: Record<string, Rezept>
   attendance: unknown
-}>> {
+}> | null> {
   try {
     const { data, error } = await supabase
       .from('week_history')
@@ -192,7 +192,11 @@ export async function loadWeekHistory(n = 8): Promise<Array<{
       .eq('family_id', getFamilyId())
       .order('week_start', { ascending: false })
       .limit(n)
-    if (error || !data) return []
+    if (error) {
+      console.error('loadWeekHistory Supabase-Fehler:', error)
+      return null
+    }
+    if (!data) return []
     return data.map(row => ({
       weekStart: row.week_start as string,
       wochenchef: (row.wochenchef as string) ?? '',
@@ -200,17 +204,18 @@ export async function loadWeekHistory(n = 8): Promise<Array<{
       mealsData: (row.meals_data as Record<string, Rezept>) ?? {},
       attendance: row.attendance,
     }))
-  } catch {
-    return []
+  } catch (err) {
+    console.error('loadWeekHistory Ausnahme:', err)
+    return null
   }
 }
 
 export async function loadHistoryDishes(n = 4): Promise<string[]> {
   const history = await loadWeekHistory(n)
   const dishes = new Set<string>()
-  for (const week of history) {
+  for (const week of (history ?? [])) {
     for (const entry of week.plan) {
-      if (entry.slot === 'Abend' && entry.gericht && !entry.gericht.startsWith('Reste:')) {
+      if (entry.gericht && !entry.gericht.startsWith('Reste:')) {
         dishes.add(entry.gericht)
       }
     }

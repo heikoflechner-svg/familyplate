@@ -66,16 +66,30 @@ export default function MehrScreen({
   const [changingNext, setChangingNext] = useState(false)
   const [history, setHistory] = useState<HistoryEntry[]>([])
   const [historyLoading, setHistoryLoading] = useState(false)
+  const [historyLoaded, setHistoryLoaded] = useState(false)
+  const [historyError, setHistoryError] = useState<string | null>(null)
+  const [historyLimit, setHistoryLimit] = useState(12)
+  const [hasMoreHistory, setHasMoreHistory] = useState(false)
   const [openWeek, setOpenWeek] = useState<string | null>(null)
 
   useEffect(() => {
-    if (view !== 'verlauf' || historyLoading || history.length > 0) return
+    if (view !== 'verlauf' || historyLoading || historyLoaded) return
     setHistoryLoading(true)
-    loadWeekHistory(12).then(data => {
-      setHistory(data as HistoryEntry[])
+    setHistoryError(null)
+    loadWeekHistory(historyLimit + 1).then(data => {
+      if (data === null) {
+        setHistoryError('Verlauf konnte nicht geladen werden. Bitte Seite neu laden oder Verbindung prüfen.')
+      } else if (data.length > historyLimit) {
+        setHistory(data.slice(0, historyLimit) as HistoryEntry[])
+        setHasMoreHistory(true)
+      } else {
+        setHistory(data as HistoryEntry[])
+        setHasMoreHistory(false)
+      }
       setHistoryLoading(false)
-    }).catch(() => setHistoryLoading(false))
-  }, [view, historyLoading, history.length])
+      setHistoryLoaded(true)
+    })
+  }, [view, historyLoading, historyLoaded, historyLimit])
 
   const isChef = currentUser === wochenchef
   const personNames = Object.fromEntries(members.map(m => [m.id, m.name])) as Record<Chef, string>
@@ -203,7 +217,7 @@ export default function MehrScreen({
           </button>
 
           <button
-            onClick={() => { setHistory([]); setOpenWeek(null); setView('verlauf') }}
+            onClick={() => { setHistory([]); setOpenWeek(null); setHistoryLoaded(false); setHistoryError(null); setHasMoreHistory(false); setHistoryLimit(12); setView('verlauf') }}
             style={{
               display: 'flex', alignItems: 'center', gap: 14, width: '100%',
               background: '#fff', border: '1px solid #E5E7EB', borderRadius: 14,
@@ -641,12 +655,18 @@ export default function MehrScreen({
           {historyLoading && (
             <div style={{ textAlign: 'center', color: '#aaa', fontSize: 13, marginTop: 32 }}>Lade Verlauf…</div>
           )}
-          {!historyLoading && history.length === 0 && (
-            <div style={{ textAlign: 'center', color: '#aaa', fontSize: 13, marginTop: 32 }}>
-              Noch keine vergangenen Wochen im Archiv.
+          {!historyLoading && historyError && (
+            <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 10, padding: '12px 14px', marginTop: 20, fontSize: 12, color: '#991B1B' }}>
+              ⚠️ {historyError}
             </div>
           )}
-          {!historyLoading && history.map(week => {
+          {!historyLoading && !historyError && historyLoaded && history.length === 0 && (
+            <div style={{ textAlign: 'center', color: '#aaa', fontSize: 13, marginTop: 32, lineHeight: 1.6 }}>
+              Noch keine vergangenen Wochen im Archiv.<br />
+              <span style={{ fontSize: 12 }}>Die erste Woche wird beim nächsten Wochenwechsel gespeichert.</span>
+            </div>
+          )}
+          {!historyLoading && !historyError && history.map(week => {
             const kw = getKW(week.weekStart)
             const mondayDate = new Date(week.weekStart + 'T00:00:00')
             const sundayDate = new Date(mondayDate)
@@ -706,6 +726,14 @@ export default function MehrScreen({
               </div>
             )
           })}
+          {!historyLoading && hasMoreHistory && (
+            <button
+              onClick={() => { setHistoryLimit(l => l + 12); setHistoryLoaded(false) }}
+              style={{ display: 'block', width: '100%', marginTop: 14, padding: '10px', border: '1px solid #E5E7EB', borderRadius: 10, background: 'white', fontSize: 13, color: '#555', cursor: 'pointer' }}
+            >
+              Mehr laden…
+            </button>
+          )}
         </div>
       </div>
     )
