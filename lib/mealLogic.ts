@@ -116,7 +116,7 @@ export async function saveNextWeekData(weekStart: string, data: NextWeekData): P
 export async function activateNextWeek(): Promise<{ weekStart: string | null; nextWeekData: NextWeekData | null }> {
   const { data: existing } = await supabase
     .from('week_plans')
-    .select('id, next_week_start, next_week_data, shopping_list')
+    .select('id, next_week_start, next_week_data, shopping_list, plan_data, meals_data, attendance, week_start, wochenchef')
     .eq('family_id', getFamilyId())
     .limit(1)
     .single()
@@ -125,6 +125,24 @@ export async function activateNextWeek(): Promise<{ weekStart: string | null; ne
 
   const nextStart = existing.next_week_start as string | null
   const nextData = existing.next_week_data as NextWeekData | null
+
+  // ── Laufende Woche archivieren (vor dem Überschreiben) ───────────────────
+  const currentPlanData = Array.isArray(existing.plan_data) ? existing.plan_data : []
+  if (currentPlanData.length > 0) {
+    const archiveWeekStart = (existing.week_start as string | null) ?? getMondayIso()
+    try {
+      await supabase.from('week_history').upsert({
+        family_id: getFamilyId(),
+        week_start: archiveWeekStart,
+        wochenchef: (existing.wochenchef as string | null) ?? '',
+        plan: currentPlanData,
+        meals_data: (existing.meals_data as object | null) ?? {},
+        attendance: existing.attendance ?? null,
+      }, { onConflict: 'family_id,week_start' })
+    } catch (archiveErr) {
+      console.error('week_history archivieren fehlgeschlagen (nicht kritisch):', archiveErr)
+    }
+  }
 
   // Carry over manual undone items from old list into new week (Punkt 1)
   const oldList = Array.isArray(existing.shopping_list) ? (existing.shopping_list as ShoppingItem[]) : []
@@ -158,6 +176,46 @@ export async function activateNextWeek(): Promise<{ weekStart: string | null; ne
   if (updateError) throw new Error(`activateNextWeek fehlgeschlagen: ${updateError.message}`)
 
   return { weekStart: nextStart, nextWeekData: nextData }
+}
+
+export async function loadWeekHistory(n = 8): Promise<Array<{
+  weekStart: string
+  wochenchef: string
+  plan: WeekPlanEntry[]
+  mealsData: Record<string, Rezept>
+  attendance: unknown
+}>> {
+  try {
+    const { data, error } = await supabase
+      .from('week_history')
+      .select('week_start, wochenchef, plan, meals_data, attendance')
+      .eq('family_id', getFamilyId())
+      .order('week_start', { ascending: false })
+      .limit(n)
+    if (error || !data) return []
+    return data.map(row => ({
+      weekStart: row.week_start as string,
+      wochenchef: (row.wochenchef as string) ?? '',
+      plan: (row.plan as WeekPlanEntry[]) ?? [],
+      mealsData: (row.meals_data as Record<string, Rezept>) ?? {},
+      attendance: row.attendance,
+    }))
+  } catch {
+    return []
+  }
+}
+
+export async function loadHistoryDishes(n = 4): Promise<string[]> {
+  const history = await loadWeekHistory(n)
+  const dishes = new Set<string>()
+  for (const week of history) {
+    for (const entry of week.plan) {
+      if (entry.slot === 'Abend' && entry.gericht && !entry.gericht.startsWith('Reste:')) {
+        dishes.add(entry.gericht)
+      }
+    }
+  }
+  return [...dishes]
 }
 
 export async function saveShopDone(done: boolean): Promise<void> {

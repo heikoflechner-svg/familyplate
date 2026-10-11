@@ -1,8 +1,8 @@
 'use client'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import type { Chef, FamilyMember, ChangeProposal, WeekPlanEntry, NextWeekData } from '../lib/state'
 import { buildMemberCfg, DEFAULT_MEMBERS } from '../lib/familyLogic'
-import { getNextMondayIso } from '../lib/mealLogic'
+import { getNextMondayIso, loadWeekHistory } from '../lib/mealLogic'
 
 const WOCHENTAGE = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag']
 
@@ -20,7 +20,15 @@ const TAG_SHORT: Record<string, string> = {
 }
 
 
-type View = 'overview' | 'einkauf' | 'wochenchef'
+type View = 'overview' | 'einkauf' | 'wochenchef' | 'verlauf'
+
+type HistoryEntry = {
+  weekStart: string
+  wochenchef: string
+  plan: WeekPlanEntry[]
+  mealsData: Record<string, unknown>
+  attendance: unknown
+}
 
 interface Props {
   currentUser: Chef
@@ -56,6 +64,18 @@ export default function MehrScreen({
   const [laedenOpen, setLaedenOpen] = useState(false)
   const [changingCurrent, setChangingCurrent] = useState(false)
   const [changingNext, setChangingNext] = useState(false)
+  const [history, setHistory] = useState<HistoryEntry[]>([])
+  const [historyLoading, setHistoryLoading] = useState(false)
+  const [openWeek, setOpenWeek] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (view !== 'verlauf' || historyLoading || history.length > 0) return
+    setHistoryLoading(true)
+    loadWeekHistory(12).then(data => {
+      setHistory(data as HistoryEntry[])
+      setHistoryLoading(false)
+    }).catch(() => setHistoryLoading(false))
+  }, [view, historyLoading, history.length])
 
   const isChef = currentUser === wochenchef
   const personNames = Object.fromEntries(members.map(m => [m.id, m.name])) as Record<Chef, string>
@@ -178,6 +198,22 @@ export default function MehrScreen({
                   </>
                 )}
               </div>
+            </div>
+            <span style={{ marginLeft: 'auto', color: '#bbb', fontSize: 18 }}>›</span>
+          </button>
+
+          <button
+            onClick={() => { setHistory([]); setOpenWeek(null); setView('verlauf') }}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 14, width: '100%',
+              background: '#fff', border: '1px solid #E5E7EB', borderRadius: 14,
+              padding: '16px 18px', marginTop: 12, cursor: 'pointer', textAlign: 'left',
+            }}
+          >
+            <span style={{ fontSize: 26 }}>📅</span>
+            <div>
+              <div style={{ fontSize: 15, fontWeight: 700, color: '#111' }}>Verlauf</div>
+              <div style={{ fontSize: 12, color: '#888', marginTop: 2 }}>Vergangene Wochen ansehen</div>
             </div>
             <span style={{ marginLeft: 'auto', color: '#bbb', fontSize: 18 }}>›</span>
           </button>
@@ -588,6 +624,88 @@ export default function MehrScreen({
             </div>
           </div>
 
+        </div>
+      </div>
+    )
+  }
+
+  // ── Verlauf ─────────────────────────────────────────────────────────────────
+  if (view === 'verlauf') {
+    return (
+      <div className="screen active" style={{ overflowY: 'auto' }}>
+        <div className="topbar">
+          <button className="back" onClick={() => setView('overview')}>‹</button>
+          <h1>📅 Verlauf</h1>
+        </div>
+        <div className="content" style={{ padding: '0 16px 24px' }}>
+          {historyLoading && (
+            <div style={{ textAlign: 'center', color: '#aaa', fontSize: 13, marginTop: 32 }}>Lade Verlauf…</div>
+          )}
+          {!historyLoading && history.length === 0 && (
+            <div style={{ textAlign: 'center', color: '#aaa', fontSize: 13, marginTop: 32 }}>
+              Noch keine vergangenen Wochen im Archiv.
+            </div>
+          )}
+          {!historyLoading && history.map(week => {
+            const kw = getKW(week.weekStart)
+            const mondayDate = new Date(week.weekStart + 'T00:00:00')
+            const sundayDate = new Date(mondayDate)
+            sundayDate.setDate(mondayDate.getDate() + 6)
+            const fmt = (d: Date) => `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}.`
+            const dateRange = `${fmt(mondayDate)}–${fmt(sundayDate)}${sundayDate.getFullYear()}`
+            const isOpen = openWeek === week.weekStart
+            const days = WOCHENTAGE.filter(tag => week.plan.some(e => e.tag === tag))
+            return (
+              <div key={week.weekStart} style={{ border: '1px solid #E5E7EB', borderRadius: 12, overflow: 'hidden', marginTop: 14 }}>
+                <button
+                  onClick={() => setOpenWeek(isOpen ? null : week.weekStart)}
+                  style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}
+                >
+                  <div style={{ flex: 1 }}>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: '#111' }}>KW {kw}</span>
+                    <span style={{ fontSize: 12, color: '#888', marginLeft: 8 }}>{dateRange}</span>
+                    {week.wochenchef && (
+                      <span style={{ fontSize: 12, color: CFG[week.wochenchef as Chef]?.c ?? '#555', marginLeft: 8, fontWeight: 600 }}>
+                        · {personNames[week.wochenchef as Chef] ?? week.wochenchef}
+                      </span>
+                    )}
+                  </div>
+                  <span style={{ color: '#bbb', fontSize: 14 }}>{isOpen ? '▲' : '▼'}</span>
+                </button>
+                {isOpen && (
+                  <div style={{ borderTop: '1px solid #f0f0f0' }}>
+                    {days.map(tag => {
+                      const mittag = week.plan.find(e => e.tag === tag && e.slot === 'Mittag')
+                      const abend = week.plan.find(e => e.tag === tag && e.slot === 'Abend')
+                      return (
+                        <div key={tag} style={{ borderTop: '1px solid #f5f5f5', padding: '8px 14px' }}>
+                          <div style={{ fontSize: 11, fontWeight: 700, color: '#888', textTransform: 'uppercase', letterSpacing: '.4px', marginBottom: 4 }}>
+                            {TAG_SHORT[tag] ?? tag}
+                          </div>
+                          {mittag && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
+                              <span style={{ fontSize: 10, color: '#aaa', width: 22 }}>☀️</span>
+                              <span style={{ fontSize: 13 }}>{mittag.emoji}</span>
+                              <span style={{ fontSize: 12, color: '#333', flex: 1 }}>{mittag.gericht}</span>
+                              {mittag.chef && <span style={{ fontSize: 11, color: CFG[mittag.chef as Chef]?.c ?? '#aaa' }}>{personNames[mittag.chef as Chef] ?? mittag.chef}</span>}
+                            </div>
+                          )}
+                          {abend && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                              <span style={{ fontSize: 10, color: '#aaa', width: 22 }}>🌙</span>
+                              <span style={{ fontSize: 13 }}>{abend.emoji}</span>
+                              <span style={{ fontSize: 12, color: '#333', flex: 1 }}>{abend.gericht}</span>
+                              {abend.chef && <span style={{ fontSize: 11, color: CFG[abend.chef as Chef]?.c ?? '#aaa' }}>{personNames[abend.chef as Chef] ?? abend.chef}</span>}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            )
+          })}
         </div>
       </div>
     )

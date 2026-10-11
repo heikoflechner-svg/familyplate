@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
-import { generateWeekPlan, getRemySuggestions, generateRecipe, rescaleRecipe, adjustRecipe, loadMissingRecipes, getPersonCountForSlot, saveLastDishes, isFullRecipe, getMondayIso, getNextMondayIso, applySwap, checkAllergiesForSwap, checkFreshnessWarning } from '../lib/mealLogic'
+import { generateWeekPlan, getRemySuggestions, generateRecipe, rescaleRecipe, adjustRecipe, loadMissingRecipes, getPersonCountForSlot, saveLastDishes, isFullRecipe, getMondayIso, getNextMondayIso, applySwap, checkAllergiesForSwap, checkFreshnessWarning, loadHistoryDishes } from '../lib/mealLogic'
 import { rescaleShoppingListMengen, rewriteShoppingItemsForDish, swapShoppingItemsTags } from '../lib/shoppingLogic'
 import { getFreezerListString, getPantryListString, addFreezerItem, deleteFreezerItem } from '../lib/freezerLogic'
 import { buildFamilyPrompt, buildMemberCfg, DEFAULT_MEMBERS } from '../lib/familyLogic'
@@ -543,6 +543,8 @@ export default function WocheScreen({
     const nwPw = nwPlanSettings?.planWE ?? planWE
     const nwMtl = nwPlanSettings?.mittagsloseTage ?? mittagsloseTage
     try {
+      const historyDishes = await loadHistoryDishes(4)
+      const mergedLastDishes = [...new Set([...historyDishes, ...lastDishes])].slice(0, 40)
       const { plan: result, mealsData: newMeals } = await generateWeekPlan({
         mittagsloseTage: nwMtl,
         planWE: nwPw,
@@ -555,6 +557,7 @@ export default function WocheScreen({
         })),
         familyPrompt,
         memberIds,
+        lastDishes: mergedLastDishes,
       })
       setNwPlanProgress(100)
       setNwPendingPlan(result)
@@ -1695,6 +1698,8 @@ export default function WocheScreen({
     setPlanState('loading')
     setError('')
     try {
+      const historyDishes = await loadHistoryDishes(4)
+      const mergedLastDishes = [...new Set([...historyDishes, ...lastDishes])].slice(0, 40)
       const { plan: newPlan, mealsData: newMeals } = await generateWeekPlan({
         mittagsloseTage,
         planWE,
@@ -1705,7 +1710,7 @@ export default function WocheScreen({
         wishes,
         familyPrompt,
         memberIds,
-        lastDishes,
+        lastDishes: mergedLastDishes,
         gaesteProTag: gaesteProTag.length > 0 ? gaesteProTag : undefined,
       })
       setPendingPlan(newPlan)
