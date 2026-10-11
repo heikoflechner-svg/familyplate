@@ -329,6 +329,12 @@ export default function WocheScreen({
   const [swapChef1, setSwapChef1] = useState<Chef | null>(null)
   const [swapChef2, setSwapChef2] = useState<Chef | null>(null)
 
+  const [nwSwapSource, setNwSwapSource] = useState<{ tag: string; slot: WochenSlot; entry: WeekPlanEntry } | null>(null)
+  const [nwSwapTarget, setNwSwapTarget] = useState<{ tag: string; slot: WochenSlot; entry: WeekPlanEntry } | null>(null)
+  const [nwSwapSaving, setNwSwapSaving] = useState(false)
+  const [nwSwapChef1, setNwSwapChef1] = useState<Chef | null>(null)
+  const [nwSwapChef2, setNwSwapChef2] = useState<Chef | null>(null)
+
   const [wishFormKey, setWishFormKey] = useState<string | null>(null)
   const [nextWeekWishInput, setNextWeekWishInput] = useState('')
   const [nextWeekWishSaving, setNextWeekWishSaving] = useState(false)
@@ -1355,6 +1361,115 @@ export default function WocheScreen({
     if (!e1 || !e2) { await onProposalsChange(proposals.filter(p => p.id !== proposal.id)); return }
     await onProposalsChange(proposals.filter(p => p.id !== proposal.id))
     await executeSwap(t1, s1, e1, t2, s2, e2)
+  }
+
+  function handleNwSwapStart(tag: string, slot: WochenSlot, entry: WeekPlanEntry) {
+    if (nwSwapSaving) return
+    setNwSwapSource({ tag, slot, entry })
+    setNwSwapTarget(null)
+    setNwSwapChef1(null)
+    setNwSwapChef2(null)
+  }
+
+  function handleNwSwapSelectTarget(tag: string, slot: WochenSlot, entry: WeekPlanEntry) {
+    if (!nwSwapSource || nwSwapSaving) return
+    if (nwSwapSource.tag === tag && nwSwapSource.slot === slot) {
+      setNwSwapSource(null)
+      return
+    }
+    setNwSwapTarget({ tag, slot, entry })
+    setNwSwapChef1(null)
+    setNwSwapChef2(null)
+  }
+
+  function handleNwSwapCancel() {
+    setNwSwapSource(null)
+    setNwSwapTarget(null)
+    setNwSwapChef1(null)
+    setNwSwapChef2(null)
+  }
+
+  async function executeNwSwap(
+    t1: string, s1: WochenSlot, e1: WeekPlanEntry,
+    t2: string, s2: WochenSlot, e2: WeekPlanEntry,
+    chef1Override?: Chef, chef2Override?: Chef,
+  ) {
+    if (!onNextWeekDataChange) return
+    setNwSwapSaving(true)
+    const mbs = members.length ? members : DEFAULT_MEMBERS
+    const nwAttendance = nextWeekData?.attendance ?? []
+    const nwMealsDataOrig = nextWeekData?.mealsData ?? {}
+    const newPlan = applySwap(nextWeekData?.plan ?? [], t1, s1, t2, s2, chef1Override, chef2Override)
+    let newMealsData = { ...nwMealsDataOrig }
+    let newShoppingList = nextWeekData?.shoppingList ?? []
+
+    const pc1 = getPersonCountForSlot(t1, s1, nwAttendance, mbs)
+    const pc2 = getPersonCountForSlot(t2, s2, nwAttendance, mbs)
+
+    if (pc1 !== pc2) {
+      const rezept1 = nwMealsDataOrig[e1.gericht]
+      const rezept2 = nwMealsDataOrig[e2.gericht]
+      if (rezept1 && isFullRecipe(rezept1) && (rezept1.personenAnzahl ?? pc1) !== pc2) {
+        const rescaled = await rescaleRecipe(rezept1, pc2)
+        if (rescaled) {
+          newMealsData[e1.gericht] = rescaled
+          newShoppingList = rescaleShoppingListMengen(newShoppingList, e1.gericht, rescaled.zutaten)
+        }
+      }
+      if (rezept2 && isFullRecipe(rezept2) && (rezept2.personenAnzahl ?? pc2) !== pc1) {
+        const rescaled = await rescaleRecipe(rezept2, pc1)
+        if (rescaled) {
+          newMealsData[e2.gericht] = rescaled
+          newShoppingList = rescaleShoppingListMengen(newShoppingList, e2.gericht, rescaled.zutaten)
+        }
+      }
+    }
+
+    newShoppingList = swapShoppingItemsTags(newShoppingList, t1, s1, e1.gericht, t2, s2, e2.gericht)
+
+    const nextMonday = nextWeekStart ?? getNextMondayIso()
+    await onNextWeekDataChange({ plan: newPlan, mealsData: newMealsData, shoppingList: newShoppingList }, nextMonday)
+    setNwSwapSaving(false)
+    setNwSwapSource(null)
+    setNwSwapTarget(null)
+    setNwSwapChef1(null)
+    setNwSwapChef2(null)
+  }
+
+  async function handleNwSwapConfirm() {
+    if (!nwSwapSource || !nwSwapTarget) return
+    const { tag: t1, slot: s1, entry: e1 } = nwSwapSource
+    const { tag: t2, slot: s2, entry: e2 } = nwSwapTarget
+    const nwChef = nextWeekData?.wochenchef
+    const canSwapDirectly = (!!nwChef && currentUser === nwChef) || canEditSettings
+    if (!canSwapDirectly) {
+      await onProposalsChange([...proposals, {
+        id: crypto.randomUUID(),
+        type: 'nwtauschen' as const,
+        tag: t1, slot: s1,
+        vonChef: currentUser,
+        fuerChef: nwChef!,
+        nachTag: t2, nachSlot: s2,
+        createdAt: new Date().toISOString(),
+      }])
+      setNwSwapSource(null)
+      setNwSwapTarget(null)
+      return
+    }
+    await executeNwSwap(t1, s1, e1, t2, s2, e2, nwSwapChef1 ?? undefined, nwSwapChef2 ?? undefined)
+  }
+
+  async function acceptNwSwapProposal(proposal: ChangeProposal) {
+    const t1 = proposal.tag
+    const s1 = proposal.slot!
+    const t2 = proposal.nachTag!
+    const s2 = proposal.nachSlot!
+    const nwCurrentPlan = nextWeekData?.plan ?? []
+    const e1 = nwCurrentPlan.find(e => e.tag === t1 && e.slot === s1)
+    const e2 = nwCurrentPlan.find(e => e.tag === t2 && e.slot === s2)
+    if (!e1 || !e2) { await onProposalsChange(proposals.filter(p => p.id !== proposal.id)); return }
+    await onProposalsChange(proposals.filter(p => p.id !== proposal.id))
+    await executeNwSwap(t1, s1, e1, t2, s2, e2)
   }
 
   function slotEssenLabel(tag: string, slot: WochenSlot): string {
@@ -2398,6 +2513,116 @@ export default function WocheScreen({
             </div>
           )
         })()}
+        {nwSwapTarget && nwSwapSource && (() => {
+          const { tag: t1, slot: s1, entry: e1 } = nwSwapSource
+          const { tag: t2, slot: s2, entry: e2 } = nwSwapTarget
+          const mbs = members.length ? members : DEFAULT_MEMBERS
+          const nwAttendance = nextWeekData?.attendance ?? []
+          const nwMealsData = nextWeekData?.mealsData ?? {}
+          const pc1 = getPersonCountForSlot(t1, s1, nwAttendance, mbs)
+          const pc2 = getPersonCountForSlot(t2, s2, nwAttendance, mbs)
+          const anw1 = getNwSlotAnwesend(t1, s1)
+          const anw2 = getNwSlotAnwesend(t2, s2)
+          const chef1MissingAtSlot2 = !anw2.includes(e1.chef)
+          const chef2MissingAtSlot1 = !anw1.includes(e2.chef)
+          const rezept1 = nwMealsData[e1.gericht]
+          const rezept2 = nwMealsData[e2.gericht]
+          const allergie1 = rezept1 ? checkAllergiesForSwap(rezept1, t1, s1, t2, s2, mbs, nwAttendance) : []
+          const allergie2 = rezept2 ? checkAllergiesForSwap(rezept2, t2, s2, t1, s1, mbs, nwAttendance) : []
+          const fresh1 = rezept1 ? checkFreshnessWarning(rezept1, t1, t2) : false
+          const fresh2 = rezept2 ? checkFreshnessWarning(rezept2, t2, t1) : false
+          const nwChef = nextWeekData?.wochenchef
+          const canSwapDirectly = (!!nwChef && currentUser === nwChef) || canEditSettings
+          const hasWarnings = chef1MissingAtSlot2 || chef2MissingAtSlot1 || allergie1.length > 0 || allergie2.length > 0 || fresh1 || fresh2 || pc1 !== pc2
+          return (
+            <div style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
+              <div style={{ flex: 1, background: 'rgba(0,0,0,0.35)' }} onClick={() => setNwSwapTarget(null)} />
+              <div style={{ background: 'white', borderRadius: '16px 16px 0 0', padding: '18px 16px 28px', maxHeight: '80vh', overflowY: 'auto' }}>
+                <div style={{ fontSize: 14, fontWeight: 700, textAlign: 'center', marginBottom: 14 }}>↔ Nächste Woche tauschen</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, background: '#f9f9f9', padding: '10px 12px', borderRadius: 10 }}>
+                  <div style={{ flex: 1, textAlign: 'center' }}>
+                    <div style={{ fontSize: 20 }}>{e1.emoji}</div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: '#111' }}>{e1.gericht}</div>
+                    <div style={{ fontSize: 10, color: '#888' }}>{t1} {s1 === 'Mittag' ? '☀️' : '🌙'} ({pc1} P.)</div>
+                  </div>
+                  <div style={{ fontSize: 18, color: '#1D9E75', fontWeight: 700 }}>↔</div>
+                  <div style={{ flex: 1, textAlign: 'center' }}>
+                    <div style={{ fontSize: 20 }}>{e2.emoji}</div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: '#111' }}>{e2.gericht}</div>
+                    <div style={{ fontSize: 10, color: '#888' }}>{t2} {s2 === 'Mittag' ? '☀️' : '🌙'} ({pc2} P.)</div>
+                  </div>
+                </div>
+                {pc1 !== pc2 && (
+                  <div style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: 8, padding: '8px 10px', marginBottom: 8, fontSize: 11, color: '#1E40AF' }}>
+                    👥 Personenzahlen unterscheiden sich ({pc1} ↔ {pc2}) – Mengen werden automatisch umgerechnet
+                  </div>
+                )}
+                {(allergie1.length > 0 || allergie2.length > 0) && (
+                  <div style={{ background: '#FFFBEB', border: '1px solid #FCD34D', borderRadius: 8, padding: '8px 10px', marginBottom: 8 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: '#92400E', marginBottom: 4 }}>⚠️ Allergie-Hinweis</div>
+                    {allergie1.map((w, i) => (
+                      <div key={`a1-${i}`} style={{ fontSize: 11, color: '#92400E', marginBottom: 2 }}>
+                        {w} bei {e1.gericht} → {t2}
+                      </div>
+                    ))}
+                    {allergie2.map((w, i) => (
+                      <div key={`a2-${i}`} style={{ fontSize: 11, color: '#92400E', marginBottom: 2 }}>
+                        {w} bei {e2.gericht} → {t1}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {(fresh1 || fresh2) && (
+                  <div style={{ background: '#FFFBEB', border: '1px solid #FCD34D', borderRadius: 8, padding: '8px 10px', marginBottom: 8 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: '#92400E', marginBottom: 4 }}>❄️ Frische-Hinweis</div>
+                    {fresh1 && <div style={{ fontSize: 11, color: '#92400E' }}>{e1.gericht} enthält empfindliche Zutaten – auf {t2} verschoben</div>}
+                    {fresh2 && <div style={{ fontSize: 11, color: '#92400E' }}>{e2.gericht} enthält empfindliche Zutaten – auf {t1} verschoben</div>}
+                  </div>
+                )}
+                {(chef1MissingAtSlot2 || chef2MissingAtSlot1) && (
+                  <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 8, padding: '8px 10px', marginBottom: 8 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: '#991B1B', marginBottom: 6 }}>👨‍🍳 Koch nicht anwesend</div>
+                    {chef1MissingAtSlot2 && (
+                      <div style={{ marginBottom: 8 }}>
+                        <div style={{ fontSize: 11, color: '#991B1B', marginBottom: 4 }}>{personNames[e1.chef]} ist {t2} {s2 === 'Mittag' ? 'mittags' : 'abends'} nicht da – wer kocht {e1.gericht}?</div>
+                        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                          {mbs.filter(m => anw2.includes(m.id as Chef)).map(m => {
+                            const cc = CFG[m.id] ?? Object.values(CFG)[0]
+                            const active = (nwSwapChef2 ?? e1.chef) === m.id
+                            return <button key={m.id} onClick={() => setNwSwapChef2(m.id as Chef)} style={{ padding: '4px 10px', borderRadius: 8, border: `1px solid ${active ? cc.c : '#ddd'}`, background: active ? cc.bg : 'white', color: active ? cc.c : '#aaa', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>{personNames[m.id] ?? m.id}</button>
+                          })}
+                        </div>
+                      </div>
+                    )}
+                    {chef2MissingAtSlot1 && (
+                      <div>
+                        <div style={{ fontSize: 11, color: '#991B1B', marginBottom: 4 }}>{personNames[e2.chef]} ist {t1} {s1 === 'Mittag' ? 'mittags' : 'abends'} nicht da – wer kocht {e2.gericht}?</div>
+                        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                          {mbs.filter(m => anw1.includes(m.id as Chef)).map(m => {
+                            const cc = CFG[m.id] ?? Object.values(CFG)[0]
+                            const active = (nwSwapChef1 ?? e2.chef) === m.id
+                            return <button key={m.id} onClick={() => setNwSwapChef1(m.id as Chef)} style={{ padding: '4px 10px', borderRadius: 8, border: `1px solid ${active ? cc.c : '#ddd'}`, background: active ? cc.bg : 'white', color: active ? cc.c : '#aaa', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>{personNames[m.id] ?? m.id}</button>
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+                {!canSwapDirectly && (
+                  <div style={{ fontSize: 11, color: '#92400E', background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 8, padding: '8px 10px', marginBottom: 8 }}>
+                    ⏳ Dein Tausch-Vorschlag geht als Antrag an {personNames[nwChef!]}.
+                  </div>
+                )}
+                <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+                  <button onClick={() => void handleNwSwapConfirm()} disabled={nwSwapSaving} style={{ flex: 1, padding: '11px 0', background: nwSwapSaving ? '#aaa' : (hasWarnings ? '#F59E0B' : '#1D9E75'), color: 'white', border: 'none', borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: nwSwapSaving ? 'default' : 'pointer' }}>
+                    {nwSwapSaving ? '⏳ Tausche…' : canSwapDirectly ? '↔ Jetzt tauschen' : '↔ Vorschlag senden'}
+                  </button>
+                  <button onClick={() => setNwSwapTarget(null)} style={{ padding: '11px 14px', background: 'white', border: '1px solid #ddd', borderRadius: 10, fontSize: 13, color: '#555', cursor: 'pointer' }}>Abbrechen</button>
+                </div>
+              </div>
+            </div>
+          )
+        })()}
         <div className="topbar">
           <button className="back" onClick={() => setView('home')}>‹</button>
           <h1>📋 Wochenplan</h1>
@@ -2410,6 +2635,15 @@ export default function WocheScreen({
                 <span style={{ fontWeight: 700 }}>Tausch-Modus:</span> Antippe eine andere Mahlzeit als Zielplatz
               </div>
               <button onClick={handleSwapCancel} style={{ fontSize: 11, color: '#555', background: 'white', border: '1px solid #ddd', borderRadius: 6, padding: '3px 8px', cursor: 'pointer' }}>✕ Abbrechen</button>
+            </div>
+          )}
+          {nwSwapSource && !nwSwapTarget && (
+            <div style={{ background: '#E1F5EE', border: '1px solid #B2DFCC', borderRadius: 10, padding: '10px 14px', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 18 }}>{nwSwapSource.entry.emoji}</span>
+              <div style={{ flex: 1, fontSize: 12, color: '#085041' }}>
+                <span style={{ fontWeight: 700 }}>NW-Tausch-Modus:</span> Antippe ein Gericht der nächsten Woche als Zielplatz
+              </div>
+              <button onClick={handleNwSwapCancel} style={{ fontSize: 11, color: '#555', background: 'white', border: '1px solid #ddd', borderRadius: 6, padding: '3px 8px', cursor: 'pointer' }}>✕ Abbrechen</button>
             </div>
           )}
           {(() => {
@@ -3057,6 +3291,43 @@ export default function WocheScreen({
                       </div>
                     )}
 
+                    {/* After confirmation: NW swap proposals for nwChef */}
+                    {!nwPlanLoading && !nwPendingPlan && nwConfirmed && isNwChef && (() => {
+                      const nwSwapProposals = proposals.filter(p => p.type === 'nwtauschen')
+                      if (nwSwapProposals.length === 0) return null
+                      return (
+                        <div style={{ padding: '10px 12px', borderTop: '1px solid #f0f0f0', background: '#FFFBEB' }}>
+                          <div style={{ fontSize: 11, fontWeight: 600, color: '#92400E', marginBottom: 8 }}>↔ Tausch-Vorschläge NW ({nwSwapProposals.length})</div>
+                          {nwSwapProposals.map(p => {
+                            const pe1 = nwPlan.find(e => e.tag === p.tag && e.slot === p.slot)
+                            const pe2 = nwPlan.find(e => e.tag === p.nachTag && e.slot === p.nachSlot)
+                            return (
+                              <div key={p.id} style={{ background: 'white', border: '1px solid #FCD34D', borderRadius: 8, padding: '8px 10px', marginBottom: 6 }}>
+                                <div style={{ fontSize: 10, color: '#92400E', fontWeight: 700, marginBottom: 4 }}>
+                                  {personNames[p.vonChef]} schlägt Tausch vor:
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                                  <div style={{ flex: 1, fontSize: 11, color: '#333' }}>
+                                    <span style={{ color: '#888' }}>{p.tag} {p.slot === 'Mittag' ? '☀️' : '🌙'}</span>
+                                    <br /><span style={{ fontWeight: 600 }}>{pe1 ? `${pe1.emoji} ${pe1.gericht}` : '—'}</span>
+                                  </div>
+                                  <span style={{ fontSize: 14 }}>↔</span>
+                                  <div style={{ flex: 1, fontSize: 11, color: '#333' }}>
+                                    <span style={{ color: '#888' }}>{p.nachTag} {p.nachSlot === 'Mittag' ? '☀️' : '🌙'}</span>
+                                    <br /><span style={{ fontWeight: 600 }}>{pe2 ? `${pe2.emoji} ${pe2.gericht}` : '—'}</span>
+                                  </div>
+                                </div>
+                                <div style={{ display: 'flex', gap: 6 }}>
+                                  <button onClick={() => void acceptNwSwapProposal(p)} disabled={nwSwapSaving} style={{ flex: 1, padding: '5px', background: '#1D9E75', color: 'white', border: 'none', borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>✅ Übernehmen</button>
+                                  <button onClick={() => void onProposalsChange(proposals.filter(x => x.id !== p.id))} style={{ padding: '5px 10px', background: 'white', border: '1px solid #ddd', borderRadius: 6, fontSize: 11, cursor: 'pointer', color: '#888' }}>✕ Ablehnen</button>
+                                </div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )
+                    })()}
+
                     {/* After confirmation: full day view */}
                     {!nwPlanLoading && !nwPendingPlan && nwConfirmed && nwDays.map(tag => {
                       const mittag = nwPlan.find(e => e.tag === tag && e.slot === 'Mittag')
@@ -3072,21 +3343,38 @@ export default function WocheScreen({
                             const slot = e.slot
                             const nwKey = `nw-${tag}-${slot}`
                             const isNwEditing = nwEditMealKey === nwKey
+                            const nwIsSwapSource = nwSwapSource?.tag === tag && nwSwapSource?.slot === slot
+                            const nwIsSwapMode = !!nwSwapSource
                             return (
-                              <div key={slot} style={{ borderTop: '1px solid #f0f0f0' }}>
+                              <div key={slot} style={{ borderTop: '1px solid #f0f0f0', background: nwIsSwapSource ? '#E1F5EE' : nwIsSwapMode ? '#f9fff9' : 'transparent' }}>
                                 <div style={{ padding: '8px 12px 3px', display: 'flex', alignItems: 'center', gap: 6 }}>
                                   <SlotPill slot={slot} />
                                   <span
-                                    onClick={isNwChef ? () => { setNwEditMealKey(isNwEditing ? null : nwKey); setNwMealSubMode(null); setNwManualDish('') } : undefined}
-                                    style={{ fontSize: 11, color: '#555', cursor: isNwChef ? 'pointer' : 'default', textDecoration: isNwChef ? 'underline' : 'none', textDecorationStyle: 'dashed', textDecorationColor: '#bbb' }}
+                                    onClick={(isNwChef && !nwIsSwapMode) ? () => { setNwEditMealKey(isNwEditing ? null : nwKey); setNwMealSubMode(null); setNwManualDish('') } : undefined}
+                                    style={{ fontSize: 11, color: '#555', cursor: (isNwChef && !nwIsSwapMode) ? 'pointer' : 'default', textDecoration: (isNwChef && !nwIsSwapMode) ? 'underline' : 'none', textDecorationStyle: 'dashed', textDecorationColor: '#bbb' }}
                                   >Koch: {personNames[e.chef]}</span>
+                                  {!nwIsSwapMode && (
+                                    <button
+                                      onClick={() => handleNwSwapStart(tag, slot, e)}
+                                      style={{ marginLeft: 'auto', fontSize: 10, color: '#555', background: 'none', border: '1px solid #ddd', borderRadius: 6, padding: '2px 7px', cursor: 'pointer', lineHeight: 1.4 }}
+                                    >↔</button>
+                                  )}
+                                  {nwIsSwapSource && (
+                                    <span style={{ marginLeft: 'auto', fontSize: 10, color: '#0F6E56', fontWeight: 700 }}>← Quelle</span>
+                                  )}
+                                  {nwIsSwapMode && !nwIsSwapSource && (
+                                    <button
+                                      onClick={() => handleNwSwapSelectTarget(tag, slot, e)}
+                                      style={{ marginLeft: 'auto', fontSize: 10, color: '#1D9E75', background: '#E1F5EE', border: '1px solid #B2DFCC', borderRadius: 6, padding: '2px 7px', cursor: 'pointer', fontWeight: 700 }}
+                                    >↔ Hier tauschen</button>
+                                  )}
                                 </div>
-                                {isNwEditing && isNwChef && (
+                                {isNwEditing && isNwChef && !nwIsSwapMode && (
                                   <div style={{ padding: '4px 12px 8px', background: '#f9f9f9' }}>
                                     <ChefPicker current={e.chef} onSelect={chef => { changeNwChef(tag, slot, chef); setNwEditMealKey(null) }} personNames={personNames} members={members} />
                                   </div>
                                 )}
-                                {isNwChef && (() => {
+                                {isNwChef && !nwIsSwapMode && (() => {
                                   const gKey = nwKey
                                   const isNwGerichtOpen = nwGerichtEditKey === gKey
                                   const stockItems = [...freezerItems, ...pantryItems]
