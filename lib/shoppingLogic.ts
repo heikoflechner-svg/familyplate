@@ -38,7 +38,7 @@ export function computeNextWeekCoverage(shoppingDays: string[]): string[] {
   return WOCHENTAGE.slice(0, firstNextShopIndex)
 }
 
-function isWaterIngredient(name: string): boolean {
+export function isWaterIngredient(name: string): boolean {
   const n = name.trim().toLowerCase()
   return n === 'wasser' || n === 'leitungswasser' || n === 'salzwasser' ||
     n.startsWith('wasser ') || n.startsWith('wasser,')

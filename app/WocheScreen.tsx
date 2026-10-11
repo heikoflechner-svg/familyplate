@@ -1377,8 +1377,14 @@ export default function WocheScreen({
       if (isFullRecipe(existing) && existing!.personenAnzahl !== undefined && existing!.personenAnzahl !== personCount) {
         const rescaled = await rescaleRecipe(existing!, personCount)
         if (rescaled) {
-          await onNextWeekDataChange({ mealsData: { ...(nextWeekData?.mealsData ?? {}), [gericht]: rescaled } }, nextMonday)
-          await onShoppingListChange(rescaleShoppingListMengen(shoppingList, gericht, rescaled.zutaten, true))
+          const nwList = nextWeekData?.shoppingList ?? []
+          await onNextWeekDataChange({
+            mealsData: { ...(nextWeekData?.mealsData ?? {}), [gericht]: rescaled },
+            shoppingList: rescaleShoppingListMengen(nwList, gericht, rescaled.zutaten, false),
+          }, nextMonday)
+          if (shoppingList.some(i => i.gericht === gericht && !!i.nextWeek && !i.erledigt)) {
+            await onShoppingListChange(rescaleShoppingListMengen(shoppingList, gericht, rescaled.zutaten, true))
+          }
         }
       } else {
         const rezept = await generateRecipe(gericht, emoji, getFreezerListString(freezerItems), getPantryListString(pantryItems), familyPrompt, personCount)
@@ -1421,9 +1427,15 @@ export default function WocheScreen({
         setNwPendingMeals(prev => ({ ...prev, [selectedMealName]: merged }))
       } else if (source === 'nwSaved' && onNextWeekDataChange) {
         const nextMonday = nextWeekStart ?? getNextMondayIso()
-        await onNextWeekDataChange({ mealsData: { ...(nextWeekData?.mealsData ?? {}), [selectedMealName]: merged } }, nextMonday)
         const entry = (nextWeekData?.plan ?? []).find(e => e.tag === tag && e.slot === slot)
-        if (entry) await onShoppingListChange(rewriteShoppingItemsForDish(shoppingList, entry, merged, true))
+        const nwList = nextWeekData?.shoppingList ?? []
+        await onNextWeekDataChange({
+          mealsData: { ...(nextWeekData?.mealsData ?? {}), [selectedMealName]: merged },
+          ...(entry ? { shoppingList: rewriteShoppingItemsForDish(nwList, entry, merged, false) } : {}),
+        }, nextMonday)
+        if (entry && shoppingList.some(i => i.gericht === entry.gericht && !!i.nextWeek && !i.erledigt)) {
+          await onShoppingListChange(rewriteShoppingItemsForDish(shoppingList, entry, merged, true))
+        }
       }
     } finally {
       setRecipeLoading(null)
@@ -1458,9 +1470,15 @@ export default function WocheScreen({
         setNwPendingMeals(prev => ({ ...prev, [selectedMealName]: merged }))
       } else if (source === 'nwSaved' && onNextWeekDataChange) {
         const nextMonday = nextWeekStart ?? getNextMondayIso()
-        await onNextWeekDataChange({ mealsData: { ...(nextWeekData?.mealsData ?? {}), [selectedMealName]: merged } }, nextMonday)
         const entry = (nextWeekData?.plan ?? []).find(e => e.tag === tag && e.slot === slot)
-        if (entry) await onShoppingListChange(rewriteShoppingItemsForDish(shoppingList, entry, merged, true))
+        const nwList = nextWeekData?.shoppingList ?? []
+        await onNextWeekDataChange({
+          mealsData: { ...(nextWeekData?.mealsData ?? {}), [selectedMealName]: merged },
+          ...(entry ? { shoppingList: rewriteShoppingItemsForDish(nwList, entry, merged, false) } : {}),
+        }, nextMonday)
+        if (entry && shoppingList.some(i => i.gericht === entry.gericht && !!i.nextWeek && !i.erledigt)) {
+          await onShoppingListChange(rewriteShoppingItemsForDish(shoppingList, entry, merged, true))
+        }
       }
     } finally {
       setRecipeLoading(null)

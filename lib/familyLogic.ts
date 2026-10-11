@@ -100,7 +100,7 @@ export function applyChefStats(members: FamilyMember[], confirmedEntries: WeekPl
 }
 
 export function buildFamilyPrompt(members: FamilyMember[]): string {
-  return members
+  const profiles = members
     .map(m => {
       const allergien = m.allergien ?? []
       const vorlieben = m.vorlieben ?? []
@@ -111,4 +111,11 @@ export function buildFamilyPrompt(members: FamilyMember[]): string {
       return `${m.name} (${m.id}): ${[a, v].filter(Boolean).join('; ')}`
     })
     .join('. ')
+
+  const checks = members
+    .filter(m => (m.allergien ?? []).length > 0)
+    .flatMap(m => (m.allergien ?? []).map(a => `${m.name}: kein(e) ${a}`))
+
+  if (checks.length === 0) return profiles
+  return `${profiles} | Allergiepflicht: ${checks.join('; ')}`
 }

@@ -10,6 +10,7 @@ import {
   removeShoppingItem,
   clearCompleted,
   computeNextWeekCoverage,
+  isWaterIngredient,
 } from '../lib/shoppingLogic'
 import type { ConsolidatedItem } from '../lib/shoppingLogic'
 import { generateRecipe, isFullRecipe, getPersonCountForSlot, getMondayIso, getNextMondayIso } from '../lib/mealLogic'
@@ -211,13 +212,40 @@ export default function EinkaufScreen({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [planConfirmed])
 
-  // Bugfix: never remove nextWeek items from shopping list on mount
+  // One-time cleanup on mount: remove past meals, water items, and cross-list NW duplicates
   useEffect(() => {
     const todayIdx = WOCHENTAGE.indexOf(todayGerman())
-    const cleaned = shoppingList.filter(i =>
-      !i.gericht || !i.tag || i.nextWeek || WOCHENTAGE.indexOf(i.tag) >= todayIdx,
-    )
+    const nwList = nextWeekData?.shoppingList ?? []
+
+    // Build set of gericht+tag keys present in nwList
+    const nwDishKeys = new Set(nwList.filter(i => i.gericht).map(i => `${i.gericht}|${i.tag ?? ''}`))
+
+    const cleaned = shoppingList.filter(i => {
+      if (!i.gericht || !i.tag) return true
+      if (isWaterIngredient(i.name)) return false
+      // Remove past non-NW meals
+      if (!i.nextWeek && WOCHENTAGE.indexOf(i.tag) < todayIdx) return false
+      // Remove nextWeek:true items that now have entries in nextWeekData.shoppingList (duplicates from old bug)
+      if (i.nextWeek && nwDishKeys.has(`${i.gericht}|${i.tag}`)) return false
+      return true
+    })
     if (cleaned.length < shoppingList.length) onShoppingListChange(cleaned)
+
+    // Clean NW list: remove water items + deduplicate (keep last occurrence per gericht+tag+name)
+    if (nwList.length > 0 && onNextWeekDataChange) {
+      const nwNoWater = nwList.filter(i => !isWaterIngredient(i.name))
+      const seen = new Set<string>()
+      const dedupedNw: ShoppingItem[] = []
+      for (let j = nwNoWater.length - 1; j >= 0; j--) {
+        const item = nwNoWater[j]
+        if (!item.gericht) { dedupedNw.unshift(item); continue }
+        const key = `${item.gericht}|${item.tag ?? ''}|${item.name.toLowerCase()}`
+        if (!seen.has(key)) { seen.add(key); dedupedNw.unshift(item) }
+      }
+      if (dedupedNw.length < nwList.length) {
+        void onNextWeekDataChange({ shoppingList: dedupedNw }, nextWeekStart ?? getNextMondayIso())
+      }
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
