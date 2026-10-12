@@ -162,7 +162,7 @@ export async function activateNextWeek(): Promise<{ weekStart: string | null; ne
     attendance: nextData?.attendance
       ? { v: 2, days: nextData.attendance, confirmed: nextData.attendanceConfirmed ?? [] }
       : [],
-    plan_confirmed: false,
+    plan_confirmed: nextData?.planConfirmed ?? false,
     shopping_list: newShoppingList,
     shopping_done: false,
     shopping_day: null,

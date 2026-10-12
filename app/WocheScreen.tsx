@@ -1705,6 +1705,7 @@ export default function WocheScreen({
   }
 
   async function startPlanning() {
+    if (weekPlan.length > 0 && !window.confirm('Bestehenden Plan wirklich verwerfen?')) return
     setView('plan')
     setPlanState('loading')
     setError('')
@@ -3311,7 +3312,7 @@ export default function WocheScreen({
                             </button>
                           )}
                           {isNwChef && (
-                            <button onClick={generateNwPlan} disabled={nwPlanLoading} style={{ padding: '10px 14px', border: '1px solid #ddd', borderRadius: 8, background: 'white', fontSize: 12, cursor: 'pointer', color: '#555' }}>
+                            <button onClick={() => { if (!window.confirm('Bestehenden Plan wirklich verwerfen?')) return; void generateNwPlan() }} disabled={nwPlanLoading} style={{ padding: '10px 14px', border: '1px solid #ddd', borderRadius: 8, background: 'white', fontSize: 12, cursor: 'pointer', color: '#555' }}>
                               🔄 Neu planen
                             </button>
                           )}
