@@ -503,6 +503,7 @@ export default function FamilyPlateApp() {
             planSettings={planSettings}
             onPlanSettingsChange={handlePlanSettingsChange}
             canEditSettings={currentMemberRole !== 'member'}
+            defaultMealConfig={familyProfile?.defaultMealConfig}
             memberStatuses={memberStatuses}
             onGoToMehr={() => setActiveTab('mehr')}
           />

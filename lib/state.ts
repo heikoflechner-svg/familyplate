@@ -22,6 +22,13 @@ export interface PantryItem {
   ampel: Ampel
 }
 
+export type MittagTyp = 'kein' | 'leicht' | 'normal'
+export type AbendTyp  = 'leicht' | 'normal'
+export interface TagMahlzeitenKonfig {
+  mittag: MittagTyp
+  abend:  AbendTyp
+}
+
 export interface WeekPlanEntry {
   tag: string
   slot: WochenSlot
@@ -30,6 +37,7 @@ export interface WeekPlanEntry {
   minuten: number
   quelle: string
   chef: Chef
+  mahlzeitTyp?: 'leicht' | 'normal'
 }
 
 export interface ChangeProposal {
@@ -115,6 +123,8 @@ export interface NextWeekWish {
 export interface PlanSettings {
   planWE: boolean | null
   mittagsloseTage: string[] | null
+  mahlzeitenKonfig?: Record<string, TagMahlzeitenKonfig>
+  mahlzeitenBestaetigt?: boolean
 }
 
 export interface NextWeekData {
@@ -168,6 +178,7 @@ export interface FamilyProfile {
   members: FamilyMember[]
   laeden: string[]
   zutatenLaden: Record<string, string>
+  defaultMealConfig?: Record<string, TagMahlzeitenKonfig>
 }
 
 export interface AppState {

@@ -5,7 +5,8 @@ import { checkAllergens, formatAllergenWarningsCard } from '../lib/allergenCheck
 import { rescaleShoppingListMengen, rewriteShoppingItemsForDish, swapShoppingItemsTags } from '../lib/shoppingLogic'
 import { getFreezerListString, getPantryListString, addFreezerItem, deleteFreezerItem } from '../lib/freezerLogic'
 import { buildFamilyPrompt, buildMemberCfg, DEFAULT_MEMBERS } from '../lib/familyLogic'
-import type { WeekPlanEntry, Rezept, FreezerItem, PantryItem, Wish, Chef, WochenSlot, FamilyMember, DayAttendance, ChangeProposal, ShoppingItem, RemyVorschlag, NextWeekData, NextWeekWish, PlanSettings } from '../lib/state'
+import type { WeekPlanEntry, Rezept, FreezerItem, PantryItem, Wish, Chef, WochenSlot, FamilyMember, DayAttendance, ChangeProposal, ShoppingItem, RemyVorschlag, NextWeekData, NextWeekWish, PlanSettings, TagMahlzeitenKonfig, MittagTyp, AbendTyp } from '../lib/state'
+import { supabase } from '../lib/supabase'
 import SlotWunschPanel from './SlotWunschPanel'
 
 const WOCHENTAGE = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag']
@@ -96,6 +97,7 @@ interface Props {
   memberStatuses?: { kuerzel: string; role: string; isLinked: boolean }[]
   planSettings?: PlanSettings | null
   onPlanSettingsChange?: (settings: PlanSettings, weekType: 'current' | 'next') => Promise<void>
+  defaultMealConfig?: Record<string, TagMahlzeitenKonfig>
   onGoToMehr?: () => void
 }
 
@@ -165,6 +167,7 @@ export default function WocheScreen({
   memberStatuses = [],
   planSettings = null,
   onPlanSettingsChange,
+  defaultMealConfig,
   onGoToMehr,
 }: Props) {
   const hasMittag = (tag: string) => !mittagsloseTage.includes(tag)
@@ -213,7 +216,7 @@ export default function WocheScreen({
 
   const nwPlanSettings = (nextWeekData as NextWeekData | null)?.planSettings ?? null
   const canEditCurrentPlanSettings = currentUser === wochenchef || canEditSettings
-  const planSettingsNeeded = (planSettings === null || planSettings.planWE === null || planSettings.mittagsloseTage === null) && weekPlan.length === 0
+  const planSettingsNeeded = (planSettings?.planWE == null || !planSettings?.mahlzeitenKonfig || !planSettings?.mahlzeitenBestaetigt) && weekPlan.length === 0
   const nwActiveDays = (nwPlanSettings?.planWE ?? false) ? WOCHENTAGE : WOCHENTAGE.slice(0, 5)
   const nwMittagsloseTage: string[] = nwPlanSettings?.mittagsloseTage ?? []
 
@@ -355,16 +358,53 @@ export default function WocheScreen({
   const [nextWeekWishInput, setNextWeekWishInput] = useState('')
   const [nextWeekWishSaving, setNextWeekWishSaving] = useState(false)
 
-  const [mittagslosOpen, setMittagslosOpen] = useState(false)
-  const [nwMittagslosOpen, setNwMittagslosOpen] = useState(false)
-  const [mittagDraft, setMittagDraft] = useState<string[] | null>(null)
-  const [nwMittagDraft, setNwMittagDraft] = useState<string[] | null>(null)
+  const [mahlzeitenOpen, setMahlzeitenOpen] = useState(false)
+  const [nwMahlzeitenOpen, setNwMahlzeitenOpen] = useState(false)
+  const [mahlzeitenDraft, setMahlzeitenDraft] = useState<Record<string, TagMahlzeitenKonfig> | null>(null)
+  const [nwMahlzeitenDraft, setNwMahlzeitenDraft] = useState<Record<string, TagMahlzeitenKonfig> | null>(null)
+  const [saveDefaultLoading, setSaveDefaultLoading] = useState(false)
   const [planSettingsSaving, setPlanSettingsSaving] = useState(false)
 
   async function savePlanSettings(settings: PlanSettings, weekType: 'current' | 'next') {
     if (!onPlanSettingsChange || planSettingsSaving) return
     setPlanSettingsSaving(true)
     try { await onPlanSettingsChange(settings, weekType) } finally { setPlanSettingsSaving(false) }
+  }
+
+  function buildDefaultKonfig(forPlanWE: boolean): Record<string, TagMahlzeitenKonfig> {
+    if (defaultMealConfig) return defaultMealConfig
+    const days = forPlanWE ? WOCHENTAGE : WOCHENTAGE.slice(0, 5)
+    return Object.fromEntries(days.map(tag => [
+      tag,
+      (tag === 'Samstag' || tag === 'Sonntag')
+        ? { mittag: 'normal' as MittagTyp, abend: 'leicht' as AbendTyp }
+        : { mittag: 'leicht' as MittagTyp, abend: 'normal' as AbendTyp },
+    ]))
+  }
+
+  function openMahlzeitenPanel(forPlanWE: boolean, existing: Record<string, TagMahlzeitenKonfig> | undefined): Record<string, TagMahlzeitenKonfig> {
+    const base = existing ?? buildDefaultKonfig(forPlanWE)
+    const days = forPlanWE ? WOCHENTAGE : WOCHENTAGE.slice(0, 5)
+    return Object.fromEntries(days.map(tag => [
+      tag,
+      base[tag] ?? ((tag === 'Samstag' || tag === 'Sonntag')
+        ? { mittag: 'normal' as MittagTyp, abend: 'leicht' as AbendTyp }
+        : { mittag: 'leicht' as MittagTyp, abend: 'normal' as AbendTyp }),
+    ]))
+  }
+
+  async function saveAsDefault(konfig: Record<string, TagMahlzeitenKonfig>) {
+    setSaveDefaultLoading(true)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.access_token) return
+      await fetch('/api/family/save-default-meal-config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ defaultMealConfig: konfig }),
+      })
+    } catch { /* silently fail */ }
+    setSaveDefaultLoading(false)
   }
 
   // ── Nächste Woche – Wochenchef auto-assign ───────────────────────────────
@@ -453,6 +493,7 @@ export default function WocheScreen({
             entry.gericht, entry.emoji,
             getFreezerListString(freezerItems), getPantryListString(pantryItems),
             familyPrompt, personCount, allergenCheckMembers,
+            entry.mahlzeitTyp as 'leicht' | 'normal' | undefined,
           )
           if (!rezept) continue
           const merged: Rezept = {
@@ -574,6 +615,7 @@ export default function WocheScreen({
         familyPrompt,
         memberIds,
         lastDishes: mergedLastDishes,
+        mahlzeitenKonfig: nwPlanSettings?.mahlzeitenKonfig,
       })
       setNwPlanProgress(100)
       setNwPendingPlan(result)
@@ -599,6 +641,7 @@ export default function WocheScreen({
         neuTage: [tag],
         familyPrompt,
         memberIds,
+        mahlzeitenKonfig: nwPlanSettings?.mahlzeitenKonfig,
       })
       const newEntry = result.find(e => e.tag === tag && e.slot === slot)
       if (newEntry) {
@@ -644,6 +687,7 @@ export default function WocheScreen({
         neuTage: [tag],
         familyPrompt,
         memberIds,
+        mahlzeitenKonfig: nwPlanSettings?.mahlzeitenKonfig,
       })
       const newEntry = result.find(e => e.tag === tag && e.slot === slot)
       if (newEntry) {
@@ -704,6 +748,7 @@ export default function WocheScreen({
         familyPrompt,
         memberIds,
         gaesteProTag: gaesteProTag.filter(g => g.tag === tag).length > 0 ? gaesteProTag.filter(g => g.tag === tag) : undefined,
+        mahlzeitenKonfig: planSettings?.mahlzeitenKonfig,
       })
       const newEntry = result.find(e => e.tag === tag && e.slot === slot)
       if (newEntry) {
@@ -1183,6 +1228,7 @@ export default function WocheScreen({
         familyPrompt,
         memberIds,
         gaesteProTag: gaesteProTag.filter(g => g.tag === tag).length > 0 ? gaesteProTag.filter(g => g.tag === tag) : undefined,
+        mahlzeitenKonfig: planSettings?.mahlzeitenKonfig,
       })
       const newEntry = result.find(e => e.tag === tag && e.slot === slot)
       if (newEntry) {
@@ -1210,6 +1256,7 @@ export default function WocheScreen({
         familyPrompt,
         memberIds,
         gaesteProTag: gaesteProTag.filter(g => g.tag === tag).length > 0 ? gaesteProTag.filter(g => g.tag === tag) : undefined,
+        mahlzeitenKonfig: planSettings?.mahlzeitenKonfig,
       })
       setPendingPlan(prev => [...prev.filter(e => e.tag !== tag), ...result.filter(e => e.tag === tag)])
       setPendingPlanMeals(prev => ({ ...prev, ...newMeals }))
@@ -1237,6 +1284,7 @@ export default function WocheScreen({
         familyPrompt,
         memberIds,
         gaesteProTag: gaesteProTag.filter(g => g.tag === tag).length > 0 ? gaesteProTag.filter(g => g.tag === tag) : undefined,
+        mahlzeitenKonfig: planSettings?.mahlzeitenKonfig,
       })
       setPendingDay({ tag, entries: result.filter(e => e.tag === tag) })
       setPendingDayMeals(newMeals)
@@ -1729,6 +1777,7 @@ export default function WocheScreen({
         memberIds,
         lastDishes: mergedLastDishes,
         gaesteProTag: gaesteProTag.length > 0 ? gaesteProTag : undefined,
+        mahlzeitenKonfig: planSettings?.mahlzeitenKonfig,
       })
       setPendingPlan(newPlan)
       setPendingPlanMeals(newMeals)
@@ -2030,7 +2079,7 @@ export default function WocheScreen({
           </button>
           {canEditCurrentPlanSettings && (
             <button
-              onClick={() => void savePlanSettings({ planWE: !currentPlanWE, mittagsloseTage: planSettings?.mittagsloseTage ?? null }, 'current')}
+              onClick={() => void savePlanSettings({ ...(planSettings ?? { planWE: null, mittagsloseTage: null }), planWE: !currentPlanWE, mittagsloseTage: planSettings?.mittagsloseTage ?? null }, 'current')}
               disabled={planSettingsSaving}
               style={{ padding: '5px 11px', borderRadius: 20, border: `1px solid ${currentPlanWE ? '#1D9E75' : '#ddd'}`, background: currentPlanWE ? '#F0FAF5' : '#f9fafb', fontSize: 11, color: currentPlanWE ? '#0F6E56' : '#888', cursor: planSettingsSaving ? 'default' : 'pointer', fontWeight: 500 }}
             >
@@ -2040,52 +2089,56 @@ export default function WocheScreen({
           {canEditCurrentPlanSettings && (
             <button
               onClick={() => {
-                if (mittagslosOpen) { setMittagslosOpen(false); setMittagDraft(null) }
-                else { setMittagDraft(planSettings?.mittagsloseTage ?? []); setMittagslosOpen(true) }
+                if (mahlzeitenOpen) { setMahlzeitenOpen(false); setMahlzeitenDraft(null) }
+                else { setMahlzeitenDraft(openMahlzeitenPanel(currentPlanWE, planSettings?.mahlzeitenKonfig)); setMahlzeitenOpen(true) }
               }}
-              style={{ padding: '5px 11px', borderRadius: 20, border: `1px solid ${(planSettings?.mittagsloseTage ?? []).length > 0 ? '#1D9E75' : '#ddd'}`, background: (planSettings?.mittagsloseTage ?? []).length > 0 ? '#F0FAF5' : '#f9fafb', fontSize: 11, color: (planSettings?.mittagsloseTage ?? []).length > 0 ? '#0F6E56' : '#888', cursor: 'pointer', fontWeight: 500 }}
+              style={{ padding: '5px 11px', borderRadius: 20, border: `1px solid ${planSettings?.mahlzeitenBestaetigt ? '#1D9E75' : '#ddd'}`, background: planSettings?.mahlzeitenBestaetigt ? '#F0FAF5' : '#f9fafb', fontSize: 11, color: planSettings?.mahlzeitenBestaetigt ? '#0F6E56' : '#888', cursor: 'pointer', fontWeight: 500 }}
             >
-              {planSettings?.mittagsloseTage == null
-                ? '☀ Mittag: festlegen'
-                : currentMtl.length === 0
-                  ? '☀ Mittag: täglich'
-                  : currentMtl.length >= (currentPlanWE ? 7 : 5)
-                    ? '☀ Mittag: kein'
-                    : `☀ Mittag: ${currentMtl.map(t => TAG_SHORT[t]).join(', ')}`}
+              {planSettings?.mahlzeitenBestaetigt ? '🍽 Mahlzeiten ✓' : '🍽 Mahlzeiten: festlegen'}
             </button>
           )}
         </div>
-        {mittagslosOpen && canEditCurrentPlanSettings && mittagDraft !== null && (
+        {mahlzeitenOpen && canEditCurrentPlanSettings && mahlzeitenDraft !== null && (
           <div style={{ marginTop: 8, padding: '8px 12px', background: '#f9fafb', borderRadius: 10, border: '1px solid #e5e7eb' }}>
-            <div style={{ fontSize: 11, color: '#888', marginBottom: 6 }}>An welchen Tagen gibt es Mittagessen?</div>
-            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-              {(currentPlanWE ? WOCHENTAGE : WOCHENTAGE.slice(0, 5)).map(tag => {
-                const excluded = mittagDraft.includes(tag)
-                const hasLunch = !excluded
-                return (
-                  <button
-                    key={tag}
-                    onClick={() => {
-                      const newMtl = excluded ? mittagDraft.filter(t => t !== tag) : [...mittagDraft, tag]
-                      setMittagDraft(newMtl)
-                    }}
-                    style={{ padding: '4px 10px', borderRadius: 8, border: `1px solid ${hasLunch ? '#1D9E75' : '#ddd'}`, background: hasLunch ? '#F0FAF5' : 'white', color: hasLunch ? '#0F6E56' : '#666', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}
-                  >
-                    {TAG_SHORT[tag]}
-                  </button>
-                )
-              })}
-            </div>
-            <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+            <div style={{ fontSize: 11, color: '#888', marginBottom: 6 }}>Mahlzeiten pro Tag – ☀ Mittag / 🌙 Abend:</div>
+            {(currentPlanWE ? WOCHENTAGE : WOCHENTAGE.slice(0, 5)).map(tag => {
+              const k = mahlzeitenDraft[tag] ?? { mittag: 'leicht' as MittagTyp, abend: 'normal' as AbendTyp }
+              return (
+                <div key={tag} style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 4 }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: '#374151', width: 22, flexShrink: 0 }}>{TAG_SHORT[tag]}</span>
+                  <span style={{ fontSize: 10, color: '#bbb' }}>☀</span>
+                  {(['kein', 'leicht', 'normal'] as MittagTyp[]).map(val => (
+                    <button key={val} onClick={() => setMahlzeitenDraft(prev => ({ ...prev!, [tag]: { ...k, mittag: val } }))}
+                      style={{ padding: '2px 7px', borderRadius: 6, border: `1px solid ${k.mittag === val ? '#1D9E75' : '#ddd'}`, background: k.mittag === val ? '#F0FAF5' : 'white', color: k.mittag === val ? '#0F6E56' : '#666', fontSize: 10, fontWeight: 600, cursor: 'pointer' }}
+                    >{val}</button>
+                  ))}
+                  <span style={{ fontSize: 10, color: '#bbb', marginLeft: 4 }}>🌙</span>
+                  {(['leicht', 'normal'] as AbendTyp[]).map(val => (
+                    <button key={val} onClick={() => setMahlzeitenDraft(prev => ({ ...prev!, [tag]: { ...k, abend: val } }))}
+                      style={{ padding: '2px 7px', borderRadius: 6, border: `1px solid ${k.abend === val ? '#6366F1' : '#ddd'}`, background: k.abend === val ? '#EEF2FF' : 'white', color: k.abend === val ? '#4338CA' : '#666', fontSize: 10, fontWeight: 600, cursor: 'pointer' }}
+                    >{val}</button>
+                  ))}
+                </div>
+              )
+            })}
+            <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
               <button
-                onClick={() => { void savePlanSettings({ planWE: currentPlanWE, mittagsloseTage: mittagDraft }, 'current'); setMittagslosOpen(false); setMittagDraft(null) }}
+                onClick={() => {
+                  const mtl = Object.keys(mahlzeitenDraft).filter(t => mahlzeitenDraft[t].mittag === 'kein')
+                  void savePlanSettings({ ...(planSettings ?? { planWE: currentPlanWE, mittagsloseTage: mtl }), planWE: currentPlanWE, mittagsloseTage: mtl, mahlzeitenKonfig: mahlzeitenDraft, mahlzeitenBestaetigt: true }, 'current')
+                  setMahlzeitenOpen(false); setMahlzeitenDraft(null)
+                }}
                 disabled={planSettingsSaving}
                 style={{ padding: '5px 12px', borderRadius: 8, border: 'none', background: '#1D9E75', color: 'white', fontSize: 11, fontWeight: 600, cursor: planSettingsSaving ? 'default' : 'pointer' }}
-              >Fertig</button>
-              <button
-                onClick={() => { setMittagslosOpen(false); setMittagDraft(null) }}
+              >✓ Fertig / Passt so</button>
+              <button onClick={() => { setMahlzeitenOpen(false); setMahlzeitenDraft(null) }}
                 style={{ padding: '5px 12px', borderRadius: 8, border: '1px solid #ddd', background: 'white', color: '#888', fontSize: 11, cursor: 'pointer' }}
               >Abbrechen</button>
+              {canEditCurrentPlanSettings && (
+                <button onClick={() => void saveAsDefault(mahlzeitenDraft)} disabled={saveDefaultLoading}
+                  style={{ padding: '5px 12px', borderRadius: 8, border: '1px solid #ddd', background: '#F9FAFB', color: '#555', fontSize: 11, cursor: saveDefaultLoading ? 'default' : 'pointer' }}
+                >{saveDefaultLoading ? '…' : '⭐ Als Standard'}</button>
+              )}
             </div>
           </div>
         )}
@@ -2844,6 +2897,7 @@ export default function WocheScreen({
                           <div style={{ flex: 1 }}>
                             <div style={{ fontSize: 13, fontWeight: 700, color: '#111', display: 'flex', alignItems: 'center', gap: 4 }}>
                               {e.gericht}<span style={{ fontSize: 10, color: '#bbb' }}>›</span>
+                              {e.mahlzeitTyp === 'leicht' && <span style={{ fontSize: 9, background: '#EEF2FF', color: '#4338CA', borderRadius: 4, padding: '1px 5px', fontWeight: 600 }}>leicht</span>}
                               {getRecipeAllergenWarnings(mealsData[e.gericht]).length > 0 && (
                                 <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 14, height: 14, borderRadius: '50%', background: '#EF4444', color: 'white', fontSize: 9, fontWeight: 700, flexShrink: 0 }}>!</span>
                               )}
@@ -2854,6 +2908,14 @@ export default function WocheScreen({
                             {getRecipeAllergenWarnings(mealsData[e.gericht]).length > 0 && (
                               <div style={{ fontSize: 10, color: '#991B1B', marginTop: 1 }}>⚠️ Prüfen: {getRecipeAllergenWarnings(mealsData[e.gericht]).join(' · ')}</div>
                             )}
+                            {planSettings?.mahlzeitenBestaetigt && planSettings.mahlzeitenKonfig?.[tag] && (() => {
+                              const k = planSettings.mahlzeitenKonfig![tag]
+                              const erwartet = slot === 'Mittag' ? (k.mittag === 'kein' ? undefined : k.mittag) : k.abend
+                              if (erwartet && erwartet !== e.mahlzeitTyp && e.mahlzeitTyp !== undefined) {
+                                return <div style={{ fontSize: 10, color: '#6366F1', marginTop: 1 }}>ℹ️ Mahlzeit-Typ geändert – Gericht über ✏️ anpassen.</div>
+                              }
+                              return null
+                            })()}
                             <div style={{ fontSize: 11, color: '#aaa' }}>{e.minuten} min</div>
                           </div>
                         </div>
@@ -2944,7 +3006,7 @@ export default function WocheScreen({
             const nwConfirmed = nextWeekData?.planConfirmed ?? false
             const isNwChef = !!nwChef && currentUser === nwChef
             const canEditNextPlanSettings = (!!nwChef && currentUser === nwChef) || canEditSettings
-            const nwPlanSettingsNeeded = (nwPlanSettings === null || nwPlanSettings.planWE === null || nwPlanSettings.mittagsloseTage === null) && nwPlan.length === 0
+            const nwPlanSettingsNeeded = (nwPlanSettings?.planWE == null || !nwPlanSettings?.mahlzeitenKonfig || !nwPlanSettings?.mahlzeitenBestaetigt) && nwPlan.length === 0
             const nwEffectivePlanWE = nwPlanSettings?.planWE ?? planWE
             const nwDays = (nwEffectivePlanWE ? WOCHENTAGE : WOCHENTAGE.slice(0, 5)).filter(t => nwPlan.some(e => e.tag === t))
             const nwWishes = nextWeekData?.wishes ?? []
@@ -3019,7 +3081,7 @@ export default function WocheScreen({
                         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                           {canEditNextPlanSettings && (
                             <button
-                              onClick={() => void savePlanSettings({ planWE: !nwEffectivePlanWE, mittagsloseTage: nwPlanSettings?.mittagsloseTage ?? null }, 'next')}
+                              onClick={() => void savePlanSettings({ ...(nwPlanSettings ?? { planWE: null, mittagsloseTage: null }), planWE: !nwEffectivePlanWE, mittagsloseTage: nwPlanSettings?.mittagsloseTage ?? null }, 'next')}
                               disabled={planSettingsSaving}
                               style={{ padding: '5px 11px', borderRadius: 20, border: `1px solid ${nwEffectivePlanWE ? '#1D9E75' : '#ddd'}`, background: nwEffectivePlanWE ? '#F0FAF5' : '#f9fafb', fontSize: 11, color: nwEffectivePlanWE ? '#0F6E56' : '#888', cursor: planSettingsSaving ? 'default' : 'pointer', fontWeight: 500 }}
                             >
@@ -3029,63 +3091,67 @@ export default function WocheScreen({
                           {canEditNextPlanSettings && (
                             <button
                               onClick={() => {
-                                if (nwMittagslosOpen) { setNwMittagslosOpen(false); setNwMittagDraft(null) }
-                                else { setNwMittagDraft(nwPlanSettings?.mittagsloseTage ?? []); setNwMittagslosOpen(true) }
+                                if (nwMahlzeitenOpen) { setNwMahlzeitenOpen(false); setNwMahlzeitenDraft(null) }
+                                else { setNwMahlzeitenDraft(openMahlzeitenPanel(nwEffectivePlanWE, nwPlanSettings?.mahlzeitenKonfig)); setNwMahlzeitenOpen(true) }
                               }}
-                              style={{ padding: '5px 11px', borderRadius: 20, border: `1px solid ${(nwPlanSettings?.mittagsloseTage ?? []).length > 0 ? '#1D9E75' : '#ddd'}`, background: (nwPlanSettings?.mittagsloseTage ?? []).length > 0 ? '#F0FAF5' : '#f9fafb', fontSize: 11, color: (nwPlanSettings?.mittagsloseTage ?? []).length > 0 ? '#0F6E56' : '#888', cursor: 'pointer', fontWeight: 500 }}
+                              style={{ padding: '5px 11px', borderRadius: 20, border: `1px solid ${nwPlanSettings?.mahlzeitenBestaetigt ? '#1D9E75' : '#ddd'}`, background: nwPlanSettings?.mahlzeitenBestaetigt ? '#F0FAF5' : '#f9fafb', fontSize: 11, color: nwPlanSettings?.mahlzeitenBestaetigt ? '#0F6E56' : '#888', cursor: 'pointer', fontWeight: 500 }}
                             >
-                              {nwPlanSettings?.mittagsloseTage == null
-                                ? '☀ Mittag: festlegen'
-                                : nwMittagsloseTage.length === 0
-                                  ? '☀ Mittag: täglich'
-                                  : nwMittagsloseTage.length >= (nwEffectivePlanWE ? 7 : 5)
-                                    ? '☀ Mittag: kein'
-                                    : `☀ Mittag: ${nwMittagsloseTage.map(t => TAG_SHORT[t]).join(', ')}`}
+                              {nwPlanSettings?.mahlzeitenBestaetigt ? '🍽 Mahlzeiten ✓' : '🍽 Mahlzeiten: festlegen'}
                             </button>
                           )}
-                          {!canEditNextPlanSettings && (nwEffectivePlanWE || nwMittagsloseTage.length > 0) && (
+                          {!canEditNextPlanSettings && (nwEffectivePlanWE || nwPlanSettings?.mahlzeitenBestaetigt) && (
                             <span style={{ fontSize: 11, color: '#888' }}>
-                              {nwEffectivePlanWE ? '📅 Sa/So: ja' : ''}{nwMittagsloseTage.length > 0 ? `${nwEffectivePlanWE ? ' · ' : ''}☀ ohne ${nwMittagsloseTage.map(t => TAG_SHORT[t]).join(', ')}` : ''}
+                              {nwEffectivePlanWE ? '📅 Sa/So: ja' : ''}{nwPlanSettings?.mahlzeitenBestaetigt ? `${nwEffectivePlanWE ? ' · ' : ''}🍽 Mahlzeiten ✓` : ''}
                             </span>
                           )}
                         </div>
-                        {nwMittagslosOpen && canEditNextPlanSettings && nwMittagDraft !== null && (
+                        {nwMahlzeitenOpen && canEditNextPlanSettings && nwMahlzeitenDraft !== null && (
                           <div style={{ marginTop: 8, padding: '8px 10px', background: 'white', borderRadius: 8, border: '1px solid #e5e7eb' }}>
-                            <div style={{ fontSize: 11, color: '#888', marginBottom: 6 }}>An welchen Tagen gibt es Mittagessen?</div>
-                            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                              {(nwEffectivePlanWE ? WOCHENTAGE : WOCHENTAGE.slice(0, 5)).map(tag => {
-                                const excluded = nwMittagDraft.includes(tag)
-                                const hasLunch = !excluded
-                                return (
-                                  <button
-                                    key={tag}
-                                    onClick={() => {
-                                      const newMtl = excluded ? nwMittagDraft.filter(t => t !== tag) : [...nwMittagDraft, tag]
-                                      setNwMittagDraft(newMtl)
-                                    }}
-                                    style={{ padding: '4px 10px', borderRadius: 8, border: `1px solid ${hasLunch ? '#1D9E75' : '#ddd'}`, background: hasLunch ? '#F0FAF5' : 'white', color: hasLunch ? '#0F6E56' : '#666', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}
-                                  >
-                                    {TAG_SHORT[tag]}
-                                  </button>
-                                )
-                              })}
-                            </div>
-                            <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+                            <div style={{ fontSize: 11, color: '#888', marginBottom: 6 }}>Mahlzeiten pro Tag – ☀ Mittag / 🌙 Abend:</div>
+                            {(nwEffectivePlanWE ? WOCHENTAGE : WOCHENTAGE.slice(0, 5)).map(tag => {
+                              const k = nwMahlzeitenDraft[tag] ?? { mittag: 'leicht' as MittagTyp, abend: 'normal' as AbendTyp }
+                              return (
+                                <div key={tag} style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 4 }}>
+                                  <span style={{ fontSize: 11, fontWeight: 700, color: '#374151', width: 22, flexShrink: 0 }}>{TAG_SHORT[tag]}</span>
+                                  <span style={{ fontSize: 10, color: '#bbb' }}>☀</span>
+                                  {(['kein', 'leicht', 'normal'] as MittagTyp[]).map(val => (
+                                    <button key={val} onClick={() => setNwMahlzeitenDraft(prev => ({ ...prev!, [tag]: { ...k, mittag: val } }))}
+                                      style={{ padding: '2px 7px', borderRadius: 6, border: `1px solid ${k.mittag === val ? '#1D9E75' : '#ddd'}`, background: k.mittag === val ? '#F0FAF5' : 'white', color: k.mittag === val ? '#0F6E56' : '#666', fontSize: 10, fontWeight: 600, cursor: 'pointer' }}
+                                    >{val}</button>
+                                  ))}
+                                  <span style={{ fontSize: 10, color: '#bbb', marginLeft: 4 }}>🌙</span>
+                                  {(['leicht', 'normal'] as AbendTyp[]).map(val => (
+                                    <button key={val} onClick={() => setNwMahlzeitenDraft(prev => ({ ...prev!, [tag]: { ...k, abend: val } }))}
+                                      style={{ padding: '2px 7px', borderRadius: 6, border: `1px solid ${k.abend === val ? '#6366F1' : '#ddd'}`, background: k.abend === val ? '#EEF2FF' : 'white', color: k.abend === val ? '#4338CA' : '#666', fontSize: 10, fontWeight: 600, cursor: 'pointer' }}
+                                    >{val}</button>
+                                  ))}
+                                </div>
+                              )
+                            })}
+                            <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
                               <button
-                                onClick={() => { void savePlanSettings({ planWE: nwEffectivePlanWE, mittagsloseTage: nwMittagDraft }, 'next'); setNwMittagslosOpen(false); setNwMittagDraft(null) }}
+                                onClick={() => {
+                                  const mtl = Object.keys(nwMahlzeitenDraft).filter(t => nwMahlzeitenDraft[t].mittag === 'kein')
+                                  void savePlanSettings({ ...(nwPlanSettings ?? { planWE: nwEffectivePlanWE, mittagsloseTage: mtl }), planWE: nwEffectivePlanWE, mittagsloseTage: mtl, mahlzeitenKonfig: nwMahlzeitenDraft, mahlzeitenBestaetigt: true }, 'next')
+                                  setNwMahlzeitenOpen(false); setNwMahlzeitenDraft(null)
+                                }}
                                 disabled={planSettingsSaving}
                                 style={{ padding: '5px 12px', borderRadius: 8, border: 'none', background: '#1D9E75', color: 'white', fontSize: 11, fontWeight: 600, cursor: planSettingsSaving ? 'default' : 'pointer' }}
-                              >Fertig</button>
-                              <button
-                                onClick={() => { setNwMittagslosOpen(false); setNwMittagDraft(null) }}
+                              >✓ Fertig / Passt so</button>
+                              <button onClick={() => { setNwMahlzeitenOpen(false); setNwMahlzeitenDraft(null) }}
                                 style={{ padding: '5px 12px', borderRadius: 8, border: '1px solid #ddd', background: 'white', color: '#888', fontSize: 11, cursor: 'pointer' }}
                               >Abbrechen</button>
+                              {canEditNextPlanSettings && (
+                                <button onClick={() => void saveAsDefault(nwMahlzeitenDraft)} disabled={saveDefaultLoading}
+                                  style={{ padding: '5px 12px', borderRadius: 8, border: '1px solid #ddd', background: '#F9FAFB', color: '#555', fontSize: 11, cursor: saveDefaultLoading ? 'default' : 'pointer' }}
+                                >{saveDefaultLoading ? '…' : '⭐ Als Standard'}</button>
+                              )}
                             </div>
                           </div>
                         )}
                         {nwPlanSettingsNeeded && (
                           <div style={{ marginTop: 8, padding: '8px 10px', background: '#FFFBEB', borderRadius: 8, border: '1px solid #FCD34D', fontSize: 11, color: '#92400E' }}>
-                            ⚙️ Bitte zuerst <strong>Sa/So planen</strong> und <strong>Mittagessen</strong> festlegen – erst dann kann Rémy planen.
+                            ⚙️ Bitte zuerst <strong>Sa/So planen</strong> und <strong>Mahlzeiten festlegen</strong> (✓ Fertig / Passt so) – erst dann kann Rémy planen.
                           </div>
                         )}
                       </div>
@@ -3719,6 +3785,7 @@ export default function WocheScreen({
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 13, fontWeight: 700, color: '#111', display: 'flex', alignItems: 'center', gap: 4 }}>
               {entry.gericht}<span style={{ fontSize: 10, color: '#bbb' }}>›</span>
+              {entry.mahlzeitTyp === 'leicht' && <span style={{ fontSize: 9, background: '#EEF2FF', color: '#4338CA', borderRadius: 4, padding: '1px 5px', fontWeight: 600 }}>leicht</span>}
               {getRecipeAllergenWarnings(mealsData[entry.gericht]).length > 0 && (
                 <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 14, height: 14, borderRadius: '50%', background: '#EF4444', color: 'white', fontSize: 9, fontWeight: 700, flexShrink: 0 }}>!</span>
               )}
@@ -3729,6 +3796,14 @@ export default function WocheScreen({
             {getRecipeAllergenWarnings(mealsData[entry.gericht]).length > 0 && (
               <div style={{ fontSize: 10, color: '#991B1B', marginTop: 1 }}>⚠️ Prüfen: {getRecipeAllergenWarnings(mealsData[entry.gericht]).join(' · ')}</div>
             )}
+            {planSettings?.mahlzeitenBestaetigt && planSettings.mahlzeitenKonfig?.[tag] && (() => {
+              const k = planSettings.mahlzeitenKonfig![tag]
+              const erwartet = slot === 'Mittag' ? (k.mittag === 'kein' ? undefined : k.mittag) : k.abend
+              if (erwartet && erwartet !== entry.mahlzeitTyp && entry.mahlzeitTyp !== undefined) {
+                return <div style={{ fontSize: 10, color: '#6366F1', marginTop: 1 }}>ℹ️ Mahlzeit-Typ geändert – Gericht über ✏️ anpassen.</div>
+              }
+              return null
+            })()}
             <div style={{ fontSize: 11, color: '#aaa' }}>{entry.minuten} min</div>
           </div>
         </div>

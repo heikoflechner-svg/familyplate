@@ -46,7 +46,7 @@ function extractFirstJson(raw: string): string | null {
 }
 
 export async function POST(req: NextRequest) {
-  const { mittagsloseTage, planWE, freezerList, pantryList, behaltene, neuTage, wishes, familyPrompt, lastDishes, gaesteProTag, memberIds } = await req.json()
+  const { mittagsloseTage, planWE, freezerList, pantryList, behaltene, neuTage, wishes, familyPrompt, lastDishes, gaesteProTag, memberIds, mahlzeitenKonfig } = await req.json()
 
   const apiKey = process.env.ANTHROPIC_API_KEY
   console.log('[week-plan] apiKey present:', !!apiKey, '| length:', apiKey?.length ?? 0)
@@ -58,11 +58,34 @@ export async function POST(req: NextRequest) {
   const mittagslosSet = new Set<string>(mittagsloseTage ?? [])
   const hasMittag = (tag: string) => !mittagslosSet.has(tag)
   const mittagTage = planTage.filter((t: string) => hasMittag(t))
-  const slotHinweis = mittagTage.length === 0
-    ? 'nur Abend'
-    : mittagTage.length === planTage.length
-      ? 'Mittag UND Abend'
-      : `Mittag UND Abend (Mittag nur an: ${mittagTage.join(', ')})`
+
+  const konfig = (mahlzeitenKonfig ?? {}) as Record<string, { mittag: string; abend: string }>
+  const hasKonfig = Object.keys(konfig).length > 0
+
+  const slotHinweis = hasKonfig
+    ? planTage.map((t: string) => {
+        const k = konfig[t]
+        if (!k) return null
+        const parts: string[] = []
+        if (k.mittag === 'kein') {
+          // no Mittag for this day
+        } else if (k.mittag === 'leicht') {
+          parts.push('Mittag: leichte Mahlzeit')
+        } else {
+          parts.push('Mittag: normale Hauptmahlzeit')
+        }
+        if (k.abend === 'leicht') {
+          parts.push('Abend: leichte Mahlzeit')
+        } else {
+          parts.push('Abend: normale Hauptmahlzeit')
+        }
+        return parts.length > 0 ? `${t}: ${parts.join(', ')}` : null
+      }).filter(Boolean).join(' | ')
+    : (mittagTage.length === 0
+        ? 'nur Abend'
+        : mittagTage.length === planTage.length
+          ? 'Mittag UND Abend'
+          : `Mittag UND Abend (Mittag nur an: ${mittagTage.join(', ')})`)
   const chefRota: string[] = (Array.isArray(memberIds) && memberIds.length > 0)
     ? memberIds
     : ['A', 'B', 'C']
@@ -81,10 +104,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ woche: result, allergie: {} })
   }
 
+  const getTyp = (t: string, slot: 'Mittag' | 'Abend'): string => {
+    const k = konfig[t]
+    if (!k) return 'normal'
+    return slot === 'Mittag' ? (k.mittag === 'kein' ? 'normal' : k.mittag) : k.abend
+  }
   const beispiele: string[] = []
   planTage.forEach((t: string, i: number) => {
-    if (hasMittag(t)) beispiele.push(`{"tag":"${t}","slot":"Mittag","emoji":"...","gericht":"...","minuten":20,"quelle":"frisch","chef":"${chefRota[i % chefRota.length]}"}`)
-    beispiele.push(`{"tag":"${t}","slot":"Abend","emoji":"...","gericht":"...","minuten":30,"quelle":"frisch","chef":"${chefRota[(i + 1) % chefRota.length]}"}`)
+    if (hasMittag(t)) beispiele.push(`{"tag":"${t}","slot":"Mittag","emoji":"...","gericht":"...","minuten":20,"quelle":"frisch","chef":"${chefRota[i % chefRota.length]}","mahlzeitTyp":"${getTyp(t,'Mittag')}"}`)
+    beispiele.push(`{"tag":"${t}","slot":"Abend","emoji":"...","gericht":"...","minuten":30,"quelle":"frisch","chef":"${chefRota[(i + 1) % chefRota.length]}","mahlzeitTyp":"${getTyp(t,'Abend')}"}`)
   })
 
   const wishList = (wishes ?? []) as WishJSON[]
@@ -109,7 +137,8 @@ export async function POST(req: NextRequest) {
   console.log('[week-plan] lastDishes:', lastDishesList.length, 'Einträge')
   console.log('[week-plan] gaesteProTag:', gaesteList.length, 'Tage mit Gästen')
   const allergenCheck = 'SCHRITT 2 – Allergen-Check (nach der Auswahl): Prüfe für jedes gewählte Gericht, ob Zutaten eine Unverträglichkeit aus dem Profil verletzen. Quellen: Gluten=Mehl/Pasta/Brot/Pizzateig/Paniermehl. Kasein=Milch/Käse/Butter/Sahne/Joghurt/Quark/Schmand/Sahnesaucen/Bechamel. Laktose=Milch/Käse/Butter/Sahne/Joghurt. Nüsse=Mandeln/Walnüsse/Cashews/Erdnüsse. Wenn eine Zutat eine Unverträglichkeit verletzt, trag die Ersatz-Zutat NUR für die betroffene Person in allergie[GerichtName] ein als "Menge Produkt (für Person)", z.B. "1 Packung glutenfreier Pizzateig (für Heiko)". Die anderen Familienmitglieder essen das normale Gericht. Wenn keine Unverträglichkeit betroffen ist, setze allergie[GerichtName] auf [].'
-  const prompt = `Du bist Rémy. Plane ${slotHinweis} für ${planTage.join(', ')} für die Familie. Profil: ${familienProfil}.${wishHinweis}${historyHinweis}${behalteneHinweis}${gaesteHinweis} Gefriertruhe: ${freezerList}. Speisekammer: ${pantryList}. Nutze Gefriertruhe/Speisekammer wenn sinnvoll – Artikel mit [DRINGEND] müssen diese Woche eingeplant werden. Weise pro Tag+Slot Küchenchef zu (${chefRota.join(' ')}) nach Fairness. SCHRITT 1 – Gerichtsauswahl: Wähle immer normale, typische Familiengerichte für die ganze Familie – niemals vorsorglich glutenfreie, laktosefreie oder anderweitig angepasste Varianten, auch wenn Unverträglichkeiten im Profil stehen. Das normale Gericht wird für alle gekocht. Ändere Gerichtsnamen nie. ${allergenCheck} Antworte NUR als reines JSON ohne Markdown-Codeblock: {"woche":[${beispiele.join(',')}],"allergie":{"GerichtName":["Menge Ersatz (für Person)"],"GerichtName2":[]}} — allergie enthält für JEDES Gericht in woche einen Eintrag (leeres Array wenn keine Anpassung nötig).`
+  const leichtDef = hasKonfig ? ' Leichte Mahlzeit = einfaches Gericht, warm oder kalt (z.B. Suppe, Salat, Omelett, Ofengemüse, Brotzeit). Wenige Zutaten, max. ca. 20 Minuten, keine aufwändige Vorbereitung. Allergie-Anpassungen (fuer-Zutaten) vollständig beibehalten.' : ''
+  const prompt = `Du bist Rémy. Plane ${slotHinweis} für ${planTage.join(', ')} für die Familie. Profil: ${familienProfil}.${wishHinweis}${historyHinweis}${behalteneHinweis}${gaesteHinweis} Gefriertruhe: ${freezerList}. Speisekammer: ${pantryList}. Nutze Gefriertruhe/Speisekammer wenn sinnvoll – Artikel mit [DRINGEND] müssen diese Woche eingeplant werden. Weise pro Tag+Slot Küchenchef zu (${chefRota.join(' ')}) nach Fairness.${leichtDef} SCHRITT 1 – Gerichtsauswahl: Wähle immer normale, typische Familiengerichte für die ganze Familie – niemals vorsorglich glutenfreie, laktosefreie oder anderweitig angepasste Varianten, auch wenn Unverträglichkeiten im Profil stehen. Das normale Gericht wird für alle gekocht. Ändere Gerichtsnamen nie. ${allergenCheck} Setze mahlzeitTyp gemäß dem vorgegebenen Slot-Typ ("leicht" oder "normal") – der Wert ergibt sich aus dem JSON-Beispiel. Antworte NUR als reines JSON ohne Markdown-Codeblock: {"woche":[${beispiele.join(',')}],"allergie":{"GerichtName":["Menge Ersatz (für Person)"],"GerichtName2":[]}} — allergie enthält für JEDES Gericht in woche einen Eintrag (leeres Array wenn keine Anpassung nötig).`
 
   try {
     const resp = await fetch('https://api.anthropic.com/v1/messages', {

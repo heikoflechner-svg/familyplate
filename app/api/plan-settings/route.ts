@@ -17,7 +17,7 @@ export async function POST(req: NextRequest) {
   const token = authHeader.slice(7)
 
   const body = await req.json() as {
-    settings: { planWE: boolean | null; mittagsloseTage: string[] | null }
+    settings: { planWE: boolean | null; mittagsloseTage: string[] | null; mahlzeitenKonfig?: unknown; mahlzeitenBestaetigt?: boolean }
     weekType: 'current' | 'next'
   }
   const { settings, weekType } = body

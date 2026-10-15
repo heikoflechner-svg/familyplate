@@ -145,14 +145,17 @@ Antworte NUR als reines JSON ohne Markdown im Format: {"rezept":{...},"allergieH
   }
 
   // ── Normal-Modus: vollständiges Rezept generieren ────────────────────────
-  const { gericht, emoji, freezerList, pantryList, familyPrompt, personCount, familyMembersForCheck } = body
+  const { gericht, emoji, freezerList, pantryList, familyPrompt, personCount, familyMembersForCheck, mahlzeitTyp } = body
   if (!apiKey) {
     return NextResponse.json({ rezept: { ...FALLBACK, name: gericht || FALLBACK.name, emoji: emoji || '🍗' } })
   }
 
   const familienProfil = familyPrompt || 'Sabine (keine Nüsse), Heiko (laktosefrei), Tim (kein Fisch)'
   const anzahl: number = typeof personCount === 'number' && personCount > 0 ? personCount : 4
-  const prompt = `Du bist Rémy. Erstelle ein vollständiges Familienrezept für "${gericht}" für ${anzahl} Person${anzahl === 1 ? '' : 'en'}. Verfügbar: Gefriertruhe: ${freezerList || 'variiert'}. Speisekammer: ${pantryList || 'variiert'}. Familie: ${familienProfil}.
+  const leichtHinweis = (mahlzeitTyp as string | undefined) === 'leicht'
+    ? '\n\nDieses Gericht ist eine leichte Mahlzeit (z.B. Suppe, Salat, Omelett, Ofengemüse, Brotzeit). Wenige Zutaten, max. ca. 20 Minuten, keine aufwändige Vorbereitung. Allergie-Anpassungen (fuer-Felder) vollständig beibehalten.'
+    : ''
+  const prompt = `Du bist Rémy. Erstelle ein vollständiges Familienrezept für "${gericht}" für ${anzahl} Person${anzahl === 1 ? '' : 'en'}. Verfügbar: Gefriertruhe: ${freezerList || 'variiert'}. Speisekammer: ${pantryList || 'variiert'}. Familie: ${familienProfil}.${leichtHinweis}
 
 WICHTIG: Ändere den Namen des Gerichts NIE. Liste ALLE Zutaten mit genauen Mengen für ${anzahl} Person${anzahl === 1 ? '' : 'en'} auf – inklusive Gewürze, Kräuter, Öl und Aromaten. Unterscheide dabei:
 - "frisch": frische Zutaten (Gemüse, Fleisch, Fisch, Milchprodukte, frische Kräuter)

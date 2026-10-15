@@ -415,6 +415,7 @@ export async function generateWeekPlan(params: {
   lastDishes?: string[]
   gaesteProTag?: { tag: string; gaeste: number }[]
   memberIds?: string[]
+  mahlzeitenKonfig?: Record<string, { mittag: string; abend: string }>
 }): Promise<{ plan: WeekPlanEntry[]; mealsData: Record<string, Rezept> }> {
   const resp = await fetch('/api/week-plan', {
     method: 'POST',
@@ -493,13 +494,14 @@ export async function generateRecipe(
   familyPrompt?: string,
   personCount?: number,
   familyMembersForCheck?: { name: string; allergien: string[] }[],
+  mahlzeitTyp?: 'leicht' | 'normal',
 ): Promise<Rezept | null> {
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
       const resp = await fetch('/api/recipe', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gericht, emoji, freezerList, pantryList, familyPrompt, personCount, familyMembersForCheck }),
+        body: JSON.stringify({ gericht, emoji, freezerList, pantryList, familyPrompt, personCount, familyMembersForCheck, mahlzeitTyp }),
       })
       if (!resp.ok) {
         if (attempt === 0) continue
@@ -644,7 +646,7 @@ export async function loadMissingRecipes(
   })
   await Promise.all(missing.map(async e => {
     const personCount = getPersonCount ? getPersonCount(e.tag, e.slot) : undefined
-    const r = await generateRecipe(e.gericht, e.emoji, freezerList, pantryList, familyPrompt, personCount, familyMembersForCheck)
+    const r = await generateRecipe(e.gericht, e.emoji, freezerList, pantryList, familyPrompt, personCount, familyMembersForCheck, e.mahlzeitTyp as 'leicht' | 'normal' | undefined)
     if (r) {
       result[e.gericht] = {
         ...r,
