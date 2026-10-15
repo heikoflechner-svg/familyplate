@@ -199,8 +199,13 @@ export default function WocheScreen({
   const wishDeadlineHint = wishDeadlinePassed && wishDeadlineStatus
     ? `Änderungen waren nur bis ${wishDeadlineStatus.deadlineDayName} 20:00 Uhr möglich – Einkauf ist am ${wishDeadlineStatus.shoppingDayName}`
     : undefined
+  const wishHintChefPart = personNames[wochenchef]
+    ? `an ${personNames[wochenchef]} (Wochenchef)`
+    : 'an den Wochenchef'
   const wishHint: string | undefined = planConfirmed
-    ? 'Plan bestätigt – dein Wunsch kommt als Vorschlag beim Wochenchef an.'
+    ? weekStart
+      ? `Der Plan für KW ${getKW(weekStart)} ist bestätigt. Dein Wunsch geht als Änderungsvorschlag ${wishHintChefPart}.`
+      : `Der Plan ist bestätigt. Dein Wunsch geht als Änderungsvorschlag ${wishHintChefPart}.`
     : (wishDeadlineStatus && !wishDeadlineStatus.passed
         ? `Wünsche bis ${wishDeadlineStatus.deadlineDayName}, ${wishDeadlineStatus.deadlineDate} eintragen – danach plant der Wochenchef.`
         : undefined)
@@ -3512,7 +3517,7 @@ export default function WocheScreen({
                         <div>
                           {nwConfirmed && (
                             <div style={{ fontSize: 11, color: '#6B7280', fontStyle: 'italic', marginBottom: 6 }}>
-                              ℹ️ Plan bestätigt – dein Wunsch kommt als Vorschlag beim Wochenchef an.
+                              ℹ️ Der Plan für KW {nwKw} ist bestätigt. Dein Wunsch geht als Änderungsvorschlag {nwChef && personNames[nwChef] ? `an ${personNames[nwChef]} (Wochenchef)` : 'an den Wochenchef'}.
                             </div>
                           )}
                           {myNwWish ? (
@@ -3525,7 +3530,7 @@ export default function WocheScreen({
                             <div style={{ display: 'flex', gap: 6 }}>
                               <input value={nextWeekWishInput} onChange={ev => setNextWeekWishInput(ev.target.value)}
                                 onKeyDown={ev => ev.key === 'Enter' && submitNextWeekWish()}
-                                placeholder="Essenswunsch für nächste Woche..."
+                                placeholder={`Essenswunsch für KW ${nwKw}…`}
                                 style={{ flex: 1, border: '1px solid #e5e7eb', borderRadius: 7, padding: '5px 9px', fontSize: 12, outline: 'none', background: 'white' }} />
                               <button onClick={submitNextWeekWish} disabled={!nextWeekWishInput.trim() || nextWeekWishSaving}
                                 style={{ padding: '5px 10px', borderRadius: 7, border: 'none', background: nextWeekWishInput.trim() ? '#1D9E75' : '#ddd', color: 'white', fontSize: 12, cursor: nextWeekWishInput.trim() ? 'pointer' : 'default' }}>
