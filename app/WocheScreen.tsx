@@ -9,6 +9,7 @@ import type { WeekPlanEntry, Rezept, FreezerItem, PantryItem, Wish, Chef, Wochen
 import { supabase } from '../lib/supabase'
 import SlotWunschPanel from './SlotWunschPanel'
 import RecipeModal from './RecipeModal'
+import RezeptbuchScreen, { type RezeptSelection } from './RezeptbuchScreen'
 
 const WOCHENTAGE = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag']
 const TAG_SHORT: Record<string, string> = {
@@ -54,7 +55,7 @@ function getSlot(weekPlan: WeekPlanEntry[], tag: string, slot: 'Mittag' | 'Abend
 }
 
 // ── Shared "Gericht ändern" button panel ──────────────────────────────────────
-type SubMode = 'manual' | 'pantry' | 'ergaenzung' | 'rezeptbuch'
+type SubMode = 'manual' | 'pantry' | 'ergaenzung'
 type GAPCfg = {
   subMode: SubMode | null
   setSubMode: (m: SubMode | null) => void
@@ -72,8 +73,7 @@ type GAPCfg = {
   onApplyStock: (name: string, emoji: string) => void
   onApplyErgaenzung: (text: string) => void
   flash?: boolean
-  rezeptbuchEntries?: RezeptbuchEntry[]
-  onApplyRezeptbuch?: (entry: RezeptbuchEntry) => void
+  onOpenRezeptbuch?: () => void
 }
 function gerichtAendernPanel(c: GAPCfg) {
   function toggle(mode: SubMode) {
@@ -101,12 +101,10 @@ function gerichtAendernPanel(c: GAPCfg) {
           style={{ flex: 1, padding: '6px 4px', border: `1px solid ${c.subMode === 'ergaenzung' ? '#1D9E75' : '#ddd'}`, borderRadius: 8, background: c.subMode === 'ergaenzung' ? '#E1F5EE' : 'white', cursor: 'pointer', fontSize: 11, color: c.subMode === 'ergaenzung' ? '#0F6E56' : '#555', minWidth: 60 }}>
           ➕ Zutat hinzufügen
         </button>
-        {(c.rezeptbuchEntries?.length ?? 0) > 0 && (
-          <button onClick={() => toggle('rezeptbuch')}
-            style={{ flex: 1, padding: '6px 4px', border: `1px solid ${c.subMode === 'rezeptbuch' ? '#1D9E75' : '#ddd'}`, borderRadius: 8, background: c.subMode === 'rezeptbuch' ? '#E1F5EE' : 'white', cursor: 'pointer', fontSize: 11, color: c.subMode === 'rezeptbuch' ? '#0F6E56' : '#555', minWidth: 60 }}>
-            📖 Aus Rezepten
-          </button>
-        )}
+        <button onClick={() => { if (!dis) c.onOpenRezeptbuch?.() }}
+          style={{ flex: 1, padding: '6px 4px', border: '1px solid #ddd', borderRadius: 8, background: 'white', cursor: dis ? 'default' : 'pointer', fontSize: 11, color: '#555', minWidth: 60, opacity: dis ? 0.4 : 1 }}>
+          📖 Aus Rezepten
+        </button>
         <button onClick={() => { if (!dis) c.onTypToggle() }} disabled={dis}
           style={{ flex: 1, padding: '6px 4px', border: '1px solid #ddd', borderRadius: 8, background: 'white', cursor: dis ? 'default' : 'pointer', fontSize: 11, color: '#555', minWidth: 60, opacity: dis ? 0.4 : 1 }}>
           {c.currentTyp === 'leicht' ? '🍲 lieber Hauptmahlzeit' : '🥗 lieber leicht'}
@@ -157,35 +155,6 @@ function gerichtAendernPanel(c: GAPCfg) {
                 </button>
               ))}
             </div>
-      )}
-      {c.subMode === 'rezeptbuch' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 4 }}>
-          <input
-            type="text"
-            value={c.textInput}
-            onChange={ev => c.setTextInput(ev.target.value)}
-            placeholder="Rezept suchen…"
-            style={{ fontSize: 12, padding: '6px 10px', border: '1px solid #ddd', borderRadius: 6, outline: 'none' }}
-          />
-          <div style={{ maxHeight: 140, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 3 }}>
-            {(() => {
-              const filtered = (c.rezeptbuchEntries ?? []).filter(e =>
-                !c.textInput.trim() || e.rezept.name.toLowerCase().includes(c.textInput.toLowerCase())
-              )
-              if (!filtered.length) return <div style={{ fontSize: 11, color: '#bbb', textAlign: 'center', padding: '4px 0' }}>Kein Treffer</div>
-              return filtered.slice(0, 8).map(e => (
-                <button key={e.id}
-                  onClick={() => { c.onApplyRezeptbuch?.(e); c.setSubMode(null); c.setTextInput('') }}
-                  style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 8px', border: '1px solid #eee', borderRadius: 6, background: 'white', cursor: 'pointer', textAlign: 'left' }}>
-                  <span style={{ fontSize: 14 }}>{e.rezept.emoji}</span>
-                  <span style={{ flex: 1, fontSize: 12, color: '#333' }}>{e.rezept.name}</span>
-                  {e.isFavorit && <span style={{ fontSize: 11 }}>⭐</span>}
-                  <span style={{ fontSize: 10, color: '#bbb' }}>{e.rezept.minuten}min</span>
-                </button>
-              ))
-            })()}
-          </div>
-        </div>
       )}
       {!c.subMode && c.flash && (
         <div style={{ fontSize: 11, color: '#0F6E56', padding: '3px 2px', fontWeight: 600 }}>
@@ -974,6 +943,7 @@ export default function WocheScreen({
   const [manualDishTyp, setManualDishTyp] = useState<'leicht' | 'normal' | null>(null)
   const [attendanceEditKey, setAttendanceEditKey] = useState<string | null>(null)
   const [gerichtEditKey, setGerichtEditKey] = useState<string | null>(null)
+  const [rezeptbuchSelect, setRezeptbuchSelect] = useState<{ tag: string; slot: 'Mittag' | 'Abend'; applyFn: (sel: RezeptSelection) => void } | null>(null)
   const [pendingSwapSource, setPendingSwapSource] = useState<{ tag: string; slot: WochenSlot; entry: WeekPlanEntry } | null>(null)
   const [nwPendingSwapSource, setNwPendingSwapSource] = useState<{ tag: string; slot: WochenSlot; entry: WeekPlanEntry } | null>(null)
   const [nwManualDishTyp, setNwManualDishTyp] = useState<'leicht' | 'normal' | null>(null)
@@ -2332,6 +2302,17 @@ export default function WocheScreen({
                 style={{ flex: 1, padding: '6px 4px', border: `1px solid ${mealSubMode === 'pantry' ? '#1D9E75' : '#ddd'}`, borderRadius: 8, background: mealSubMode === 'pantry' ? '#E1F5EE' : 'white', cursor: 'pointer', fontSize: 11, color: mealSubMode === 'pantry' ? '#0F6E56' : '#555' }}>
                 ❄️ Vorrat
               </button>
+              <button onClick={() => setRezeptbuchSelect({
+                tag, slot: slot as 'Mittag' | 'Abend',
+                applyFn: (sel) => {
+                  const newEntry = { tag, slot, gericht: sel.gericht, emoji: sel.emoji, quelle: 'rezeptbuch' as const, chef: wochenchef, minuten: sel.minuten }
+                  void onWeekPlanChange([...weekPlan, newEntry], { ...mealsData, [sel.gericht]: sel.rezept })
+                  closeMealPanel()
+                },
+              })}
+                style={{ flex: 1, padding: '6px 4px', border: '1px solid #ddd', borderRadius: 8, background: 'white', cursor: 'pointer', fontSize: 11, color: '#555' }}>
+                📖 Aus Rezepten
+              </button>
             </div>
             {mealSubMode === 'manual' && (
               <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
@@ -2687,13 +2668,14 @@ export default function WocheScreen({
                                 setMealErgSaved(true); setTimeout(() => setMealErgSaved(false), 2500)
                               },
                               flash: mealErgSaved,
-                              rezeptbuchEntries,
-                              onApplyRezeptbuch: (bookEntry) => {
-                                setPendingPlan(prev => prev.map(p => p.tag === tag && p.slot === slot ? { ...p, gericht: bookEntry.rezept.name, emoji: bookEntry.rezept.emoji, minuten: bookEntry.rezept.minuten, quelle: 'rezeptbuch' } : p))
-                                setPendingPlanMeals(prev => ({ ...prev, [bookEntry.rezept.name]: bookEntry.rezept }))
-                                closeMealPanel()
-                                onMarkGekocht?.(bookEntry.id)
-                              },
+                              onOpenRezeptbuch: () => setRezeptbuchSelect({
+                                tag, slot: slot as 'Mittag' | 'Abend',
+                                applyFn: (sel) => {
+                                  setPendingPlan(prev => prev.map(p => p.tag === tag && p.slot === slot ? { ...p, gericht: sel.gericht, emoji: sel.emoji, minuten: sel.minuten, quelle: 'rezeptbuch' } : p))
+                                  setPendingPlanMeals(prev => ({ ...prev, [sel.gericht]: sel.rezept }))
+                                  closeMealPanel()
+                                },
+                              }),
                             })}
                           </div>
                         )}
@@ -3513,13 +3495,14 @@ export default function WocheScreen({
                                           onApplyStock: (name, emoji) => applyNwPendingStockItem(e!.tag, e!.slot, name, emoji),
                                           onApplyErgaenzung: (text) => { void applyNwErgaenzung(e!.tag, e!.slot, text); setNwMealErgSaved(true); setTimeout(() => setNwMealErgSaved(false), 2500) },
                                           flash: nwMealErgSaved,
-                                          rezeptbuchEntries,
-                                          onApplyRezeptbuch: (bookEntry) => {
-                                            setNwPendingPlan(prev => prev ? prev.map(p => p.tag === e!.tag && p.slot === e!.slot ? { ...p, gericht: bookEntry.rezept.name, emoji: bookEntry.rezept.emoji, minuten: bookEntry.rezept.minuten, quelle: 'rezeptbuch' } : p) : null)
-                                            setNwPendingMeals(prev => ({ ...prev, [bookEntry.rezept.name]: bookEntry.rezept }))
-                                            setNwGerichtEditKey(null); setNwMealSubMode(null); setNwManualDish('')
-                                            onMarkGekocht?.(bookEntry.id)
-                                          },
+                                          onOpenRezeptbuch: () => setRezeptbuchSelect({
+                                            tag: e!.tag, slot: e!.slot as 'Mittag' | 'Abend',
+                                            applyFn: (sel) => {
+                                              setNwPendingPlan(prev => prev ? prev.map(p => p.tag === e!.tag && p.slot === e!.slot ? { ...p, gericht: sel.gericht, emoji: sel.emoji, minuten: sel.minuten, quelle: 'rezeptbuch' } : p) : null)
+                                              setNwPendingMeals(prev => ({ ...prev, [sel.gericht]: sel.rezept }))
+                                              setNwGerichtEditKey(null); setNwMealSubMode(null); setNwManualDish('')
+                                            },
+                                          }),
                                         })}
                                       </div>
                                     )}
@@ -3711,15 +3694,16 @@ export default function WocheScreen({
                                             onApplyStock: (name, emoji) => applyNwStockItem(tag, slot, name, emoji),
                                             onApplyErgaenzung: (text) => { void applyNwErgaenzung(tag, slot, text); setNwMealErgSaved(true); setTimeout(() => setNwMealErgSaved(false), 2500) },
                                             flash: nwMealErgSaved,
-                                            rezeptbuchEntries,
-                                            onApplyRezeptbuch: (bookEntry) => {
-                                              if (!onNextWeekDataChange || !nextWeekData?.plan) return
-                                              const nextMonday = nextWeekStart ?? getNextMondayIso()
-                                              const newPlan = nextWeekData.plan.map(p => p.tag === tag && p.slot === slot ? { ...p, gericht: bookEntry.rezept.name, emoji: bookEntry.rezept.emoji, minuten: bookEntry.rezept.minuten, quelle: 'rezeptbuch' } : p)
-                                              void onNextWeekDataChange({ plan: newPlan, mealsData: { ...(nextWeekData.mealsData ?? {}), [bookEntry.rezept.name]: bookEntry.rezept } }, nextMonday)
-                                              setNwEditMealKey(null); setNwMealSubMode(null); setNwManualDish('')
-                                              onMarkGekocht?.(bookEntry.id)
-                                            },
+                                            onOpenRezeptbuch: () => setRezeptbuchSelect({
+                                              tag, slot: slot as 'Mittag' | 'Abend',
+                                              applyFn: (sel) => {
+                                                if (!onNextWeekDataChange || !nextWeekData?.plan) return
+                                                const nextMonday = nextWeekStart ?? getNextMondayIso()
+                                                const newPlan = nextWeekData.plan.map(p => p.tag === tag && p.slot === slot ? { ...p, gericht: sel.gericht, emoji: sel.emoji, minuten: sel.minuten, quelle: 'rezeptbuch' } : p)
+                                                void onNextWeekDataChange({ plan: newPlan, mealsData: { ...(nextWeekData.mealsData ?? {}), [sel.gericht]: sel.rezept } }, nextMonday)
+                                                setNwEditMealKey(null); setNwMealSubMode(null); setNwManualDish('')
+                                              },
+                                            }),
                                           })}
                                         </div>
                                       )}
@@ -3929,13 +3913,14 @@ export default function WocheScreen({
                       setMealErgSaved(true); setTimeout(() => setMealErgSaved(false), 2500)
                     },
                     flash: mealErgSaved,
-                    rezeptbuchEntries,
-                    onApplyRezeptbuch: (bookEntry) => {
-                      const newPlan = weekPlan.map(p => p.tag === tag && p.slot === slot ? { ...p, gericht: bookEntry.rezept.name, emoji: bookEntry.rezept.emoji, minuten: bookEntry.rezept.minuten, quelle: 'rezeptbuch' } : p)
-                      void onWeekPlanChange(newPlan, { ...mealsData, [bookEntry.rezept.name]: bookEntry.rezept })
-                      closeMealPanel()
-                      onMarkGekocht?.(bookEntry.id)
-                    },
+                    onOpenRezeptbuch: () => setRezeptbuchSelect({
+                      tag, slot: slot as 'Mittag' | 'Abend',
+                      applyFn: (sel) => {
+                        const newPlan = weekPlan.map(p => p.tag === tag && p.slot === slot ? { ...p, gericht: sel.gericht, emoji: sel.emoji, minuten: sel.minuten, quelle: 'rezeptbuch' } : p)
+                        void onWeekPlanChange(newPlan, { ...mealsData, [sel.gericht]: sel.rezept })
+                        closeMealPanel()
+                      },
+                    }),
                   })}
                   <button onClick={() => replanDay(tag)} disabled={dayLoading === tag || slotLoading !== null}
                     style={{ padding: '6px 12px', border: '1px solid #ddd', borderRadius: 8, background: 'white', cursor: 'pointer', fontSize: 11, color: '#888', textAlign: 'left', width: '100%', marginTop: 4 }}>
@@ -4079,6 +4064,24 @@ export default function WocheScreen({
 
   return (
     <div className="screen active" style={{ position: 'relative' }}>
+      {rezeptbuchSelect && (
+        <div style={{ position: 'absolute', inset: 0, zIndex: 150, background: 'white', display: 'flex', flexDirection: 'column' }}>
+          <RezeptbuchScreen
+            entries={rezeptbuchEntries}
+            currentUser={currentUser}
+            canEditSettings={canEditSettings}
+            members={members}
+            mealsData={mealsData}
+            weekPlan={weekPlan}
+            weekStart={weekStart ?? null}
+            attendance={attendance}
+            onBack={() => setRezeptbuchSelect(null)}
+            onMarkGekocht={onMarkGekocht ?? (() => {})}
+            selectionSlot={rezeptbuchSelect}
+            onSelect={(sel) => { rezeptbuchSelect.applyFn(sel); setRezeptbuchSelect(null) }}
+          />
+        </div>
+      )}
       {selectedMealName && (
         <RecipeModal name={selectedMealName} rezept={selectedRezept(selectedMealName)} loading={recipeLoading === selectedMealName} onClose={() => { setSelectedMealName(null); setRecipeContext(null); setAdjustAllergieHinweise([]) }} canRewrite={currentUser === wochenchef || canEditSettings} onRewrite={rewriteRecipe} onAdjust={handleAdjustRecipe} allergieHinweise={adjustAllergieHinweise} offeneAllergene={getRecipeAllergenWarnings(selectedRezept(selectedMealName) ?? undefined)} onSaveToBook={onSaveToBook ? (r) => { void handleSaveToBook(r) } : undefined} savedToBook={savedToBookName === selectedMealName} saveToBookLoading={saveToBookLoading} />
       )}

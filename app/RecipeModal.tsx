@@ -18,6 +18,7 @@ export interface RecipeModalProps {
   isFavorit?: boolean
   onToggleFavorit?: () => void
   onDelete?: () => void
+  onUebernehmen?: () => void
 }
 
 export default function RecipeModal({
@@ -25,6 +26,7 @@ export default function RecipeModal({
   allergieHinweise, offeneAllergene,
   onSaveToBook, savedToBook, saveToBookLoading,
   isFavorit, onToggleFavorit, onDelete,
+  onUebernehmen,
 }: RecipeModalProps) {
   const [confirmRewrite, setConfirmRewrite] = useState(false)
   const [adjustMode, setAdjustMode] = useState(false)
@@ -35,7 +37,7 @@ export default function RecipeModal({
   }, [loading])
   const hatRezept = !!rezept && rezept.schritte.length > 0
   return (
-    <div style={{ position: 'absolute', inset: 0, zIndex: 100, background: 'white', overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
+    <div style={{ position: 'absolute', inset: 0, zIndex: 100, background: 'white', display: 'flex', flexDirection: 'column' }}>
       <div className="topbar">
         <button className="back" onClick={onClose}>‹</button>
         <h1 style={{ fontSize: 15 }}>{rezept?.emoji ?? '🍽'} {name}</h1>
@@ -185,6 +187,12 @@ export default function RecipeModal({
           </>
         )}
       </div>
+      {onUebernehmen && (
+        <div style={{ padding: '12px 16px', borderTop: '1px solid #e5e7eb', background: 'white', display: 'flex', gap: 8, flexShrink: 0 }}>
+          <button onClick={onClose} style={{ flex: 1, padding: '11px 0', background: '#f0f0f0', color: '#555', border: 'none', borderRadius: 8, fontSize: 13, cursor: 'pointer' }}>✕ Abbrechen</button>
+          <button onClick={onUebernehmen} style={{ flex: 2, padding: '11px 0', background: '#1D9E75', color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>✓ Übernehmen</button>
+        </div>
+      )}
     </div>
   )
 }
