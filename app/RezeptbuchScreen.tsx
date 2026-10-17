@@ -4,6 +4,7 @@ import type { Rezept, WeekPlanEntry, DayAttendance, FamilyMember, Chef } from '.
 import type { RezeptbuchEntry } from '../lib/state'
 import { loadWeekHistory, isFullRecipe } from '../lib/mealLogic'
 import { checkAllergens, formatAllergenWarningsCard } from '../lib/allergenCheck'
+import { computeRatingAvg, fmtAvg, type DishRating } from '../lib/dishRatingsLogic'
 import RecipeModal from './RecipeModal'
 
 const WOCHENTAGE = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag']
@@ -47,6 +48,8 @@ interface Props {
   onMarkGekocht: (id: string) => void
   selectionSlot?: { tag: string; slot: 'Mittag' | 'Abend' }
   onSelect?: (sel: RezeptSelection) => void
+  dishRatings?: DishRating[]
+  onRateGericht?: (gerName: string, sterne: number, member?: Chef, rezept?: Rezept) => void
 }
 
 type TabMode = 'book' | 'history'
@@ -56,12 +59,12 @@ type BookModal =
   | { kind: 'history'; dish: PastDish }
   | null
 
-type SortMode = 'name' | 'gekocht' | 'recent'
+type SortMode = 'name' | 'gekocht' | 'recent' | 'rating' | 'longAgo'
 
 export default function RezeptbuchScreen({
   entries, currentUser, canEditSettings, members, mealsData, weekPlan, weekStart,
   attendance, onBack, onSaveToBook, onUpdateRezept, onToggleFavorit, onDeleteRezept, onMarkGekocht,
-  selectionSlot, onSelect,
+  selectionSlot, onSelect, dishRatings = [], onRateGericht,
 }: Props) {
   const [activeTab, setActiveTab] = useState<TabMode>('book')
   const [search, setSearch] = useState('')
@@ -155,6 +158,12 @@ export default function RezeptbuchScreen({
   function sortEntries(list: RezeptbuchEntry[]): RezeptbuchEntry[] {
     if (sortMode === 'gekocht') return [...list].sort((a, b) => b.malGekocht - a.malGekocht)
     if (sortMode === 'recent') return [...list].sort((a, b) => (b.zuletztGekocht ?? '').localeCompare(a.zuletztGekocht ?? ''))
+    if (sortMode === 'rating') return [...list].sort((a, b) => {
+      const aAvg = computeRatingAvg(dishRatings, a.rezept.name)?.avg ?? 0
+      const bAvg = computeRatingAvg(dishRatings, b.rezept.name)?.avg ?? 0
+      return bAvg - aAvg
+    })
+    if (sortMode === 'longAgo') return [...list].sort((a, b) => (a.zuletztGekocht ?? '').localeCompare(b.zuletztGekocht ?? ''))
     return [...list].sort((a, b) => a.rezept.name.localeCompare(b.rezept.name, 'de'))
   }
 
@@ -275,11 +284,17 @@ export default function RezeptbuchScreen({
                 placeholder="Rezept suchen…"
                 style={{ width: '100%', fontSize: 14, padding: '9px 14px', border: '1px solid #E5E7EB', borderRadius: 12, outline: 'none', boxSizing: 'border-box', background: '#F9FAFB' }}
               />
-              <div style={{ display: 'flex', gap: 4, marginTop: 6 }}>
-                {(['name', 'gekocht', 'recent'] as SortMode[]).map(m => (
+              <div style={{ display: 'flex', gap: 4, marginTop: 6, flexWrap: 'wrap' }}>
+                {([
+                  ['name', 'A–Z'],
+                  ['gekocht', 'Oft gekocht'],
+                  ['recent', 'Zuletzt'],
+                  ['rating', '⭐ Bewertung'],
+                  ['longAgo', 'Nicht gekocht'],
+                ] as [SortMode, string][]).map(([m, label]) => (
                   <button key={m} onClick={() => setSortMode(m)}
-                    style={{ flex: 1, padding: '4px 0', fontSize: 10, border: `1px solid ${sortMode === m ? '#1D9E75' : '#ddd'}`, borderRadius: 6, background: sortMode === m ? '#E1F5EE' : 'white', color: sortMode === m ? '#0F6E56' : '#888', cursor: 'pointer' }}>
-                    {m === 'name' ? 'A–Z' : m === 'gekocht' ? 'Oft gekocht' : 'Zuletzt'}
+                    style={{ flex: '1 1 auto', padding: '4px 6px', fontSize: 10, border: `1px solid ${sortMode === m ? '#1D9E75' : '#ddd'}`, borderRadius: 6, background: sortMode === m ? '#E1F5EE' : 'white', color: sortMode === m ? '#0F6E56' : '#888', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                    {label}
                   </button>
                 ))}
               </div>
@@ -310,6 +325,7 @@ export default function RezeptbuchScreen({
                           ⏱ {entry.rezept.minuten} min
                           {entry.kategorie && <> · {entry.kategorie}</>}
                           {entry.malGekocht > 0 && <> · {entry.malGekocht}× gekocht</>}
+                          {(() => { const avg = computeRatingAvg(dishRatings, entry.rezept.name); return avg ? <> · {fmtAvg(avg.avg, avg.count)}</> : null })()}
                         </div>
                       </div>
                       <span style={{ color: '#bbb', fontSize: 16 }}>›</span>
@@ -343,6 +359,7 @@ export default function RezeptbuchScreen({
                           ⏱ {entry.rezept.minuten} min
                           {entry.kategorie && <> · {entry.kategorie}</>}
                           {entry.malGekocht > 0 && <> · {entry.malGekocht}× gekocht</>}
+                          {(() => { const avg = computeRatingAvg(dishRatings, entry.rezept.name); return avg ? <> · {fmtAvg(avg.avg, avg.count)}</> : null })()}
                         </div>
                       </div>
                       {entry.isFavorit && <span style={{ fontSize: 14 }}>⭐</span>}
@@ -368,32 +385,50 @@ export default function RezeptbuchScreen({
               const isInBook = entries.some(e => e.rezept.name.toLowerCase() === dish.gericht.toLowerCase())
               const warns = dish.rezept ? getSlotAllergenWarnings(dish.rezept) : []
               return (
-                <button key={i} onClick={() => setModal({ kind: 'history', dish })}
-                  style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', background: 'white', border: '1px solid #E5E7EB', borderRadius: 12, padding: '10px 14px', marginBottom: 6, cursor: 'pointer', textAlign: 'left', marginTop: i === 0 ? 12 : 0 }}>
-                  <span style={{ fontSize: 20 }}>{dish.emoji}</span>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: '#111', display: 'flex', alignItems: 'center', gap: 6 }}>
-                      {dish.gericht}
-                      {warns.length > 0 && <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 14, height: 14, borderRadius: '50%', background: '#EF4444', color: 'white', fontSize: 9, fontWeight: 700, flexShrink: 0 }}>!</span>}
+                <div key={i} style={{ background: 'white', border: '1px solid #E5E7EB', borderRadius: 12, marginBottom: 6, overflow: 'hidden', marginTop: i === 0 ? 12 : 0 }}>
+                  <button onClick={() => setModal({ kind: 'history', dish })}
+                    style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', padding: '10px 14px', cursor: 'pointer', textAlign: 'left', background: 'none', border: 'none' }}>
+                    <span style={{ fontSize: 20 }}>{dish.emoji}</span>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: '#111', display: 'flex', alignItems: 'center', gap: 6 }}>
+                        {dish.gericht}
+                        {warns.length > 0 && <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 14, height: 14, borderRadius: '50%', background: '#EF4444', color: 'white', fontSize: 9, fontWeight: 700, flexShrink: 0 }}>!</span>}
+                      </div>
+                      <div style={{ fontSize: 11, color: '#aaa', marginTop: 1 }}>
+                        {formatDate(dish.date)}
+                        {(() => { const avg = computeRatingAvg(dishRatings, dish.gericht); return avg ? <> · {fmtAvg(avg.avg, avg.count)}</> : null })()}
+                      </div>
                     </div>
-                    <div style={{ fontSize: 11, color: '#aaa', marginTop: 1 }}>{formatDate(dish.date)}</div>
-                  </div>
-                  {isInBook && <span style={{ fontSize: 11, color: '#F59E0B', flexShrink: 0 }}>⭐</span>}
-                  {!isInBook && savedInlineNames.has(dish.gericht) && (
-                    <span style={{ fontSize: 10, color: '#1D9E75', flexShrink: 0, fontWeight: 600 }}>✓ Im Rezeptbuch</span>
+                    {isInBook && <span style={{ fontSize: 11, color: '#F59E0B', flexShrink: 0 }}>⭐</span>}
+                    {!isInBook && savedInlineNames.has(dish.gericht) && (
+                      <span style={{ fontSize: 10, color: '#1D9E75', flexShrink: 0, fontWeight: 600 }}>✓ Im Rezeptbuch</span>
+                    )}
+                    {!isInBook && !savedInlineNames.has(dish.gericht) && dish.rezept && !isSelectionMode && onSaveToBook && (
+                      <button
+                        onClick={async (ev) => {
+                          ev.stopPropagation()
+                          await handleHistorySaveToBook(dish.rezept!)
+                          setSavedInlineNames(prev => new Set(prev).add(dish.gericht))
+                        }}
+                        style={{ fontSize: 11, color: '#1D9E75', background: 'none', border: '1px solid #B2DFCC', borderRadius: 6, padding: '2px 7px', cursor: 'pointer', flexShrink: 0, fontWeight: 600 }}
+                      >+ Rezeptbuch</button>
+                    )}
+                    <span style={{ color: '#bbb', fontSize: 16 }}>›</span>
+                  </button>
+                  {onRateGericht && (
+                    <div style={{ borderTop: '1px solid #f5f5f5', padding: '5px 14px', display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <span style={{ fontSize: 10, color: '#aaa', marginRight: 2 }}>Wie war's?</span>
+                      {[1,2,3,4,5].map(s => {
+                        const myRating = dishRatings.find(r => r.gerName.toLowerCase() === dish.gericht.toLowerCase() && r.member === currentUser)?.sterne ?? 0
+                        return (
+                          <button key={s}
+                            onClick={() => onRateGericht(dish.gericht, s, currentUser, dish.rezept ?? undefined)}
+                            style={{ fontSize: 16, background: 'none', border: 'none', cursor: 'pointer', padding: '0 1px', lineHeight: 1, color: s <= myRating ? '#F59E0B' : '#d1d5db' }}>★</button>
+                        )
+                      })}
+                    </div>
                   )}
-                  {!isInBook && !savedInlineNames.has(dish.gericht) && dish.rezept && !isSelectionMode && onSaveToBook && (
-                    <button
-                      onClick={async (ev) => {
-                        ev.stopPropagation()
-                        await handleHistorySaveToBook(dish.rezept!)
-                        setSavedInlineNames(prev => new Set(prev).add(dish.gericht))
-                      }}
-                      style={{ fontSize: 11, color: '#1D9E75', background: 'none', border: '1px solid #B2DFCC', borderRadius: 6, padding: '2px 7px', cursor: 'pointer', flexShrink: 0, fontWeight: 600 }}
-                    >+ Rezeptbuch</button>
-                  )}
-                  <span style={{ color: '#bbb', fontSize: 16 }}>›</span>
-                </button>
+                </div>
               )
             })}
           </>

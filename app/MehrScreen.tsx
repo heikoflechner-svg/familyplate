@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
 import type { Chef, FamilyMember, ChangeProposal, WeekPlanEntry, NextWeekData, TagMahlzeitenKonfig, MittagTyp, AbendTyp, Rezept, DayAttendance, RezeptbuchEntry } from '../lib/state'
+import type { DishRating } from '../lib/dishRatingsLogic'
 import { buildMemberCfg, DEFAULT_MEMBERS } from '../lib/familyLogic'
 import { getNextMondayIso, loadWeekHistory } from '../lib/mealLogic'
 import RezeptbuchScreen from './RezeptbuchScreen'
@@ -62,6 +63,8 @@ interface Props {
   onRbToggleFavorit?: (id: string, isFavorit: boolean) => Promise<void>
   onRbDeleteRezept?: (id: string) => Promise<void>
   onRbMarkGekocht?: (id: string) => void
+  dishRatings?: DishRating[]
+  onRbRateGericht?: (gerName: string, sterne: number, member?: Chef, rezept?: Rezept) => void
 }
 
 export default function MehrScreen({
@@ -80,6 +83,8 @@ export default function MehrScreen({
   onRbToggleFavorit,
   onRbDeleteRezept,
   onRbMarkGekocht,
+  dishRatings,
+  onRbRateGericht,
 }: Props) {
   const [view, setView] = useState<View>('overview')
   const [saving, setSaving] = useState(false)
@@ -212,6 +217,8 @@ export default function MehrScreen({
         onToggleFavorit={onRbToggleFavorit ?? (async () => {})}
         onDeleteRezept={onRbDeleteRezept ?? (async () => {})}
         onMarkGekocht={onRbMarkGekocht ?? (() => {})}
+        dishRatings={dishRatings}
+        onRateGericht={onRbRateGericht}
       />
     )
   }

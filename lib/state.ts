@@ -112,6 +112,7 @@ export interface RezeptbuchEntry {
   vermeiden: boolean
   erstelltVon: Chef
   erstelltAm: string
+  manuellGespeichert: boolean
 }
 
 export interface ShoppingItem {

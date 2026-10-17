@@ -6,6 +6,7 @@ import { rescaleShoppingListMengen, rewriteShoppingItemsForDish, swapShoppingIte
 import { getFreezerListString, getPantryListString, addFreezerItem, deleteFreezerItem } from '../lib/freezerLogic'
 import { buildFamilyPrompt, buildMemberCfg, DEFAULT_MEMBERS } from '../lib/familyLogic'
 import type { WeekPlanEntry, Rezept, FreezerItem, PantryItem, Wish, Chef, WochenSlot, FamilyMember, DayAttendance, ChangeProposal, ShoppingItem, RemyVorschlag, NextWeekData, NextWeekWish, PlanSettings, TagMahlzeitenKonfig, RezeptbuchEntry } from '../lib/state'
+import { computeRatingAvg, fmtAvg, type DishRating } from '../lib/dishRatingsLogic'
 import { supabase } from '../lib/supabase'
 import SlotWunschPanel from './SlotWunschPanel'
 import RecipeModal from './RecipeModal'
@@ -216,6 +217,8 @@ interface Props {
   rezeptbuchEntries?: RezeptbuchEntry[]
   onSaveToBook?: (rezept: Rezept) => Promise<void>
   onMarkGekocht?: (id: string) => void
+  dishRatings?: DishRating[]
+  onRateGericht?: (gerName: string, sterne: number, member?: Chef, rezept?: Rezept) => void
 }
 
 type View = 'home' | 'week' | 'plan' | 'attendance'
@@ -290,6 +293,8 @@ export default function WocheScreen({
   rezeptbuchEntries = [],
   onSaveToBook,
   onMarkGekocht,
+  dishRatings = [],
+  onRateGericht,
 }: Props) {
   const hasMittag = (tag: string) => !mittagsloseTage.includes(tag)
   const personNames: Record<Chef, string> = Object.fromEntries(
@@ -1957,6 +1962,10 @@ export default function WocheScreen({
     try {
       const historyDishes = await loadHistoryDishes(4)
       const mergedLastDishes = [...new Set([...historyDishes, ...lastDishes])].slice(0, 40)
+      const vermeidenList = rezeptbuchEntries.filter(e => e.vermeiden).map(e => e.rezept.name)
+      const empfehlenList = rezeptbuchEntries
+        .filter(e => { const avg = computeRatingAvg(dishRatings, e.rezept.name); return avg && avg.avg >= 4 && avg.count >= 2 })
+        .map(e => e.rezept.name)
       const { plan: newPlan, mealsData: newMeals } = await generateWeekPlan({
         mittagsloseTage: effectiveMtl,
         planWE: effectivePlanWE,
@@ -1970,6 +1979,8 @@ export default function WocheScreen({
         lastDishes: mergedLastDishes,
         gaesteProTag: gaesteProTag.length > 0 ? gaesteProTag : undefined,
         mahlzeitenKonfig: defaultMealConfig,
+        vermeidenList: vermeidenList.length > 0 ? vermeidenList : undefined,
+        empfehlenList: empfehlenList.length > 0 ? empfehlenList : undefined,
       })
       setPendingPlan(newPlan)
       setPendingPlanMeals(newMeals)
@@ -3160,6 +3171,45 @@ export default function WocheScreen({
                               </button>
                               {isKochOpen && (
                                 <div style={{ padding: '0 12px 12px', background: '#fafafa' }}>
+                                  {WOCHENTAGE.indexOf(tag) <= todayWocheIdx && slotAnwesend.includes(currentUser) && (
+                                    <div style={{ marginBottom: 10 }}>
+                                      <div style={{ fontSize: 10, color: '#888', marginBottom: 4 }}>⭐ Wie war's? (deine Bewertung)</div>
+                                      {(() => {
+                                        const myRating = dishRatings.find(r => r.gerName.toLowerCase() === e.gericht.toLowerCase() && r.member === currentUser)?.sterne ?? 0
+                                        const avg = computeRatingAvg(dishRatings, e.gericht)
+                                        return (
+                                          <>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                                              {[1,2,3,4,5].map(s => (
+                                                <button key={s}
+                                                  onClick={() => onRateGericht?.(e.gericht, s, currentUser, mealsData[e.gericht])}
+                                                  style={{ fontSize: 20, background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px', lineHeight: 1, color: s <= myRating ? '#F59E0B' : '#d1d5db' }}>★</button>
+                                              ))}
+                                              {avg && <span style={{ fontSize: 10, color: '#888', marginLeft: 4 }}>{fmtAvg(avg.avg, avg.count)}</span>}
+                                            </div>
+                                            {(canEditSettings || currentUser === wochenchef) && slotAnwesend
+                                              .filter(m => m !== currentUser && !memberStatuses.find(s => s.kuerzel === m)?.isLinked)
+                                              .map(m => {
+                                                const mName = personNames[m] ?? m
+                                                const mRating = dishRatings.find(r => r.gerName.toLowerCase() === e.gericht.toLowerCase() && r.member === m)?.sterne ?? 0
+                                                return (
+                                                  <div key={m} style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 6 }}>
+                                                    <span style={{ fontSize: 10, color: '#888', minWidth: 38, flexShrink: 0 }}>{mName}:</span>
+                                                    {[1,2,3,4,5].map(s => (
+                                                      <button key={s}
+                                                        onClick={() => onRateGericht?.(e.gericht, s, m, mealsData[e.gericht])}
+                                                        style={{ fontSize: 16, background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px', lineHeight: 1, color: s <= mRating ? '#F59E0B' : '#d1d5db' }}>★</button>
+                                                    ))}
+                                                  </div>
+                                                )
+                                              })
+                                            }
+                                          </>
+                                        )
+                                      })()}
+                                      <div style={{ borderBottom: '1px solid #e8e8e8', marginTop: 8, marginBottom: 10 }} />
+                                    </div>
+                                  )}
                                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
                                     <span style={{ fontSize: 11, color: '#888' }}>Übrig geblieben?</span>
                                     <button
@@ -4003,6 +4053,19 @@ export default function WocheScreen({
           isOpen={wishFormKey === `${tag}-${slot}`} initialPerson={currentUser} familyPrompt={familyPrompt}
           onOpen={() => openWishForm(tag, slot)} onClose={closeWishForm} onSubmitWish={handleWishSubmit} onRemove={removeWish}
         />
+        {planConfirmed && (isPast || tag === today) && slotAnwesend.includes(currentUser) && onRateGericht && (
+          <div style={{ borderTop: '1px solid #f5f5f5', padding: '5px 12px', display: 'flex', alignItems: 'center', gap: 4 }}>
+            <span style={{ fontSize: 10, color: '#aaa', marginRight: 2 }}>⭐ Wie war's?</span>
+            {[1,2,3,4,5].map(s => {
+              const myRating = dishRatings.find(r => r.gerName.toLowerCase() === entry.gericht.toLowerCase() && r.member === currentUser)?.sterne ?? 0
+              return (
+                <button key={s}
+                  onClick={() => onRateGericht(entry.gericht, s, currentUser, mealsData[entry.gericht])}
+                  style={{ fontSize: 18, background: 'none', border: 'none', cursor: 'pointer', padding: '0 1px', lineHeight: 1, color: s <= myRating ? '#F59E0B' : '#d1d5db' }}>★</button>
+              )
+            })}
+          </div>
+        )}
       </div>
     )
   }

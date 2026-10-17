@@ -6,7 +6,8 @@ import { loadFamilyProfile, saveFamilyProfile, applyChefStats, incrementWochench
 import { generateShoppingList } from '../lib/shoppingLogic'
 import { signOut, onAuthChange, SETUP_NEEDED } from '../lib/auth'
 import { supabase, getFamilyId } from '../lib/supabase'
-import { loadRezeptbuch, saveRezeptToBook, updateRezeptInBook, deleteRezeptFromBook, toggleFavoritInBook, markGekochtInBook } from '../lib/rezeptbuchLogic'
+import { loadRezeptbuch, saveRezeptToBook, updateRezeptInBook, deleteRezeptFromBook, toggleFavoritInBook, markGekochtInBook, autoSaveRezeptToBook, setVermeidenByName } from '../lib/rezeptbuchLogic'
+import { loadDishRatings, saveDishRating, computeRatingAvg, type DishRating } from '../lib/dishRatingsLogic'
 import type { WeekPlanEntry, Rezept, FreezerItem, PantryItem, ShoppingItem, Tab, Wish, Chef, FamilyProfile, DayAttendance, ChangeProposal, NextWeekData, NextWeekWish, MemberRole, PlanSettings, WochenSlot, RezeptbuchEntry } from '../lib/state'
 import LoginScreen from './LoginScreen'
 import RegisterScreen from './RegisterScreen'
@@ -51,6 +52,7 @@ export default function FamilyPlateApp() {
   const [memberStatuses, setMemberStatuses] = useState<{ kuerzel: string; role: string; isLinked: boolean }[]>([])
   const [wocheInitView, setWocheInitView] = useState<'home' | 'attendance'>('home')
   const [rezeptbuchEntries, setRezeptbuchEntries] = useState<RezeptbuchEntry[]>([])
+  const [dishRatings, setDishRatings] = useState<DishRating[]>([])
   const [activeTab, setActiveTab] = useState<Tab>('woche')
   const [authView, setAuthView] = useState<'login' | 'register'>('login')
   const [profileSaveError, setProfileSaveError] = useState<string | null>(null)
@@ -201,6 +203,7 @@ export default function FamilyPlateApp() {
       setDataLoading(false)
       loadLastDishes().then(setLastDishes).catch(() => {})
       loadRezeptbuch().then(setRezeptbuchEntries).catch(() => {})
+      loadDishRatings().then(setDishRatings).catch(() => {})
       // Recovery: if plan is confirmed but shopping list was lost (e.g. app closed during recipe load)
       if (pc && sl.length === 0 && plan.length > 0 && latestProfile) {
         const mbs = latestProfile.members.length ? latestProfile.members : DEFAULT_MEMBERS
@@ -406,6 +409,34 @@ export default function FamilyPlateApp() {
     } : e))
   }
 
+  async function handleRateGericht(gerName: string, sterne: number, memberOverride?: Chef, rezept?: Rezept) {
+    const ratingMember = memberOverride ?? currentUser!
+    const saved = await saveDishRating(gerName, ratingMember, sterne)
+    if (!saved) return
+    let updatedForDish: DishRating[] = []
+    setDishRatings(prev => {
+      const filtered = prev.filter(r => !(r.gerName.toLowerCase() === gerName.toLowerCase() && r.member === ratingMember))
+      const next = [...filtered, saved]
+      updatedForDish = next.filter(r => r.gerName.toLowerCase() === gerName.toLowerCase())
+      return next
+    })
+    // Use current snapshot to compute avg (state setter is async but we computed updatedForDish above)
+    const currentForDish = dishRatings.filter(r => r.gerName.toLowerCase() !== gerName.toLowerCase() || r.member !== ratingMember)
+    const allForDish = [...currentForDish, saved].filter(r => r.gerName.toLowerCase() === gerName.toLowerCase())
+    if (!allForDish.length) return
+    const avg = allForDish.reduce((a, r) => a + r.sterne, 0) / allForDish.length
+    if (avg >= 3 && rezept) {
+      const bookEntry = await autoSaveRezeptToBook(gerName, rezept, currentUser!)
+      if (bookEntry) setRezeptbuchEntries(prev => [bookEntry, ...prev])
+    }
+    if (allForDish.length >= 2 && avg <= 2) {
+      await setVermeidenByName(gerName, true)
+      setRezeptbuchEntries(prev => prev.map(e =>
+        e.rezept.name.toLowerCase() === gerName.toLowerCase() ? { ...e, vermeiden: true } : e,
+      ))
+    }
+  }
+
   async function handlePlanConfirm(confirmedEntries: WeekPlanEntry[]) {
     if (!familyProfile) return
     const today = new Date().toISOString().slice(0, 10)
@@ -597,6 +628,8 @@ export default function FamilyPlateApp() {
             rezeptbuchEntries={rezeptbuchEntries}
             onSaveToBook={handleSaveToBook}
             onMarkGekocht={handleMarkGekocht}
+            dishRatings={dishRatings}
+            onRateGericht={handleRateGericht}
           />
         </div>
         {activeTab === 'gefriertruhe' && (
@@ -675,6 +708,8 @@ export default function FamilyPlateApp() {
             onRbToggleFavorit={handleToggleFavorit}
             onRbDeleteRezept={handleDeleteRezept}
             onRbMarkGekocht={handleMarkGekocht}
+            dishRatings={dishRatings}
+            onRbRateGericht={handleRateGericht}
           />
         )}
       </div>

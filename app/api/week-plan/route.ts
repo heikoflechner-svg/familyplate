@@ -46,7 +46,7 @@ function extractFirstJson(raw: string): string | null {
 }
 
 export async function POST(req: NextRequest) {
-  const { mittagsloseTage, planWE, freezerList, pantryList, behaltene, neuTage, wishes, familyPrompt, lastDishes, gaesteProTag, memberIds, mahlzeitenKonfig } = await req.json()
+  const { mittagsloseTage, planWE, freezerList, pantryList, behaltene, neuTage, wishes, familyPrompt, lastDishes, gaesteProTag, memberIds, mahlzeitenKonfig, vermeidenList, empfehlenList } = await req.json()
 
   const apiKey = process.env.ANTHROPIC_API_KEY
   console.log('[week-plan] apiKey present:', !!apiKey, '| length:', apiKey?.length ?? 0)
@@ -123,6 +123,14 @@ export async function POST(req: NextRequest) {
   const historyHinweis = lastDishesList.length > 0
     ? ` Bitte diese Gerichte diese Woche NICHT wiederholen (letzte Wochen): ${lastDishesList.join(', ')}.`
     : ''
+  const vermeidenArr = (vermeidenList as string[] | undefined | null) ?? []
+  const vermeidenHinweis = vermeidenArr.length > 0
+    ? ` Diese Gerichte niemals einplanen (schlechte Familienbewertung): ${vermeidenArr.join(', ')}.`
+    : ''
+  const empfehlenArr = (empfehlenList as string[] | undefined | null) ?? []
+  const empfehlenHinweis = empfehlenArr.length > 0
+    ? ` Diese Gerichte darf Rémy gerne ab und zu vorschlagen (von Familie hoch bewertet): ${empfehlenArr.join(', ')}.`
+    : ''
   const behalteneList = Array.isArray(behaltene) ? (behaltene as { gericht: string }[]) : []
   const behalteneHinweis = behalteneList.length > 0
     ? ` Bereits fest geplant (bitte nicht nochmals wählen): ${behalteneList.map(e => e.gericht).filter(Boolean).join(', ')}.`
@@ -139,7 +147,7 @@ export async function POST(req: NextRequest) {
   const allergenCheck = 'SCHRITT 2 – Allergen-Check (nach der Auswahl): Prüfe für jedes gewählte Gericht, ob Zutaten eine Unverträglichkeit aus dem Profil verletzen. Quellen: Gluten=Mehl/Pasta/Brot/Pizzateig/Paniermehl. Kasein=Milch/Käse/Butter/Sahne/Joghurt/Quark/Schmand/Sahnesaucen/Bechamel. Laktose=Milch/Käse/Butter/Sahne/Joghurt. Nüsse=Mandeln/Walnüsse/Cashews/Erdnüsse. Wenn eine Zutat eine Unverträglichkeit verletzt, trag die Ersatz-Zutat NUR für die betroffene Person in allergie[GerichtName] ein als "Menge Produkt (für Person)", z.B. "1 Packung glutenfreier Pizzateig (für Heiko)". Die anderen Familienmitglieder essen das normale Gericht. Wenn keine Unverträglichkeit betroffen ist, setze allergie[GerichtName] auf [].'
   const leichtDef = hasKonfig ? ' Mahlzeit-Typen: leicht = einfaches Gericht, warm oder kalt (z.B. Suppe, Salat, Omelett, Ofengemüse), wenige Zutaten, max. ca. 20 Minuten. normal = vollwertige, meist warme Hauptmahlzeit (z.B. Pasta, Fleisch, Eintopf, Auflauf, Curry, Pfannengericht) – KEIN Brot, Aufschnitt, Brotzeit oder Käsebrot als alleiniges Gericht an einem normal-Slot. Wähle Gerichte STRIKT nach dem mahlzeitTyp im JSON-Beispiel. Allergie-Anpassungen (fuer-Zutaten) vollständig beibehalten.' : ''
   const abneigungHinweis = ' Abneigungen (im Profil als "mag nicht" vermerkt): Plant ein Gericht, bei dem eine abgelehnte Zutat die Hauptzutat ist (z.B. Pilzrisotto wenn jemand keine Pilze mag), dieses Gericht NICHT ein – wähle stattdessen ein anderes. Ist die Zutat nur Beiwerk, ist das Gericht trotzdem erlaubt.'
-  const prompt = `Du bist Rémy. Plane ${slotHinweis} für ${planTage.join(', ')} für die Familie. Profil: ${familienProfil}.${wishHinweis}${historyHinweis}${behalteneHinweis}${gaesteHinweis} Gefriertruhe: ${freezerList}. Speisekammer: ${pantryList}. Nutze Gefriertruhe/Speisekammer wenn sinnvoll – Artikel mit [DRINGEND] müssen diese Woche eingeplant werden. Weise pro Tag+Slot Küchenchef zu (${chefRota.join(' ')}) nach Fairness.${leichtDef}${abneigungHinweis} SCHRITT 1 – Gerichtsauswahl: Wähle immer normale, typische Familiengerichte für die ganze Familie – niemals vorsorglich glutenfreie, laktosefreie oder anderweitig angepasste Varianten, auch wenn Unverträglichkeiten im Profil stehen. Das normale Gericht wird für alle gekocht. Ändere Gerichtsnamen nie. ${allergenCheck} Setze mahlzeitTyp exakt so wie im JSON-Beispiel vorgegeben. Antworte NUR als reines JSON ohne Markdown-Codeblock: {"woche":[${beispiele.join(',')}],"allergie":{"GerichtName":["Menge Ersatz (für Person)"],"GerichtName2":[]}} — allergie enthält für JEDES Gericht in woche einen Eintrag (leeres Array wenn keine Anpassung nötig).`
+  const prompt = `Du bist Rémy. Plane ${slotHinweis} für ${planTage.join(', ')} für die Familie. Profil: ${familienProfil}.${wishHinweis}${historyHinweis}${vermeidenHinweis}${empfehlenHinweis}${behalteneHinweis}${gaesteHinweis} Gefriertruhe: ${freezerList}. Speisekammer: ${pantryList}. Nutze Gefriertruhe/Speisekammer wenn sinnvoll – Artikel mit [DRINGEND] müssen diese Woche eingeplant werden. Weise pro Tag+Slot Küchenchef zu (${chefRota.join(' ')}) nach Fairness.${leichtDef}${abneigungHinweis} SCHRITT 1 – Gerichtsauswahl: Wähle immer normale, typische Familiengerichte für die ganze Familie – niemals vorsorglich glutenfreie, laktosefreie oder anderweitig angepasste Varianten, auch wenn Unverträglichkeiten im Profil stehen. Das normale Gericht wird für alle gekocht. Ändere Gerichtsnamen nie. ${allergenCheck} Setze mahlzeitTyp exakt so wie im JSON-Beispiel vorgegeben. Antworte NUR als reines JSON ohne Markdown-Codeblock: {"woche":[${beispiele.join(',')}],"allergie":{"GerichtName":["Menge Ersatz (für Person)"],"GerichtName2":[]}} — allergie enthält für JEDES Gericht in woche einen Eintrag (leeres Array wenn keine Anpassung nötig).`
 
   try {
     const resp = await fetch('https://api.anthropic.com/v1/messages', {

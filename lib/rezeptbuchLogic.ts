@@ -15,6 +15,7 @@ function rowToEntry(row: Record<string, unknown>): RezeptbuchEntry {
     vermeiden: (row.vermeiden as boolean) ?? false,
     erstelltVon: (row.erstellt_von as Chef) ?? '',
     erstelltAm: (row.erstellt_am as string) ?? '',
+    manuellGespeichert: (row.manuell_gespeichert as boolean) ?? true,
   }
 }
 
@@ -47,11 +48,58 @@ export async function saveRezeptToBook(rezept: Rezept, erstelltVon: Chef): Promi
   } catch { /* continue without category */ }
   const { data, error } = await supabase
     .from('recipe_book')
-    .insert({ family_id: familyId, rezept, kategorie, erstellt_von: erstelltVon })
+    .insert({ family_id: familyId, rezept, kategorie, erstellt_von: erstelltVon, manuell_gespeichert: true })
     .select('*')
     .single()
   if (error || !data) return null
   return rowToEntry(data as Record<string, unknown>)
+}
+
+export async function autoSaveRezeptToBook(gerName: string, rezept: Rezept, erstelltVon: Chef): Promise<RezeptbuchEntry | null> {
+  const familyId = getFamilyId()
+  if (!familyId) return null
+  const { data: existing } = await supabase
+    .from('recipe_book')
+    .select('id')
+    .eq('family_id', familyId)
+    .ilike('rezept->>name', gerName)
+    .maybeSingle()
+  if (existing) return null
+  let kategorie: string | null = null
+  try {
+    const resp = await fetch('/api/rezeptbuch/kategorisieren', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: rezept.name, zutaten: rezept.zutaten }),
+    })
+    if (resp.ok) {
+      const d = await resp.json() as { kategorie?: string }
+      kategorie = d.kategorie ?? null
+    }
+  } catch { /* no category */ }
+  const { data, error } = await supabase
+    .from('recipe_book')
+    .insert({ family_id: familyId, rezept, kategorie, erstellt_von: erstelltVon, manuell_gespeichert: false })
+    .select('*')
+    .single()
+  if (error || !data) return null
+  return rowToEntry(data as Record<string, unknown>)
+}
+
+export async function setVermeidenByName(gerName: string, vermeiden: boolean): Promise<void> {
+  const familyId = getFamilyId()
+  if (!familyId) return
+  const { data } = await supabase
+    .from('recipe_book')
+    .select('id')
+    .eq('family_id', familyId)
+    .ilike('rezept->>name', gerName)
+    .maybeSingle()
+  if (!data) return
+  await supabase
+    .from('recipe_book')
+    .update({ vermeiden, updated_at: new Date().toISOString() })
+    .eq('id', (data as { id: string }).id)
 }
 
 export async function updateRezeptInBook(id: string, rezept: Rezept): Promise<void> {
