@@ -17,12 +17,14 @@ export async function POST(req: NextRequest) {
   const token = authHeader.slice(7)
 
   let defaultMealConfig: Record<string, unknown>
+  let defaultPlanWE: boolean | undefined
   try {
-    const body = await req.json() as { defaultMealConfig?: unknown }
+    const body = await req.json() as { defaultMealConfig?: unknown; defaultPlanWE?: unknown }
     if (!body.defaultMealConfig || typeof body.defaultMealConfig !== 'object' || Array.isArray(body.defaultMealConfig)) {
       return NextResponse.json({ error: 'Ungültige Anfrage.' }, { status: 400 })
     }
     defaultMealConfig = body.defaultMealConfig as Record<string, unknown>
+    if (typeof body.defaultPlanWE === 'boolean') defaultPlanWE = body.defaultPlanWE
   } catch {
     return NextResponse.json({ error: 'Ungültige Anfrage.' }, { status: 400 })
   }
@@ -66,9 +68,12 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  const updatePayload: Record<string, unknown> = { default_meal_config: defaultMealConfig }
+  if (defaultPlanWE !== undefined) updatePayload.default_plan_we = defaultPlanWE
+
   const { error: updateError } = await supabaseAdmin
     .from('family_profiles')
-    .update({ default_meal_config: defaultMealConfig })
+    .update(updatePayload)
     .eq('family_id', familyId)
 
   if (updateError) {

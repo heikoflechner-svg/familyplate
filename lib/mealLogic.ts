@@ -1,5 +1,5 @@
 import { supabase, getFamilyId } from './supabase'
-import type { WeekPlanEntry, Rezept, Wish, RemyVorschlag, WochenSlot, DayAttendance, Chef, ShoppingItem, ChangeProposal, NextWeekData, NextWeekWish, PlanSettings, FamilyMember } from './state'
+import type { WeekPlanEntry, Rezept, Wish, RemyVorschlag, WochenSlot, DayAttendance, Chef, ShoppingItem, ChangeProposal, NextWeekData, NextWeekWish, PlanSettings, FamilyMember, TagMahlzeitenKonfig } from './state'
 
 function toLocalDateIso(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
@@ -330,6 +330,25 @@ export function getPersonCountForSlot(
   const day = getAttendanceForDay(attendance, tag, allChefs)
   const anwesend = slot === 'Mittag' ? day.mittagAnwesend : day.abendAnwesend
   return anwesend.length + (day.gaeste ?? 0)
+}
+
+const WOCHENTAGE_ALL = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag']
+
+export function buildDefaultAttendance(
+  members: FamilyMember[],
+  defaultMealConfig?: Record<string, TagMahlzeitenKonfig>,
+  defaultPlanWE?: boolean,
+): DayAttendance[] {
+  const allChefs = members.map(m => m.id as Chef)
+  return WOCHENTAGE_ALL.map(tag => {
+    const isWeekend = tag === 'Samstag' || tag === 'Sonntag'
+    if (isWeekend && !defaultPlanWE) {
+      return { tag, mittagAnwesend: [], abendAnwesend: [], gaeste: 0 }
+    }
+    const konfig = defaultMealConfig?.[tag]
+    const mittagAnwesend = konfig?.mittag === 'kein' ? [] : [...allChefs]
+    return { tag, mittagAnwesend, abendAnwesend: [...allChefs], gaeste: 0 }
+  })
 }
 
 export async function saveAttendance(days: DayAttendance[], confirmed: Chef[]): Promise<void> {

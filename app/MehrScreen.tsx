@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect } from 'react'
-import type { Chef, FamilyMember, ChangeProposal, WeekPlanEntry, NextWeekData } from '../lib/state'
+import type { Chef, FamilyMember, ChangeProposal, WeekPlanEntry, NextWeekData, TagMahlzeitenKonfig, MittagTyp, AbendTyp } from '../lib/state'
 import { buildMemberCfg, DEFAULT_MEMBERS } from '../lib/familyLogic'
 import { getNextMondayIso, loadWeekHistory } from '../lib/mealLogic'
 
@@ -20,7 +20,7 @@ const TAG_SHORT: Record<string, string> = {
 }
 
 
-type View = 'overview' | 'einkauf' | 'wochenchef' | 'verlauf'
+type View = 'overview' | 'einkauf' | 'wochenchef' | 'verlauf' | 'standardwoche'
 
 type HistoryEntry = {
   weekStart: string
@@ -49,6 +49,9 @@ interface Props {
   onLaedenChange: (laeden: string[]) => Promise<void>
   canEditSettings: boolean
   memberStatuses?: { kuerzel: string; role: string; isLinked: boolean }[]
+  defaultMealConfig?: Record<string, TagMahlzeitenKonfig>
+  defaultPlanWE: boolean
+  onDefaultMealConfigChange: (config: Record<string, TagMahlzeitenKonfig>, planWE: boolean) => Promise<void>
 }
 
 export default function MehrScreen({
@@ -57,9 +60,14 @@ export default function MehrScreen({
   nextWeekData, nextWeekStart, onWochenchefChange, onNextWeekDataChange,
   laeden, onLaedenChange, canEditSettings,
   memberStatuses = [],
+  defaultMealConfig, defaultPlanWE, onDefaultMealConfigChange,
 }: Props) {
   const [view, setView] = useState<View>('overview')
   const [saving, setSaving] = useState(false)
+  const [stdDraft, setStdDraft] = useState<Record<string, TagMahlzeitenKonfig>>({})
+  const [stdPlanWE, setStdPlanWE] = useState(false)
+  const [stdSaving, setStdSaving] = useState(false)
+  const [stdDirty, setStdDirty] = useState(false)
   const [newLaden, setNewLaden] = useState('')
   const [laedenOpen, setLaedenOpen] = useState(false)
   const [changingCurrent, setChangingCurrent] = useState(false)
@@ -90,6 +98,18 @@ export default function MehrScreen({
       setHistoryLoaded(true)
     })
   }, [view, historyLoading, historyLoaded, historyLimit])
+
+  useEffect(() => {
+    if (view !== 'standardwoche') return
+    const initial: Record<string, TagMahlzeitenKonfig> = {}
+    for (const tag of WOCHENTAGE) {
+      initial[tag] = defaultMealConfig?.[tag] ?? { mittag: 'normal', abend: 'normal' }
+    }
+    setStdDraft(initial)
+    setStdPlanWE(defaultPlanWE)
+    setStdDirty(false)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view])
 
   const isChef = currentUser === wochenchef
   const personNames = Object.fromEntries(members.map(m => [m.id, m.name])) as Record<Chef, string>
@@ -232,6 +252,124 @@ export default function MehrScreen({
             <span style={{ marginLeft: 'auto', color: '#bbb', fontSize: 18 }}>›</span>
           </button>
 
+          {canEditSettings && (
+            <button
+              onClick={() => setView('standardwoche')}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 14, width: '100%',
+                background: '#fff', border: '1px solid #E5E7EB', borderRadius: 14,
+                padding: '16px 18px', marginTop: 12, cursor: 'pointer', textAlign: 'left',
+              }}
+            >
+              <span style={{ fontSize: 26 }}>📋</span>
+              <div>
+                <div style={{ fontSize: 15, fontWeight: 700, color: '#111' }}>Standardwoche</div>
+                <div style={{ fontSize: 12, color: '#888', marginTop: 2 }}>
+                  {defaultMealConfig
+                    ? `Mo–Fr Mittag ${defaultMealConfig['Montag']?.mittag ?? 'normal'} · Sa/So ${defaultPlanWE ? 'ein' : 'aus'}`
+                    : 'Grundeinstellung für neue Wochen'}
+                </div>
+              </div>
+              <span style={{ marginLeft: 'auto', color: '#bbb', fontSize: 18 }}>›</span>
+            </button>
+          )}
+
+        </div>
+      </div>
+    )
+  }
+
+  // ── Standardwoche ───────────────────────────────────────────────────────────
+  if (view === 'standardwoche') {
+    function setMittag(tag: string, val: MittagTyp) {
+      setStdDraft(d => ({ ...d, [tag]: { ...d[tag], mittag: val } }))
+      setStdDirty(true)
+    }
+    function setAbend(tag: string, val: AbendTyp) {
+      setStdDraft(d => ({ ...d, [tag]: { ...d[tag], abend: val } }))
+      setStdDirty(true)
+    }
+    async function handleStdSave() {
+      if (stdSaving) return
+      setStdSaving(true)
+      try { await onDefaultMealConfigChange(stdDraft, stdPlanWE); setStdDirty(false) }
+      finally { setStdSaving(false) }
+    }
+    const showTage = WOCHENTAGE.filter(t => stdPlanWE || !['Samstag', 'Sonntag'].includes(t))
+    return (
+      <div className="screen active" style={{ overflowY: 'auto' }}>
+        <div className="topbar">
+          <button className="back" onClick={() => setView('overview')}>‹</button>
+          <h1>📋 Standardwoche</h1>
+        </div>
+        <div className="content" style={{ padding: '0 16px 24px' }}>
+          <div style={{ fontSize: 12, color: '#666', marginTop: 16, marginBottom: 14 }}>
+            Vorgabe für neue Wochen. Die Anwesenheit wird daraus vorausgefüllt.
+          </div>
+
+          <div style={{ background: '#fff', border: '1px solid #E5E7EB', borderRadius: 14, padding: '14px 16px', marginBottom: 10 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span style={{ fontSize: 14, fontWeight: 600, color: '#111' }}>Sa/So planen</span>
+              <button
+                onClick={() => { setStdPlanWE(v => !v); setStdDirty(true) }}
+                style={{
+                  padding: '6px 18px', borderRadius: 20, border: 'none', cursor: 'pointer',
+                  fontSize: 13, fontWeight: 600,
+                  background: stdPlanWE ? '#0F6E56' : '#F3F4F6',
+                  color: stdPlanWE ? '#fff' : '#444',
+                }}
+              >
+                {stdPlanWE ? 'Ja' : 'Nein'}
+              </button>
+            </div>
+          </div>
+
+          {showTage.map(tag => {
+            const konfig: TagMahlzeitenKonfig = stdDraft[tag] ?? { mittag: 'normal', abend: 'normal' }
+            return (
+              <div key={tag} style={{ background: '#fff', border: '1px solid #E5E7EB', borderRadius: 14, padding: '12px 16px', marginBottom: 8 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: '#111', marginBottom: 10 }}>{TAG_SHORT[tag]}</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: 11, color: '#888', width: 46, flexShrink: 0 }}>Mittag</span>
+                    {(['kein', 'leicht', 'normal'] as const).map(val => (
+                      <button key={val} onClick={() => setMittag(tag, val)} style={{
+                        padding: '5px 11px', borderRadius: 20, border: 'none', cursor: 'pointer',
+                        fontSize: 12, fontWeight: konfig.mittag === val ? 700 : 400,
+                        background: konfig.mittag === val ? '#0F6E56' : '#F3F4F6',
+                        color: konfig.mittag === val ? '#fff' : '#444',
+                      }}>{val}</button>
+                    ))}
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: 11, color: '#888', width: 46, flexShrink: 0 }}>Abend</span>
+                    {(['leicht', 'normal'] as const).map(val => (
+                      <button key={val} onClick={() => setAbend(tag, val)} style={{
+                        padding: '5px 11px', borderRadius: 20, border: 'none', cursor: 'pointer',
+                        fontSize: 12, fontWeight: konfig.abend === val ? 700 : 400,
+                        background: konfig.abend === val ? '#0F6E56' : '#F3F4F6',
+                        color: konfig.abend === val ? '#fff' : '#444',
+                      }}>{val}</button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )
+          })}
+
+          <button
+            onClick={() => void handleStdSave()}
+            disabled={stdSaving || !stdDirty}
+            style={{
+              width: '100%', padding: '14px', borderRadius: 14, border: 'none',
+              cursor: stdSaving || !stdDirty ? 'default' : 'pointer',
+              fontSize: 15, fontWeight: 700, marginTop: 8,
+              background: stdSaving || !stdDirty ? '#E5E7EB' : '#0F6E56',
+              color: stdSaving || !stdDirty ? '#999' : '#fff',
+            }}
+          >
+            {stdSaving ? 'Speichere…' : 'Standard speichern'}
+          </button>
         </div>
       </div>
     )

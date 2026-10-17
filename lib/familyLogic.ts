@@ -24,7 +24,7 @@ export const CHEF_ORDER: Chef[] = DEFAULT_MEMBERS.map(m => m.id)
 export async function loadFamilyProfile(): Promise<FamilyProfile | null> {
   const { data, error } = await supabase
     .from('family_profiles')
-    .select('members, onboarding_done, laeden, zutaten_laden, default_meal_config')
+    .select('members, onboarding_done, laeden, zutaten_laden, default_meal_config, default_plan_we')
     .eq('family_id', getFamilyId())
     .single()
 
@@ -40,6 +40,7 @@ export async function loadFamilyProfile(): Promise<FamilyProfile | null> {
     laeden: (data.laeden as string[] | null) ?? DEFAULT_LAEDEN,
     zutatenLaden: (data.zutaten_laden as Record<string, string> | null) ?? {},
     defaultMealConfig: (data.default_meal_config as Record<string, TagMahlzeitenKonfig> | null) ?? undefined,
+    defaultPlanWE: (data.default_plan_we as boolean | null) ?? undefined,
   }
 }
 

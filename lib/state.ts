@@ -179,6 +179,7 @@ export interface FamilyProfile {
   laeden: string[]
   zutatenLaden: Record<string, string>
   defaultMealConfig?: Record<string, TagMahlzeitenKonfig>
+  defaultPlanWE?: boolean
 }
 
 export interface AppState {

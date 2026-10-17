@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
-import { loadWeekPlan, saveWeekPlan, saveAttendance, saveShoppingList, saveProposals, saveWochenchef, savePlanConfirmed, saveShopDone, saveShoppingDays, saveShoppingPersons, loadLastDishes, getMondayIso, getNextMondayIso, saveWeekStart, loadNextWeekData, saveNextWeekData, activateNextWeek } from '../lib/mealLogic'
+import { loadWeekPlan, saveWeekPlan, saveAttendance, saveShoppingList, saveProposals, saveWochenchef, savePlanConfirmed, saveShopDone, saveShoppingDays, saveShoppingPersons, loadLastDishes, getMondayIso, getNextMondayIso, saveWeekStart, loadNextWeekData, saveNextWeekData, activateNextWeek, buildDefaultAttendance } from '../lib/mealLogic'
 import { loadFreezerItems, loadPantryItems } from '../lib/freezerLogic'
 import { loadFamilyProfile, saveFamilyProfile, applyChefStats, incrementWochenchefStat, DEFAULT_MEMBERS } from '../lib/familyLogic'
 import { signOut, onAuthChange, SETUP_NEEDED } from '../lib/auth'
@@ -167,10 +167,15 @@ export default function FamilyPlateApp() {
         } catch {}
       }
 
+      let resolvedAtt = att
+      if (att.length === 0 && plan.length === 0 && latestProfile) {
+        resolvedAtt = buildDefaultAttendance(latestProfile.members, latestProfile.defaultMealConfig, latestProfile.defaultPlanWE)
+        saveAttendance(resolvedAtt, []).catch(() => {})
+      }
       setWeekPlan(plan)
       setMealsData(md)
       setWishes(w)
-      setAttendance(att)
+      setAttendance(resolvedAtt)
       setAttendanceConfirmed(ac)
       setShoppingList(sl)
       setProposals(pr)
@@ -325,6 +330,21 @@ export default function FamilyPlateApp() {
     }
   }
 
+  async function handleDefaultMealConfigChange(
+    defaultMealConfig: NonNullable<FamilyProfile['defaultMealConfig']>,
+    defaultPlanWE: boolean,
+  ) {
+    if (!familyProfile) return
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session?.access_token) return
+    setFamilyProfile({ ...familyProfile, defaultMealConfig, defaultPlanWE })
+    await fetch('/api/family/save-default-meal-config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+      body: JSON.stringify({ defaultMealConfig, defaultPlanWE }),
+    })
+  }
+
   async function handlePlanConfirm(confirmedEntries: WeekPlanEntry[]) {
     if (!familyProfile) return
     const today = new Date().toISOString().slice(0, 10)
@@ -355,10 +375,16 @@ export default function FamilyPlateApp() {
     const { weekStart: newWs, nextWeekData: nwd } = await activateNextWeek()
     // Reload full state from DB
     const loaded = await loadWeekPlan()
+    let att = loaded.attendance
+    const currentProfile = familyProfile
+    if (att.length === 0 && currentProfile && loaded.plan.length === 0) {
+      att = buildDefaultAttendance(currentProfile.members, currentProfile.defaultMealConfig, currentProfile.defaultPlanWE)
+      await saveAttendance(att, [])
+    }
     setWeekPlan(loaded.plan)
     setMealsData(loaded.mealsData)
     setWishes(loaded.wishes)
-    setAttendance(loaded.attendance)
+    setAttendance(att)
     setAttendanceConfirmed(loaded.attendanceConfirmed)
     setShoppingList(loaded.shoppingList)
     setProposals(loaded.proposals)
@@ -504,6 +530,7 @@ export default function FamilyPlateApp() {
             onPlanSettingsChange={handlePlanSettingsChange}
             canEditSettings={currentMemberRole !== 'member'}
             defaultMealConfig={familyProfile?.defaultMealConfig}
+            defaultPlanWE={familyProfile?.defaultPlanWE}
             memberStatuses={memberStatuses}
             onGoToMehr={() => setActiveTab('mehr')}
           />
@@ -572,6 +599,9 @@ export default function FamilyPlateApp() {
             onLaedenChange={handleLaedenChange}
             canEditSettings={currentMemberRole !== 'member'}
             memberStatuses={memberStatuses}
+            defaultMealConfig={familyProfile.defaultMealConfig}
+            defaultPlanWE={familyProfile.defaultPlanWE ?? false}
+            onDefaultMealConfigChange={handleDefaultMealConfigChange}
           />
         )}
       </div>
