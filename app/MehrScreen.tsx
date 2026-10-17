@@ -68,6 +68,7 @@ export default function MehrScreen({
   const [stdPlanWE, setStdPlanWE] = useState(false)
   const [stdSaving, setStdSaving] = useState(false)
   const [stdDirty, setStdDirty] = useState(false)
+  const [stdSaved, setStdSaved] = useState(false)
   const [newLaden, setNewLaden] = useState('')
   const [laedenOpen, setLaedenOpen] = useState(false)
   const [changingCurrent, setChangingCurrent] = useState(false)
@@ -292,7 +293,12 @@ export default function MehrScreen({
     async function handleStdSave() {
       if (stdSaving) return
       setStdSaving(true)
-      try { await onDefaultMealConfigChange(stdDraft, stdPlanWE); setStdDirty(false) }
+      try {
+        await onDefaultMealConfigChange(stdDraft, stdPlanWE)
+        setStdDirty(false)
+        setStdSaved(true)
+        setTimeout(() => setStdSaved(false), 2500)
+      }
       finally { setStdSaving(false) }
     }
     const showTage = WOCHENTAGE.filter(t => stdPlanWE || !['Samstag', 'Sonntag'].includes(t))
@@ -370,6 +376,11 @@ export default function MehrScreen({
           >
             {stdSaving ? 'Speichere…' : 'Standard speichern'}
           </button>
+          {stdSaved && (
+            <div style={{ textAlign: 'center', color: '#0F6E56', fontWeight: 700, fontSize: 14, marginTop: 10 }}>
+              ✓ Gespeichert
+            </div>
+          )}
         </div>
       </div>
     )

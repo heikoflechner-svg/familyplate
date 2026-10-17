@@ -1283,6 +1283,7 @@ export default function WocheScreen({
 
   function handleSwapStart(tag: string, slot: WochenSlot, entry: WeekPlanEntry) {
     if (swapSaving) return
+    if (swapSource?.tag === tag && swapSource.slot === slot) { handleSwapCancel(); return }
     closeMealPanel()
     setSwapSource({ tag, slot, entry })
     setSwapTarget(null)
@@ -1388,6 +1389,7 @@ export default function WocheScreen({
 
   function handleNwSwapStart(tag: string, slot: WochenSlot, entry: WeekPlanEntry) {
     if (nwSwapSaving) return
+    if (nwSwapSource?.tag === tag && nwSwapSource.slot === slot) { handleNwSwapCancel(); return }
     setNwSwapSource({ tag, slot, entry })
     setNwSwapTarget(null)
     setNwSwapChef1(null)
@@ -2734,7 +2736,7 @@ export default function WocheScreen({
                             >↔</button>
                           )}
                           {wvIsSwapSource && (
-                            <span style={{ marginLeft: 'auto', fontSize: 10, color: '#0F6E56', fontWeight: 700 }}>← Quelle</span>
+                            <button onClick={handleSwapCancel} style={{ marginLeft: 'auto', fontSize: 10, color: '#B91C1C', fontWeight: 700, background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px' }}>✕ Abbrechen</button>
                           )}
                           {wvIsSwapMode && !wvIsSwapSource && WOCHENTAGE.indexOf(tag) >= WOCHENTAGE.indexOf(today) && (
                             <button
@@ -3269,7 +3271,7 @@ export default function WocheScreen({
                                     >↔</button>
                                   )}
                                   {nwIsSwapSource && (
-                                    <span style={{ marginLeft: 'auto', fontSize: 10, color: '#0F6E56', fontWeight: 700 }}>← Quelle</span>
+                                    <button onClick={handleNwSwapCancel} style={{ marginLeft: 'auto', fontSize: 10, color: '#B91C1C', fontWeight: 700, background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px' }}>✕ Abbrechen</button>
                                   )}
                                   {nwIsSwapMode && !nwIsSwapSource && (
                                     <button
@@ -3483,7 +3485,7 @@ export default function WocheScreen({
             >↔</button>
           )}
           {isSwapSource && (
-            <span style={{ marginLeft: 'auto', fontSize: 10, color: '#0F6E56', fontWeight: 700 }}>← Quelle</span>
+            <button onClick={handleSwapCancel} style={{ marginLeft: 'auto', fontSize: 10, color: '#B91C1C', fontWeight: 700, background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px' }}>✕ Abbrechen</button>
           )}
           {isSwapMode && !isSwapSource && WOCHENTAGE.indexOf(tag) >= WOCHENTAGE.indexOf(today) && (
             <button
