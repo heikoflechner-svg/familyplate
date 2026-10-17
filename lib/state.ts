@@ -157,6 +157,7 @@ export interface FamilyMember {
   name: string
   allergien: string[]
   vorlieben: string[]
+  abneigungen?: string[]
   chefStat?: ChefStat
   wochenchefStat?: WochenchefStat
   istKind?: boolean

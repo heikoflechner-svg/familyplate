@@ -164,6 +164,8 @@ WICHTIG: Ändere den Namen des Gerichts NIE. Liste ALLE Zutaten mit genauen Meng
 - "grundvorrat": NUR kleine Mengen allgegenwärtiger Vorratsartikel, die NICHT auf die Einkaufsliste kommen (z.B. 1–2 TL Salz, ½ TL Pfeffer, 1–2 EL Öl/Butter, 1–2 Zehen Knoblauch als Würze, 1 TL getrocknete Gewürze wie Paprika/Oregano/Kreuzkümmel, 1 EL Essig). WICHTIG: Ist eine solche Zutat Hauptbestandteil des Gerichts oder wird sie in größerer Menge benötigt (z.B. 8 Zehen Knoblauch bei Aglio e Olio, viele Zwiebeln für Suppe, viel Butter in einem Buttergebäck), dann "frisch" oder "speisekammer" verwenden – NICHT grundvorrat.
 Zubereitung in 5–8 konkreten Schritten mit Zeiten und Temperaturen. Kein "Schritt N:" am Anfang – die Nummerierung erfolgt automatisch in der App.
 
+Abneigungen-Regel: Im Profil steht "mag nicht X" für manche Personen. Kann eine solche Zutat weggelassen oder einfach ersetzt werden, tue das für das gesamte Gericht. Betrifft sie nur 1 von ${anzahl} Personen und ist zentral für das Gericht: Behalte die Zutat für die anderen (anteilige Menge), füge einen fuer-Eintrag mit der Formulierung "ohne [Zutat]" und Menge 0 (oder einem kurzen Hinweis wie "Portion ohne Pilze") hinzu – setze "fuer":"Name" – und trage "ohne [Zutat] (für Name)" in ersetzteZutaten ein.
+
 Allergie-Regel: Prüfe jede Zutat gegen JEDE Unverträglichkeit JEDER anwesenden Person EINZELN – bei MEHREREN Unverträglichkeiten (z.B. Gluten UND Milch) müssen ALLE einzeln geprüft und ALLE nicht verträglichen Zutaten adaptiert werden!
 Wenn eine Zutat für eine Person X nicht verträglich ist (X ist eine von ${anzahl} Personen):
 a) Behalte die Original-Zutat MIT REDUZIERTER MENGE für die nicht-betroffenen Personen: OriginalMenge × (nicht-betroffene Personen / ${anzahl}). Kein fuer-Feld.

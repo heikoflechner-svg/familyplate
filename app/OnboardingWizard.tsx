@@ -42,19 +42,20 @@ export default function OnboardingWizard({ onDone, initialProfile, onCancel, own
     }
     return DEFAULT_MEMBERS
   })
-  const [freitext, setFreitext] = useState<Record<string, { a: string; v: string }>>(() => {
+  const [freitext, setFreitext] = useState<Record<string, { a: string; v: string; n: string }>>(() => {
     if (initialProfile) {
       return Object.fromEntries(
         initialProfile.members.map(m => [m.id, {
           a: (m.allergien ?? []).filter(a => !ALLERGIE_OPTIONS.some(o => o.value === a)).join(', '),
           v: (m.vorlieben ?? []).filter(v => !VORLIEBE_OPTIONS.includes(v)).join(', '),
+          n: (m.abneigungen ?? []).join(', '),
         }])
       )
     }
     const base = ownerKuerzel
       ? [{ id: ownerKuerzel }, DEFAULT_MEMBERS[1], DEFAULT_MEMBERS[2]]
       : DEFAULT_MEMBERS
-    return Object.fromEntries(base.map(m => [m.id, { a: '', v: '' }]))
+    return Object.fromEntries(base.map(m => [m.id, { a: '', v: '', n: '' }]))
   })
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
@@ -112,6 +113,7 @@ export default function OnboardingWizard({ onDone, initialProfile, onCancel, own
         ...m.vorlieben,
         ...freitext[m.id].v.split(',').map(s => s.trim()).filter(Boolean),
       ],
+      abneigungen: freitext[m.id].n.split(',').map(s => s.trim()).filter(Boolean),
     }))
     const profile: FamilyProfile = { members: finalMembers, laeden: initialProfile?.laeden ?? DEFAULT_LAEDEN, zutatenLaden: initialProfile?.zutatenLaden ?? {} }
     try {
@@ -233,6 +235,13 @@ export default function OnboardingWizard({ onDone, initialProfile, onCancel, own
                     placeholder="Weiteres, kommagetrennt"
                     value={freitext[m.id]?.v ?? ''}
                     onChange={e => setFreitext(f => ({ ...f, [m.id]: { ...f[m.id], v: e.target.value } }))}
+                    style={{ padding: '9px 12px', fontSize: 13, borderRadius: 10, border: '1px solid #ddd', outline: 'none' }}
+                  />
+                  <div style={{ fontSize: 12, fontWeight: 600, color: '#555', marginTop: 4 }}>Mag ich nicht</div>
+                  <input
+                    placeholder="z.B. Pilze, Oliven, Rosenkohl"
+                    value={freitext[m.id]?.n ?? ''}
+                    onChange={e => setFreitext(f => ({ ...f, [m.id]: { ...f[m.id], n: e.target.value } }))}
                     style={{ padding: '9px 12px', fontSize: 13, borderRadius: 10, border: '1px solid #ddd', outline: 'none' }}
                   />
                 </div>

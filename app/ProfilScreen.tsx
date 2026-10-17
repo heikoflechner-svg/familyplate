@@ -259,6 +259,7 @@ export default function ProfilScreen({
           const allergienText = allergienRaw.length ? allergienRaw.map(getAllergenLabel).join(', ') : null
           const hasMilchFreitext = allergienRaw.some(a => a === 'milch' || a === 'Milch')
           const vorliebText = (m.vorlieben ?? []).length ? (m.vorlieben ?? []).join(', ') : null
+          const abneigungText = (m.abneigungen ?? []).length ? (m.abneigungen ?? []).join(', ') : null
           const stat = m.chefStat
           const barPct = stat ? Math.round((stat.count / maxCount) * 100) : 0
           const memberRole = memberRoles[m.id]
@@ -324,7 +325,12 @@ export default function ProfilScreen({
                     <span style={{ color: '#27ae60' }}>♥</span> {vorliebText}
                   </div>
                 )}
-                {!allergienText && !vorliebText && (
+                {abneigungText && (
+                  <div style={{ fontSize: 12, color: '#888' }}>
+                    <span style={{ color: '#E67E22' }}>✗</span> Mag nicht: {abneigungText}
+                  </div>
+                )}
+                {!allergienText && !vorliebText && !abneigungText && (
                   <div style={{ fontSize: 12, color: '#ccc' }}>Keine Angaben</div>
                 )}
               </div>

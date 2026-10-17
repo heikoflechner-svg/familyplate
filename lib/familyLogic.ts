@@ -14,9 +14,9 @@ export function buildMemberCfg(members: FamilyMember[]): Record<string, { bg: st
 }
 
 export const DEFAULT_MEMBERS: FamilyMember[] = [
-  { id: 'M1', name: '', allergien: [], vorlieben: [] },
-  { id: 'M2', name: '', allergien: [], vorlieben: [] },
-  { id: 'M3', name: '', allergien: [], vorlieben: [] },
+  { id: 'M1', name: '', allergien: [], vorlieben: [], abneigungen: [] },
+  { id: 'M2', name: '', allergien: [], vorlieben: [], abneigungen: [] },
+  { id: 'M3', name: '', allergien: [], vorlieben: [], abneigungen: [] },
 ]
 
 export const CHEF_ORDER: Chef[] = DEFAULT_MEMBERS.map(m => m.id)
@@ -106,11 +106,13 @@ export function buildFamilyPrompt(members: FamilyMember[]): string {
     .map(m => {
       const allergien = m.allergien ?? []
       const vorlieben = m.vorlieben ?? []
+      const abneigungen = m.abneigungen ?? []
       const a = allergien.length
         ? `Unverträglichkeiten: ${allergien.join(', ')}`
         : 'keine Unverträglichkeiten'
       const v = vorlieben.length ? `mag ${vorlieben.join(', ')}` : ''
-      return `${m.name} (${m.id}): ${[a, v].filter(Boolean).join('; ')}`
+      const n = abneigungen.length ? `mag nicht ${abneigungen.join(', ')}` : ''
+      return `${m.name} (${m.id}): ${[a, v, n].filter(Boolean).join('; ')}`
     })
     .join('. ')
 

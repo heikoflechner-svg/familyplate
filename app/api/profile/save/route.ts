@@ -6,6 +6,7 @@ interface FamilyMember {
   name: string
   allergien?: string[]
   vorlieben?: string[]
+  abneigungen?: string[]
   chefStat?: { count: number; lastCook: string | null }
   wochenchefStat?: { count: number; lastWeek: string | null }
   istKind?: boolean
@@ -152,6 +153,9 @@ export async function POST(req: NextRequest) {
         vorlieben: (dbMember.istKind && !canEditChildAllergens)
           ? dbMember.vorlieben
           : (incoming.vorlieben ?? dbMember.vorlieben),
+        abneigungen: (dbMember.istKind && !canEditChildAllergens)
+          ? dbMember.abneigungen
+          : (incoming.abneigungen ?? dbMember.abneigungen),
         // only owner/admin can change istKind
         istKind: isOwnerOrAdmin ? incoming.istKind : dbMember.istKind,
         // chefStat is a system counter — any family member may update
