@@ -70,6 +70,7 @@ type GAPCfg = {
   onApplyManual: (name: string, typ?: 'leicht' | 'normal') => void
   onApplyStock: (name: string, emoji: string) => void
   onApplyErgaenzung: (text: string) => void
+  flash?: boolean
 }
 function gerichtAendernPanel(c: GAPCfg) {
   function toggle(mode: SubMode) {
@@ -147,6 +148,11 @@ function gerichtAendernPanel(c: GAPCfg) {
                 </button>
               ))}
             </div>
+      )}
+      {!c.subMode && c.flash && (
+        <div style={{ fontSize: 11, color: '#0F6E56', padding: '3px 2px', fontWeight: 600 }}>
+          ✓ Gespeichert – Rezept wird angepasst
+        </div>
       )}
     </div>
   )
@@ -587,6 +593,7 @@ export default function WocheScreen({
   const [nwEditMealKey, setNwEditMealKey] = useState<string | null>(null)
   const [nwGerichtEditKey, setNwGerichtEditKey] = useState<string | null>(null)
   const [nwMealSubMode, setNwMealSubMode] = useState<SubMode | null>(null)
+  const [nwMealErgSaved, setNwMealErgSaved] = useState(false)
   const [nwManualDish, setNwManualDish] = useState('')
   const [nwSaving, setNwSaving] = useState(false)
   const [nwPlanProgress, setNwPlanProgress] = useState(0)
@@ -916,6 +923,7 @@ export default function WocheScreen({
   const [chefPickerKey, setChefPickerKey] = useState<string | null>(null)
   const [editMealKey, setEditMealKey] = useState<string | null>(null)
   const [mealSubMode, setMealSubMode] = useState<SubMode | null>(null)
+  const [mealErgSaved, setMealErgSaved] = useState(false)
   const [manualDishInput, setManualDishInput] = useState('')
   const [manualDishTyp, setManualDishTyp] = useState<'leicht' | 'normal' | null>(null)
   const [attendanceEditKey, setAttendanceEditKey] = useState<string | null>(null)
@@ -2572,6 +2580,12 @@ export default function WocheScreen({
                             {getRecipeAllergenWarnings(pendingPlanMeals[e.gericht]).length > 0 && (
                               <div style={{ fontSize: 10, color: '#991B1B', marginTop: 1 }}>⚠️ Prüfen: {getRecipeAllergenWarnings(pendingPlanMeals[e.gericht]).join(' · ')}</div>
                             )}
+                            {(() => {
+                              const ergs = wishes.filter((w): w is Extract<Wish, { type: 'ergaenzung' }> => w.type === 'ergaenzung' && w.tag === e.tag && w.slot === e.slot)
+                              if (!ergs.length) return null
+                              const txt = ergs.map(w => w.text).join(', ')
+                              return <div style={{ fontSize: 10, color: '#6366F1', marginTop: 1 }}>✏️ angepasst: {txt.length > 35 ? txt.slice(0, 35) + '…' : txt}</div>
+                            })()}
                             <div style={{ fontSize: 11, color: '#aaa' }}>{e.minuten} min</div>
                           </div>
                           <button
@@ -2612,7 +2626,9 @@ export default function WocheScreen({
                               onApplyErgaenzung: (text) => {
                                 void handleWishSubmit({ id: crypto.randomUUID(), person: currentUser!, tag, slot, type: 'ergaenzung', text, postConfirm: false })
                                 setMealSubMode(null); setManualDishInput('')
+                                setMealErgSaved(true); setTimeout(() => setMealErgSaved(false), 2500)
                               },
+                              flash: mealErgSaved,
                             })}
                           </div>
                         )}
@@ -3384,6 +3400,13 @@ export default function WocheScreen({
                                             {(nwPendingMeals[e!.gericht]?.ersetzteZutaten?.length ?? 0) > 0 && (
                                               <div style={{ fontSize: 10, color: '#DC2626', marginTop: 1 }}>⚠️ {nwPendingMeals[e!.gericht]!.ersetzteZutaten!.join(' · ')}</div>
                                             )}
+                                            {(() => {
+                                              const prefix = `${e!.tag} ${e!.slot === 'Mittag' ? '☀️' : '🌙'}: `
+                                              const ergs = (nextWeekData?.wishes ?? []).filter(w => w.text.startsWith(prefix))
+                                              if (!ergs.length) return null
+                                              const txt = ergs.map(w => w.text.slice(prefix.length)).join(', ')
+                                              return <div style={{ fontSize: 10, color: '#6366F1', marginTop: 1 }}>✏️ angepasst: {txt.length > 35 ? txt.slice(0, 35) + '…' : txt}</div>
+                                            })()}
                                           </div>
                                           <span style={{ fontSize: 10, color: '#bbb' }}>{e!.minuten} min</span>
                                           {!isNwpSwapMode && (
@@ -3423,7 +3446,8 @@ export default function WocheScreen({
                                           onTypToggle: () => replanNwPendingSlot(e!.tag, e!.slot, e!.mahlzeitTyp === 'leicht' ? 'normal' : 'leicht'),
                                           onApplyManual: (name, typ?) => applyNwPendingManualDish(e!.tag, e!.slot, name),
                                           onApplyStock: (name, emoji) => applyNwPendingStockItem(e!.tag, e!.slot, name, emoji),
-                                          onApplyErgaenzung: (text) => void applyNwErgaenzung(e!.tag, e!.slot, text),
+                                          onApplyErgaenzung: (text) => { void applyNwErgaenzung(e!.tag, e!.slot, text); setNwMealErgSaved(true); setTimeout(() => setNwMealErgSaved(false), 2500) },
+                                          flash: nwMealErgSaved,
                                         })}
                                       </div>
                                     )}
@@ -3473,6 +3497,13 @@ export default function WocheScreen({
                                     {getRecipeAllergenWarnings(nwr).length > 0 && (
                                       <div style={{ fontSize: 10, color: '#991B1B', marginTop: 1 }}>⚠️ Prüfen: {getRecipeAllergenWarnings(nwr).join(' · ')}</div>
                                     )}
+                                    {(() => {
+                                      const prefix = `${e!.tag} ${e!.slot === 'Mittag' ? '☀️' : '🌙'}: `
+                                      const ergs = (nextWeekData?.wishes ?? []).filter(w => w.text.startsWith(prefix))
+                                      if (!ergs.length) return null
+                                      const txt = ergs.map(w => w.text.slice(prefix.length)).join(', ')
+                                      return <div style={{ fontSize: 10, color: '#6366F1', marginTop: 1 }}>✏️ angepasst: {txt.length > 35 ? txt.slice(0, 35) + '…' : txt}</div>
+                                    })()}
                                   </div>
                                   <span style={{ fontSize: 10, color: '#bbb' }}>{e!.minuten} min</span>
                                 </div>
@@ -3606,7 +3637,8 @@ export default function WocheScreen({
                                             onTypToggle: () => replanNwSlot(tag, slot, e.mahlzeitTyp === 'leicht' ? 'normal' : 'leicht'),
                                             onApplyManual: (name, typ?) => applyNwManualDish(tag, slot, name, typ),
                                             onApplyStock: (name, emoji) => applyNwStockItem(tag, slot, name, emoji),
-                                            onApplyErgaenzung: (text) => void applyNwErgaenzung(tag, slot, text),
+                                            onApplyErgaenzung: (text) => { void applyNwErgaenzung(tag, slot, text); setNwMealErgSaved(true); setTimeout(() => setNwMealErgSaved(false), 2500) },
+                                            flash: nwMealErgSaved,
                                           })}
                                         </div>
                                       )}
@@ -3629,6 +3661,13 @@ export default function WocheScreen({
                                     {getRecipeAllergenWarnings(nextWeekData?.mealsData?.[e.gericht]).length > 0 && (
                                       <div style={{ fontSize: 10, color: '#991B1B', marginTop: 1 }}>⚠️ Prüfen: {getRecipeAllergenWarnings(nextWeekData?.mealsData?.[e.gericht]).join(' · ')}</div>
                                     )}
+                                    {(() => {
+                                      const prefix = `${e.tag} ${e.slot === 'Mittag' ? '☀️' : '🌙'}: `
+                                      const ergs = (nextWeekData?.wishes ?? []).filter(w => w.text.startsWith(prefix))
+                                      if (!ergs.length) return null
+                                      const txt = ergs.map(w => w.text.slice(prefix.length)).join(', ')
+                                      return <div style={{ fontSize: 10, color: '#6366F1', marginTop: 1 }}>✏️ angepasst: {txt.length > 35 ? txt.slice(0, 35) + '…' : txt}</div>
+                                    })()}
                                     <div style={{ fontSize: 11, color: '#aaa' }}>{e.minuten} min</div>
                                   </div>
                                 </div>
@@ -3806,7 +3845,9 @@ export default function WocheScreen({
                     onApplyErgaenzung: (text) => {
                       void handleWishSubmit({ id: crypto.randomUUID(), person: currentUser!, tag, slot, type: 'ergaenzung', text, postConfirm: false })
                       setMealSubMode(null); setManualDishInput('')
+                      setMealErgSaved(true); setTimeout(() => setMealErgSaved(false), 2500)
                     },
+                    flash: mealErgSaved,
                   })}
                   <button onClick={() => replanDay(tag)} disabled={dayLoading === tag || slotLoading !== null}
                     style={{ padding: '6px 12px', border: '1px solid #ddd', borderRadius: 8, background: 'white', cursor: 'pointer', fontSize: 11, color: '#888', textAlign: 'left', width: '100%', marginTop: 4 }}>
@@ -3872,6 +3913,12 @@ export default function WocheScreen({
                 return <div style={{ fontSize: 10, color: '#6366F1', marginTop: 1 }}>ℹ️ Mahlzeit-Typ geändert – Gericht über ✏️ anpassen.</div>
               }
               return null
+            })()}
+            {(() => {
+              const ergs = wishes.filter((w): w is Extract<Wish, { type: 'ergaenzung' }> => w.type === 'ergaenzung' && w.tag === tag && w.slot === slot)
+              if (!ergs.length) return null
+              const txt = ergs.map(w => w.text).join(', ')
+              return <div style={{ fontSize: 10, color: '#6366F1', marginTop: 1 }}>✏️ angepasst: {txt.length > 35 ? txt.slice(0, 35) + '…' : txt}</div>
             })()}
             <div style={{ fontSize: 11, color: '#aaa' }}>{entry.minuten} min</div>
           </div>
