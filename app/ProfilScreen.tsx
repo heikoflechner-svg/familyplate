@@ -322,12 +322,12 @@ export default function ProfilScreen({
                 )}
                 {vorliebText && (
                   <div style={{ fontSize: 12, color: '#888' }}>
-                    <span style={{ color: '#27ae60' }}>♥</span> {vorliebText}
+                    👍 Mag gern: {vorliebText}
                   </div>
                 )}
                 {abneigungText && (
                   <div style={{ fontSize: 12, color: '#888' }}>
-                    <span style={{ color: '#E67E22' }}>✗</span> Mag nicht: {abneigungText}
+                    👎 Mag nicht: {abneigungText}
                   </div>
                 )}
                 {!allergienText && !vorliebText && !abneigungText && (

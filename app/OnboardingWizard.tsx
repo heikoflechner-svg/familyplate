@@ -213,14 +213,15 @@ export default function OnboardingWizard({ onDone, initialProfile, onCancel, own
         {step === 3 && (
           <>
             <div>
-              <div style={{ fontSize: 22, fontWeight: 700, color: '#111' }}>Geschmackliche Vorlieben</div>
-              <div style={{ fontSize: 13, color: '#999', marginTop: 4 }}>Was mögt ihr besonders?</div>
+              <div style={{ fontSize: 22, fontWeight: 700, color: '#111' }}>Was esst ihr gern – und was nicht?</div>
+              <div style={{ fontSize: 13, color: '#999', marginTop: 4 }}>Hilft Rémy beim Planen</div>
             </div>
             {members.map((m, idx) => {
               const col = memberColor(idx)
               return (
                 <div key={m.id} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   <div style={{ fontSize: 13, fontWeight: 700, color: col.c }}>{m.name}</div>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: '#555' }}>👍 Mag ich gern</div>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                     {VORLIEBE_OPTIONS.map(opt => {
                       const active = m.vorlieben.includes(opt)
@@ -232,12 +233,12 @@ export default function OnboardingWizard({ onDone, initialProfile, onCancel, own
                     })}
                   </div>
                   <input
-                    placeholder="Weiteres, kommagetrennt"
+                    placeholder="Sonst noch gern, z.B. Fisch, Hähnchen"
                     value={freitext[m.id]?.v ?? ''}
                     onChange={e => setFreitext(f => ({ ...f, [m.id]: { ...f[m.id], v: e.target.value } }))}
                     style={{ padding: '9px 12px', fontSize: 13, borderRadius: 10, border: '1px solid #ddd', outline: 'none' }}
                   />
-                  <div style={{ fontSize: 12, fontWeight: 600, color: '#555', marginTop: 4 }}>Mag ich nicht</div>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: '#555', marginTop: 4 }}>👎 Mag ich nicht</div>
                   <input
                     placeholder="z.B. Pilze, Oliven, Rosenkohl"
                     value={freitext[m.id]?.n ?? ''}
