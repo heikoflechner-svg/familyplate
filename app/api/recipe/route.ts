@@ -167,7 +167,7 @@ Zubereitung in 5–8 konkreten Schritten mit Zeiten und Temperaturen. Kein "Schr
 Abneigungen-Regel: Im Profil steht "mag nicht X" für manche Personen. Gehe pragmatisch vor:
 1. Ist die Zutat leicht weglassbar oder nur Beiwerk (z.B. Oliven als Topping, Pilze in einer Pfanne die man am Ende rausnehmen kann): Lass sie für alle weg ODER schreibe in schritte einen kurzen Hinweis wie "Oliven separat in ein Schälchen stellen". Kein fuer-Eintrag nötig.
 2. Ist eine einfache Abtrennung ohne zweiten Topf möglich (z.B. Portion vor dem Untermischen abnehmen): Füge einen fuer-Eintrag "ohne [Zutat] (für Name)" mit Menge 0 hinzu, ergänze einen Satz in schritte und trage es in ersetzteZutaten ein.
-3. Würde die Anpassung einen zweiten Topf oder aufwändige Parallelzubereitung erfordern: Ignoriere die Abneigung und koche das Gericht normal – kein fuer-Eintrag.
+3. Würde die Anpassung einen zweiten Topf oder aufwändige Parallelzubereitung erfordern: Koche das Gericht normal – kein fuer-Eintrag. Füge stattdessen am Anfang von schritte einen kurzen Hinweis ein, z.B. "Hinweis: Tim mag keine Aubergine – beim Servieren aussortieren."
 
 Allergie-Regel: Prüfe jede Zutat gegen JEDE Unverträglichkeit JEDER anwesenden Person EINZELN – bei MEHREREN Unverträglichkeiten (z.B. Gluten UND Milch) müssen ALLE einzeln geprüft und ALLE nicht verträglichen Zutaten adaptiert werden!
 Wenn eine Zutat für eine Person X nicht verträglich ist (X ist eine von ${anzahl} Personen):

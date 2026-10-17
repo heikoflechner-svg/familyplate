@@ -1,11 +1,12 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
-import { loadWeekPlan, saveWeekPlan, saveAttendance, saveShoppingList, saveProposals, saveWochenchef, savePlanConfirmed, saveShopDone, saveShoppingDays, saveShoppingPersons, loadLastDishes, getMondayIso, getNextMondayIso, saveWeekStart, loadNextWeekData, saveNextWeekData, activateNextWeek, buildDefaultAttendance } from '../lib/mealLogic'
-import { loadFreezerItems, loadPantryItems } from '../lib/freezerLogic'
-import { loadFamilyProfile, saveFamilyProfile, applyChefStats, incrementWochenchefStat, DEFAULT_MEMBERS } from '../lib/familyLogic'
+import { loadWeekPlan, saveWeekPlan, saveAttendance, saveShoppingList, saveProposals, saveWochenchef, savePlanConfirmed, saveShopDone, saveShoppingDays, saveShoppingPersons, loadLastDishes, getMondayIso, getNextMondayIso, saveWeekStart, loadNextWeekData, saveNextWeekData, activateNextWeek, buildDefaultAttendance, loadMissingRecipes, getPersonCountForSlot } from '../lib/mealLogic'
+import { loadFreezerItems, loadPantryItems, getFreezerListString, getPantryListString } from '../lib/freezerLogic'
+import { loadFamilyProfile, saveFamilyProfile, applyChefStats, incrementWochenchefStat, DEFAULT_MEMBERS, buildFamilyPrompt } from '../lib/familyLogic'
+import { generateShoppingList } from '../lib/shoppingLogic'
 import { signOut, onAuthChange, SETUP_NEEDED } from '../lib/auth'
 import { supabase, getFamilyId } from '../lib/supabase'
-import type { WeekPlanEntry, Rezept, FreezerItem, PantryItem, ShoppingItem, Tab, Wish, Chef, FamilyProfile, DayAttendance, ChangeProposal, NextWeekData, NextWeekWish, MemberRole, PlanSettings } from '../lib/state'
+import type { WeekPlanEntry, Rezept, FreezerItem, PantryItem, ShoppingItem, Tab, Wish, Chef, FamilyProfile, DayAttendance, ChangeProposal, NextWeekData, NextWeekWish, MemberRole, PlanSettings, WochenSlot } from '../lib/state'
 import LoginScreen from './LoginScreen'
 import RegisterScreen from './RegisterScreen'
 import SetupScreen from './SetupScreen'
@@ -197,6 +198,23 @@ export default function FamilyPlateApp() {
       setMemberStatuses(memberSts)
       setDataLoading(false)
       loadLastDishes().then(setLastDishes).catch(() => {})
+      // Recovery: if plan is confirmed but shopping list was lost (e.g. app closed during recipe load)
+      if (pc && sl.length === 0 && plan.length > 0 && latestProfile) {
+        const mbs = latestProfile.members.length ? latestProfile.members : DEFAULT_MEMBERS
+        const fp = buildFamilyPrompt(mbs)
+        const acm = mbs.filter(m => m.allergien.length > 0).map(m => ({ name: m.name, allergien: m.allergien }))
+        const frzStr = getFreezerListString(freezer)
+        const pntStr = getPantryListString(pantry)
+        const pcCb = (t: string, s: string) => getPersonCountForSlot(t, s as WochenSlot, resolvedAtt, mbs)
+        void loadMissingRecipes(plan, md, frzStr, pntStr, fp, pcCb, acm)
+          .then(full => {
+            const list = generateShoppingList(plan, full)
+            setShoppingList(list)
+            setMealsData(full)
+            void saveShoppingList(list)
+            void saveWeekPlan(plan, full, w)
+          })
+      }
     }
     doLoad().catch(err => {
       console.error('Ladefehler:', err)
