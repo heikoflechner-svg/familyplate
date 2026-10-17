@@ -72,6 +72,7 @@ export default function RezeptbuchScreen({
   const [historyLoaded, setHistoryLoaded] = useState(false)
   const [saveToBookLoading, setSaveToBookLoading] = useState(false)
   const [savedToBookName, setSavedToBookName] = useState<string | null>(null)
+  const [savedInlineNames, setSavedInlineNames] = useState<Set<string>>(new Set())
 
   const isSelectionMode = !!selectionSlot
 
@@ -133,7 +134,7 @@ export default function RezeptbuchScreen({
         result.push({ gericht: entry.gericht, emoji: entry.emoji, date: dayDate.toISOString().slice(0, 10), rezept: week.mealsData?.[entry.gericht] ?? null })
       }
     }
-    return result.slice(0, 20)
+    return result.sort((a, b) => b.date.localeCompare(a.date)).slice(0, 20)
   }
 
   async function handleHistorySaveToBook(rezept: Rezept) {
@@ -378,7 +379,19 @@ export default function RezeptbuchScreen({
                     <div style={{ fontSize: 11, color: '#aaa', marginTop: 1 }}>{formatDate(dish.date)}</div>
                   </div>
                   {isInBook && <span style={{ fontSize: 11, color: '#F59E0B', flexShrink: 0 }}>⭐</span>}
-                  {!isInBook && dish.rezept && !isSelectionMode && <span style={{ fontSize: 10, color: '#1D9E75', flexShrink: 0 }}>+ Buch</span>}
+                  {!isInBook && savedInlineNames.has(dish.gericht) && (
+                    <span style={{ fontSize: 10, color: '#1D9E75', flexShrink: 0, fontWeight: 600 }}>✓ Im Rezeptbuch</span>
+                  )}
+                  {!isInBook && !savedInlineNames.has(dish.gericht) && dish.rezept && !isSelectionMode && onSaveToBook && (
+                    <button
+                      onClick={async (ev) => {
+                        ev.stopPropagation()
+                        await handleHistorySaveToBook(dish.rezept!)
+                        setSavedInlineNames(prev => new Set(prev).add(dish.gericht))
+                      }}
+                      style={{ fontSize: 11, color: '#1D9E75', background: 'none', border: '1px solid #B2DFCC', borderRadius: 6, padding: '2px 7px', cursor: 'pointer', flexShrink: 0, fontWeight: 600 }}
+                    >+ Rezeptbuch</button>
+                  )}
                   <span style={{ color: '#bbb', fontSize: 16 }}>›</span>
                 </button>
               )
