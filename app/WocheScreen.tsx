@@ -5,9 +5,10 @@ import { checkAllergens, formatAllergenWarningsCard } from '../lib/allergenCheck
 import { rescaleShoppingListMengen, rewriteShoppingItemsForDish, swapShoppingItemsTags, generateShoppingList } from '../lib/shoppingLogic'
 import { getFreezerListString, getPantryListString, addFreezerItem, deleteFreezerItem } from '../lib/freezerLogic'
 import { buildFamilyPrompt, buildMemberCfg, DEFAULT_MEMBERS } from '../lib/familyLogic'
-import type { WeekPlanEntry, Rezept, FreezerItem, PantryItem, Wish, Chef, WochenSlot, FamilyMember, DayAttendance, ChangeProposal, ShoppingItem, RemyVorschlag, NextWeekData, NextWeekWish, PlanSettings, TagMahlzeitenKonfig } from '../lib/state'
+import type { WeekPlanEntry, Rezept, FreezerItem, PantryItem, Wish, Chef, WochenSlot, FamilyMember, DayAttendance, ChangeProposal, ShoppingItem, RemyVorschlag, NextWeekData, NextWeekWish, PlanSettings, TagMahlzeitenKonfig, RezeptbuchEntry } from '../lib/state'
 import { supabase } from '../lib/supabase'
 import SlotWunschPanel from './SlotWunschPanel'
+import RecipeModal from './RecipeModal'
 
 const WOCHENTAGE = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag']
 const TAG_SHORT: Record<string, string> = {
@@ -53,7 +54,7 @@ function getSlot(weekPlan: WeekPlanEntry[], tag: string, slot: 'Mittag' | 'Abend
 }
 
 // ── Shared "Gericht ändern" button panel ──────────────────────────────────────
-type SubMode = 'manual' | 'pantry' | 'ergaenzung'
+type SubMode = 'manual' | 'pantry' | 'ergaenzung' | 'rezeptbuch'
 type GAPCfg = {
   subMode: SubMode | null
   setSubMode: (m: SubMode | null) => void
@@ -71,6 +72,8 @@ type GAPCfg = {
   onApplyStock: (name: string, emoji: string) => void
   onApplyErgaenzung: (text: string) => void
   flash?: boolean
+  rezeptbuchEntries?: RezeptbuchEntry[]
+  onApplyRezeptbuch?: (entry: RezeptbuchEntry) => void
 }
 function gerichtAendernPanel(c: GAPCfg) {
   function toggle(mode: SubMode) {
@@ -98,6 +101,12 @@ function gerichtAendernPanel(c: GAPCfg) {
           style={{ flex: 1, padding: '6px 4px', border: `1px solid ${c.subMode === 'ergaenzung' ? '#1D9E75' : '#ddd'}`, borderRadius: 8, background: c.subMode === 'ergaenzung' ? '#E1F5EE' : 'white', cursor: 'pointer', fontSize: 11, color: c.subMode === 'ergaenzung' ? '#0F6E56' : '#555', minWidth: 60 }}>
           ➕ Zutat hinzufügen
         </button>
+        {(c.rezeptbuchEntries?.length ?? 0) > 0 && (
+          <button onClick={() => toggle('rezeptbuch')}
+            style={{ flex: 1, padding: '6px 4px', border: `1px solid ${c.subMode === 'rezeptbuch' ? '#1D9E75' : '#ddd'}`, borderRadius: 8, background: c.subMode === 'rezeptbuch' ? '#E1F5EE' : 'white', cursor: 'pointer', fontSize: 11, color: c.subMode === 'rezeptbuch' ? '#0F6E56' : '#555', minWidth: 60 }}>
+            📖 Aus Rezepten
+          </button>
+        )}
         <button onClick={() => { if (!dis) c.onTypToggle() }} disabled={dis}
           style={{ flex: 1, padding: '6px 4px', border: '1px solid #ddd', borderRadius: 8, background: 'white', cursor: dis ? 'default' : 'pointer', fontSize: 11, color: '#555', minWidth: 60, opacity: dis ? 0.4 : 1 }}>
           {c.currentTyp === 'leicht' ? '🍲 lieber Hauptmahlzeit' : '🥗 lieber leicht'}
@@ -148,6 +157,35 @@ function gerichtAendernPanel(c: GAPCfg) {
                 </button>
               ))}
             </div>
+      )}
+      {c.subMode === 'rezeptbuch' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 4 }}>
+          <input
+            type="text"
+            value={c.textInput}
+            onChange={ev => c.setTextInput(ev.target.value)}
+            placeholder="Rezept suchen…"
+            style={{ fontSize: 12, padding: '6px 10px', border: '1px solid #ddd', borderRadius: 6, outline: 'none' }}
+          />
+          <div style={{ maxHeight: 140, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 3 }}>
+            {(() => {
+              const filtered = (c.rezeptbuchEntries ?? []).filter(e =>
+                !c.textInput.trim() || e.rezept.name.toLowerCase().includes(c.textInput.toLowerCase())
+              )
+              if (!filtered.length) return <div style={{ fontSize: 11, color: '#bbb', textAlign: 'center', padding: '4px 0' }}>Kein Treffer</div>
+              return filtered.slice(0, 8).map(e => (
+                <button key={e.id}
+                  onClick={() => { c.onApplyRezeptbuch?.(e); c.setSubMode(null); c.setTextInput('') }}
+                  style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 8px', border: '1px solid #eee', borderRadius: 6, background: 'white', cursor: 'pointer', textAlign: 'left' }}>
+                  <span style={{ fontSize: 14 }}>{e.rezept.emoji}</span>
+                  <span style={{ flex: 1, fontSize: 12, color: '#333' }}>{e.rezept.name}</span>
+                  {e.isFavorit && <span style={{ fontSize: 11 }}>⭐</span>}
+                  <span style={{ fontSize: 10, color: '#bbb' }}>{e.rezept.minuten}min</span>
+                </button>
+              ))
+            })()}
+          </div>
+        </div>
       )}
       {!c.subMode && c.flash && (
         <div style={{ fontSize: 11, color: '#0F6E56', padding: '3px 2px', fontWeight: 600 }}>
@@ -206,6 +244,9 @@ interface Props {
   defaultMealConfig?: Record<string, TagMahlzeitenKonfig>
   defaultPlanWE?: boolean
   onGoToMehr?: () => void
+  rezeptbuchEntries?: RezeptbuchEntry[]
+  onSaveToBook?: (rezept: Rezept) => Promise<void>
+  onMarkGekocht?: (id: string) => void
 }
 
 type View = 'home' | 'week' | 'plan' | 'attendance'
@@ -277,6 +318,9 @@ export default function WocheScreen({
   defaultMealConfig,
   defaultPlanWE = false,
   onGoToMehr,
+  rezeptbuchEntries = [],
+  onSaveToBook,
+  onMarkGekocht,
 }: Props) {
   const hasMittag = (tag: string) => !mittagsloseTage.includes(tag)
   const personNames: Record<Chef, string> = Object.fromEntries(
@@ -434,6 +478,8 @@ export default function WocheScreen({
   const [recipeContext, setRecipeContext] = useState<{ tag: string; slot: WochenSlot; source: 'current' | 'pending' | 'nwPending' | 'nwSaved'; emoji: string } | null>(null)
   const [recipeLoading, setRecipeLoading] = useState<string | null>(null)
   const [adjustAllergieHinweise, setAdjustAllergieHinweise] = useState<string[]>([])
+  const [saveToBookLoading, setSaveToBookLoading] = useState(false)
+  const [savedToBookName, setSavedToBookName] = useState<string | null>(null)
 
   const [chefAltSelection, setChefAltSelection] = useState<Record<string, string>>({})
   const [chefErgaenzungIds, setChefErgaenzungIds] = useState<string[]>([])
@@ -1834,6 +1880,18 @@ export default function WocheScreen({
     }
   }
 
+  async function handleSaveToBook(rezept: Rezept) {
+    if (!onSaveToBook) return
+    setSaveToBookLoading(true)
+    try {
+      await onSaveToBook(rezept)
+      setSavedToBookName(rezept.name)
+      setTimeout(() => setSavedToBookName(null), 3000)
+    } finally {
+      setSaveToBookLoading(false)
+    }
+  }
+
   // Rezept fürs Modal auflösen – über alle Stores (Plan-Vorschau, aktuelle Woche, NW-Vorschlag, NW-gespeichert)
   function selectedRezept(name: string): Rezept | null {
     const cands = [pendingPlanMeals[name], mealsData[name], nwPendingMeals[name], nextWeekData?.mealsData?.[name]]
@@ -2453,7 +2511,7 @@ export default function WocheScreen({
     return (
       <div className="screen active" style={{ position: 'relative' }}>
         {selectedMealName && (
-          <RecipeModal name={selectedMealName} rezept={selectedRezept(selectedMealName)} loading={recipeLoading === selectedMealName} onClose={() => { setSelectedMealName(null); setRecipeContext(null); setAdjustAllergieHinweise([]) }} canRewrite={currentUser === wochenchef || canEditSettings} onRewrite={rewriteRecipe} onAdjust={handleAdjustRecipe} allergieHinweise={adjustAllergieHinweise} offeneAllergene={getRecipeAllergenWarnings(selectedRezept(selectedMealName) ?? undefined)} />
+          <RecipeModal name={selectedMealName} rezept={selectedRezept(selectedMealName)} loading={recipeLoading === selectedMealName} onClose={() => { setSelectedMealName(null); setRecipeContext(null); setAdjustAllergieHinweise([]) }} canRewrite={currentUser === wochenchef || canEditSettings} onRewrite={rewriteRecipe} onAdjust={handleAdjustRecipe} allergieHinweise={adjustAllergieHinweise} offeneAllergene={getRecipeAllergenWarnings(selectedRezept(selectedMealName) ?? undefined)} onSaveToBook={onSaveToBook ? (r) => { void handleSaveToBook(r) } : undefined} savedToBook={savedToBookName === selectedMealName} saveToBookLoading={saveToBookLoading} />
         )}
         <div className="topbar">
           {planState !== 'loading' && (
@@ -2629,6 +2687,13 @@ export default function WocheScreen({
                                 setMealErgSaved(true); setTimeout(() => setMealErgSaved(false), 2500)
                               },
                               flash: mealErgSaved,
+                              rezeptbuchEntries,
+                              onApplyRezeptbuch: (bookEntry) => {
+                                setPendingPlan(prev => prev.map(p => p.tag === tag && p.slot === slot ? { ...p, gericht: bookEntry.rezept.name, emoji: bookEntry.rezept.emoji, minuten: bookEntry.rezept.minuten, quelle: 'rezeptbuch' } : p))
+                                setPendingPlanMeals(prev => ({ ...prev, [bookEntry.rezept.name]: bookEntry.rezept }))
+                                closeMealPanel()
+                                onMarkGekocht?.(bookEntry.id)
+                              },
                             })}
                           </div>
                         )}
@@ -2662,7 +2727,7 @@ export default function WocheScreen({
     return (
       <div className="screen active" style={{ position: 'relative' }}>
         {selectedMealName && (
-          <RecipeModal name={selectedMealName} rezept={selectedRezept(selectedMealName)} loading={recipeLoading === selectedMealName} onClose={() => { setSelectedMealName(null); setRecipeContext(null); setAdjustAllergieHinweise([]) }} canRewrite={currentUser === wochenchef || canEditSettings} onRewrite={rewriteRecipe} onAdjust={handleAdjustRecipe} allergieHinweise={adjustAllergieHinweise} offeneAllergene={getRecipeAllergenWarnings(selectedRezept(selectedMealName) ?? undefined)} />
+          <RecipeModal name={selectedMealName} rezept={selectedRezept(selectedMealName)} loading={recipeLoading === selectedMealName} onClose={() => { setSelectedMealName(null); setRecipeContext(null); setAdjustAllergieHinweise([]) }} canRewrite={currentUser === wochenchef || canEditSettings} onRewrite={rewriteRecipe} onAdjust={handleAdjustRecipe} allergieHinweise={adjustAllergieHinweise} offeneAllergene={getRecipeAllergenWarnings(selectedRezept(selectedMealName) ?? undefined)} onSaveToBook={onSaveToBook ? (r) => { void handleSaveToBook(r) } : undefined} savedToBook={savedToBookName === selectedMealName} saveToBookLoading={saveToBookLoading} />
         )}
         {swapTarget && swapSource && (() => {
           const { tag: t1, slot: s1, entry: e1 } = swapSource
@@ -3448,6 +3513,13 @@ export default function WocheScreen({
                                           onApplyStock: (name, emoji) => applyNwPendingStockItem(e!.tag, e!.slot, name, emoji),
                                           onApplyErgaenzung: (text) => { void applyNwErgaenzung(e!.tag, e!.slot, text); setNwMealErgSaved(true); setTimeout(() => setNwMealErgSaved(false), 2500) },
                                           flash: nwMealErgSaved,
+                                          rezeptbuchEntries,
+                                          onApplyRezeptbuch: (bookEntry) => {
+                                            setNwPendingPlan(prev => prev ? prev.map(p => p.tag === e!.tag && p.slot === e!.slot ? { ...p, gericht: bookEntry.rezept.name, emoji: bookEntry.rezept.emoji, minuten: bookEntry.rezept.minuten, quelle: 'rezeptbuch' } : p) : null)
+                                            setNwPendingMeals(prev => ({ ...prev, [bookEntry.rezept.name]: bookEntry.rezept }))
+                                            setNwGerichtEditKey(null); setNwMealSubMode(null); setNwManualDish('')
+                                            onMarkGekocht?.(bookEntry.id)
+                                          },
                                         })}
                                       </div>
                                     )}
@@ -3639,6 +3711,15 @@ export default function WocheScreen({
                                             onApplyStock: (name, emoji) => applyNwStockItem(tag, slot, name, emoji),
                                             onApplyErgaenzung: (text) => { void applyNwErgaenzung(tag, slot, text); setNwMealErgSaved(true); setTimeout(() => setNwMealErgSaved(false), 2500) },
                                             flash: nwMealErgSaved,
+                                            rezeptbuchEntries,
+                                            onApplyRezeptbuch: (bookEntry) => {
+                                              if (!onNextWeekDataChange || !nextWeekData?.plan) return
+                                              const nextMonday = nextWeekStart ?? getNextMondayIso()
+                                              const newPlan = nextWeekData.plan.map(p => p.tag === tag && p.slot === slot ? { ...p, gericht: bookEntry.rezept.name, emoji: bookEntry.rezept.emoji, minuten: bookEntry.rezept.minuten, quelle: 'rezeptbuch' } : p)
+                                              void onNextWeekDataChange({ plan: newPlan, mealsData: { ...(nextWeekData.mealsData ?? {}), [bookEntry.rezept.name]: bookEntry.rezept } }, nextMonday)
+                                              setNwEditMealKey(null); setNwMealSubMode(null); setNwManualDish('')
+                                              onMarkGekocht?.(bookEntry.id)
+                                            },
                                           })}
                                         </div>
                                       )}
@@ -3848,6 +3929,13 @@ export default function WocheScreen({
                       setMealErgSaved(true); setTimeout(() => setMealErgSaved(false), 2500)
                     },
                     flash: mealErgSaved,
+                    rezeptbuchEntries,
+                    onApplyRezeptbuch: (bookEntry) => {
+                      const newPlan = weekPlan.map(p => p.tag === tag && p.slot === slot ? { ...p, gericht: bookEntry.rezept.name, emoji: bookEntry.rezept.emoji, minuten: bookEntry.rezept.minuten, quelle: 'rezeptbuch' } : p)
+                      void onWeekPlanChange(newPlan, { ...mealsData, [bookEntry.rezept.name]: bookEntry.rezept })
+                      closeMealPanel()
+                      onMarkGekocht?.(bookEntry.id)
+                    },
                   })}
                   <button onClick={() => replanDay(tag)} disabled={dayLoading === tag || slotLoading !== null}
                     style={{ padding: '6px 12px', border: '1px solid #ddd', borderRadius: 8, background: 'white', cursor: 'pointer', fontSize: 11, color: '#888', textAlign: 'left', width: '100%', marginTop: 4 }}>
@@ -3992,7 +4080,7 @@ export default function WocheScreen({
   return (
     <div className="screen active" style={{ position: 'relative' }}>
       {selectedMealName && (
-        <RecipeModal name={selectedMealName} rezept={selectedRezept(selectedMealName)} loading={recipeLoading === selectedMealName} onClose={() => { setSelectedMealName(null); setRecipeContext(null); setAdjustAllergieHinweise([]) }} canRewrite={currentUser === wochenchef || canEditSettings} onRewrite={rewriteRecipe} onAdjust={handleAdjustRecipe} allergieHinweise={adjustAllergieHinweise} offeneAllergene={getRecipeAllergenWarnings(selectedRezept(selectedMealName) ?? undefined)} />
+        <RecipeModal name={selectedMealName} rezept={selectedRezept(selectedMealName)} loading={recipeLoading === selectedMealName} onClose={() => { setSelectedMealName(null); setRecipeContext(null); setAdjustAllergieHinweise([]) }} canRewrite={currentUser === wochenchef || canEditSettings} onRewrite={rewriteRecipe} onAdjust={handleAdjustRecipe} allergieHinweise={adjustAllergieHinweise} offeneAllergene={getRecipeAllergenWarnings(selectedRezept(selectedMealName) ?? undefined)} onSaveToBook={onSaveToBook ? (r) => { void handleSaveToBook(r) } : undefined} savedToBook={savedToBookName === selectedMealName} saveToBookLoading={saveToBookLoading} />
       )}
       {swapTarget && swapSource && (() => {
         const { tag: t1, slot: s1, entry: e1 } = swapSource
@@ -4710,129 +4798,7 @@ function WishesSection({
   )
 }
 
-function RecipeModal({ name, rezept, loading, onClose, canRewrite, onRewrite, onAdjust, allergieHinweise, offeneAllergene }: { name: string; rezept: import('../lib/state').Rezept | null; loading?: boolean; onClose: () => void; canRewrite?: boolean; onRewrite?: () => void; onAdjust?: (wunsch: string) => void; allergieHinweise?: string[]; offeneAllergene?: string[] }) {
-  const [confirmRewrite, setConfirmRewrite] = useState(false)
-  const [adjustMode, setAdjustMode] = useState(false)
-  const [adjustText, setAdjustText] = useState('')
-  useEffect(() => { if (loading) { setConfirmRewrite(false); setAdjustMode(false); setAdjustText('') } }, [loading])
-  const hatRezept = !!rezept && rezept.schritte.length > 0
-  return (
-    <div style={{ position: 'absolute', inset: 0, zIndex: 100, background: 'white', overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
-      <div className="topbar">
-        <button className="back" onClick={onClose}>‹</button>
-        <h1 style={{ fontSize: 15 }}>{rezept?.emoji ?? '🍽'} {name}</h1>
-      </div>
-      <div className="content">
-        {loading ? (
-          <div style={{ textAlign: 'center', padding: '40px 0', color: '#888', fontSize: 13 }}>
-            🐀 Rémy schreibt das Rezept…
-          </div>
-        ) : !hatRezept ? (
-          <div style={{ textAlign: 'center', padding: '40px 0', color: '#aaa', fontSize: 13 }}>
-            Kein Rezept verfügbar – bitte erneut antippen.
-          </div>
-        ) : rezept && (
-          <>
-            <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-              <span style={{ fontSize: 11, background: '#f0f0f0', borderRadius: 6, padding: '3px 8px', color: '#666' }}>{rezept.schwierigkeit}</span>
-              <span style={{ fontSize: 11, background: '#f0f0f0', borderRadius: 6, padding: '3px 8px', color: '#666' }}>⏱ {rezept.minuten} min</span>
-              {rezept.personenAnzahl && <span style={{ fontSize: 11, background: '#f0f0f0', borderRadius: 6, padding: '3px 8px', color: '#666' }}>👥 {rezept.personenAnzahl} Person{rezept.personenAnzahl === 1 ? '' : 'en'}</span>}
-            </div>
-
-            <div className="lbl">Zutaten</div>
-            <div style={{ marginBottom: 20 }}>
-              {rezept.zutaten.map((z, i) => {
-                const isGrundvorrat = z.typ === 'grundvorrat'
-                const isAllergie = !!z.fuer
-                return (
-                  <div key={i} style={{ display: 'flex', alignItems: 'baseline', gap: 8, padding: '6px 0', borderBottom: '1px solid #f5f5f5', opacity: isGrundvorrat ? 0.55 : 1, ...(isAllergie ? { background: '#FFFBEB', borderRadius: 6, padding: '5px 6px', margin: '2px 0' } : {}) }}>
-                    {isAllergie && <span style={{ fontSize: 12, flexShrink: 0 }}>⚠️</span>}
-                    <span style={{ fontSize: 12, color: '#aaa', minWidth: 70, flexShrink: 0 }}>{z.menge}</span>
-                    <span style={{ fontSize: 13, color: isGrundvorrat ? '#888' : '#111', fontStyle: isGrundvorrat ? 'italic' : 'normal', flex: 1 }}>
-                      {z.name}{isGrundvorrat ? ' (im Haushalt vorhanden)' : ''}
-                      {isAllergie && <span style={{ color: '#92400E', fontSize: 11 }}>{' · für '}{z.fuer}</span>}
-                    </span>
-                  </div>
-                )
-              })}
-              {!rezept.zutaten.some(z => z.fuer) && (rezept.ersetzteZutaten?.length ?? 0) > 0 && (
-                rezept.ersetzteZutaten!.map((s, i) => (
-                  <div key={`er-${i}`} style={{ display: 'flex', alignItems: 'baseline', gap: 8, padding: '5px 6px', borderRadius: 6, background: '#FFFBEB', margin: '2px 0', borderBottom: '1px solid #f5f5f5' }}>
-                    <span style={{ fontSize: 12, flexShrink: 0 }}>⚠️</span>
-                    <span style={{ fontSize: 13, color: '#92400E', flex: 1 }}>{s}</span>
-                  </div>
-                ))
-              )}
-            </div>
-
-            <div className="lbl">Zubereitung</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {rezept.schritte.map((s, i) => (
-                <div key={i} style={{ display: 'flex', gap: 10 }}>
-                  <span style={{ fontSize: 12, fontWeight: 700, color: '#1D9E75', minWidth: 20 }}>{i + 1}.</span>
-                  <span style={{ fontSize: 13, color: '#333', lineHeight: 1.5 }}>{s}</span>
-                </div>
-              ))}
-            </div>
-
-            {(allergieHinweise?.length ?? 0) > 0 && (
-              <div style={{ marginTop: 16, padding: '10px 12px', background: '#FFFBEB', borderRadius: 8, border: '1px solid #FDE68A' }}>
-                {allergieHinweise!.map((h, i) => <div key={i} style={{ fontSize: 12, color: '#92400E', lineHeight: 1.5 }}>⚠️ {h}</div>)}
-              </div>
-            )}
-
-            {(offeneAllergene?.length ?? 0) > 0 && (
-              <div style={{ marginTop: 12, padding: '10px 12px', background: '#FEF2F2', borderRadius: 8, border: '1px solid #FECACA' }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: '#991B1B', marginBottom: 4 }}>⚠️ Allergie nicht abgedeckt</div>
-                {offeneAllergene!.map((w, i) => <div key={i} style={{ fontSize: 12, color: '#991B1B', lineHeight: 1.5 }}>{w}</div>)}
-              </div>
-            )}
-
-            <div style={{ marginTop: 12, padding: '8px 10px', background: '#F9FAFB', borderRadius: 8, border: '1px solid #E5E7EB' }}>
-              <span style={{ fontSize: 11, color: '#6B7280' }}>ℹ️ Bitte Packungsangaben selbst prüfen.</span>
-            </div>
-
-            {canRewrite && !confirmRewrite && !adjustMode && (
-              <div style={{ marginTop: 20, display: 'flex', gap: 8 }}>
-                <button onClick={() => setConfirmRewrite(true)} style={{ flex: 1, padding: '10px 0', background: 'none', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 13, color: '#666', cursor: 'pointer' }}>↻ Rezept neu schreiben</button>
-                <button onClick={() => setAdjustMode(true)} style={{ flex: 1, padding: '10px 0', background: 'none', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 13, color: '#666', cursor: 'pointer' }}>✏️ Rezept anpassen</button>
-              </div>
-            )}
-            {canRewrite && confirmRewrite && (
-              <div style={{ marginTop: 20, padding: '12px 14px', background: '#FFFBEB', borderRadius: 10, border: '1px solid #FDE68A' }}>
-                <div style={{ fontSize: 13, color: '#92400E', marginBottom: 10 }}>Rezept neu schreiben? Das bisherige Rezept wird ersetzt.</div>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <button onClick={() => { setConfirmRewrite(false); onRewrite?.() }} style={{ flex: 1, padding: '8px 0', background: '#F59E0B', color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Ja, neu schreiben</button>
-                  <button onClick={() => setConfirmRewrite(false)} style={{ flex: 1, padding: '8px 0', background: '#f0f0f0', color: '#555', border: 'none', borderRadius: 8, fontSize: 13, cursor: 'pointer' }}>Abbrechen</button>
-                </div>
-              </div>
-            )}
-            {canRewrite && adjustMode && (
-              <div style={{ marginTop: 20 }}>
-                <textarea
-                  placeholder="Was soll anders sein? (z.B. ohne Sellerie, mehr Knoblauch, zusätzlich Parmesan)"
-                  maxLength={200}
-                  value={adjustText}
-                  onChange={e => setAdjustText(e.target.value)}
-                  style={{ width: '100%', fontSize: 13, padding: '8px 10px', border: '1px solid #e5e7eb', borderRadius: 8, resize: 'none', height: 80, boxSizing: 'border-box', color: '#111', lineHeight: 1.5 }}
-                />
-                <div style={{ fontSize: 11, color: '#aaa', textAlign: 'right', marginTop: 2 }}>{adjustText.length}/200</div>
-                <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-                  <button onClick={() => { setAdjustMode(false); setAdjustText('') }} style={{ flex: 1, padding: '8px 0', background: '#f0f0f0', color: '#555', border: 'none', borderRadius: 8, fontSize: 13, cursor: 'pointer' }}>Abbrechen</button>
-                  <button
-                    onClick={() => { if (adjustText.trim()) { onAdjust?.(adjustText.trim()); setAdjustMode(false); setAdjustText('') } }}
-                    disabled={!adjustText.trim()}
-                    style={{ flex: 1, padding: '8px 0', background: adjustText.trim() ? '#1D9E75' : '#d1fae5', color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: adjustText.trim() ? 'pointer' : 'default' }}
-                  >Anpassen</button>
-                </div>
-              </div>
-            )}
-          </>
-        )}
-      </div>
-    </div>
-  )
-}
+// RecipeModal extracted to app/RecipeModal.tsx
 
 function MealRow({ entry, slot, onSelect, hasRecipe, onChefChange, onReplan, personNames, members: mems }: {
   entry: WeekPlanEntry | null

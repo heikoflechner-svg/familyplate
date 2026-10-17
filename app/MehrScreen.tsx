@@ -1,8 +1,9 @@
 'use client'
 import { useState, useEffect } from 'react'
-import type { Chef, FamilyMember, ChangeProposal, WeekPlanEntry, NextWeekData, TagMahlzeitenKonfig, MittagTyp, AbendTyp } from '../lib/state'
+import type { Chef, FamilyMember, ChangeProposal, WeekPlanEntry, NextWeekData, TagMahlzeitenKonfig, MittagTyp, AbendTyp, Rezept, DayAttendance, RezeptbuchEntry } from '../lib/state'
 import { buildMemberCfg, DEFAULT_MEMBERS } from '../lib/familyLogic'
 import { getNextMondayIso, loadWeekHistory } from '../lib/mealLogic'
+import RezeptbuchScreen from './RezeptbuchScreen'
 
 const WOCHENTAGE = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag']
 
@@ -20,7 +21,7 @@ const TAG_SHORT: Record<string, string> = {
 }
 
 
-type View = 'overview' | 'einkauf' | 'wochenchef' | 'verlauf' | 'standardwoche'
+type View = 'overview' | 'einkauf' | 'wochenchef' | 'verlauf' | 'standardwoche' | 'rezeptbuch'
 
 type HistoryEntry = {
   weekStart: string
@@ -52,6 +53,15 @@ interface Props {
   defaultMealConfig?: Record<string, TagMahlzeitenKonfig>
   defaultPlanWE: boolean
   onDefaultMealConfigChange: (config: Record<string, TagMahlzeitenKonfig>, planWE: boolean) => Promise<void>
+  rezeptbuchEntries?: RezeptbuchEntry[]
+  mealsData?: Record<string, Rezept>
+  weekStart?: string | null
+  attendance?: DayAttendance[]
+  onRbSaveToBook?: (rezept: Rezept) => Promise<void>
+  onRbUpdateRezept?: (id: string, rezept: Rezept) => Promise<void>
+  onRbToggleFavorit?: (id: string, isFavorit: boolean) => Promise<void>
+  onRbDeleteRezept?: (id: string) => Promise<void>
+  onRbMarkGekocht?: (id: string) => void
 }
 
 export default function MehrScreen({
@@ -61,6 +71,15 @@ export default function MehrScreen({
   laeden, onLaedenChange, canEditSettings,
   memberStatuses = [],
   defaultMealConfig, defaultPlanWE, onDefaultMealConfigChange,
+  rezeptbuchEntries = [],
+  mealsData = {},
+  weekStart = null,
+  attendance = [],
+  onRbSaveToBook,
+  onRbUpdateRezept,
+  onRbToggleFavorit,
+  onRbDeleteRezept,
+  onRbMarkGekocht,
 }: Props) {
   const [view, setView] = useState<View>('overview')
   const [saving, setSaving] = useState(false)
@@ -175,6 +194,28 @@ export default function MehrScreen({
     try { await onNextWeekDataChange({ wochenchef: chef }, nextMonday) } finally { setSaving(false) }
   }
 
+  // ── Rezeptbuch ──────────────────────────────────────────────────────────────
+  if (view === 'rezeptbuch' && onRbSaveToBook) {
+    return (
+      <RezeptbuchScreen
+        entries={rezeptbuchEntries}
+        currentUser={currentUser}
+        canEditSettings={canEditSettings}
+        members={members}
+        mealsData={mealsData}
+        weekPlan={weekPlan}
+        weekStart={weekStart}
+        attendance={attendance}
+        onBack={() => setView('overview')}
+        onSaveToBook={onRbSaveToBook}
+        onUpdateRezept={onRbUpdateRezept ?? (async () => {})}
+        onToggleFavorit={onRbToggleFavorit ?? (async () => {})}
+        onDeleteRezept={onRbDeleteRezept ?? (async () => {})}
+        onMarkGekocht={onRbMarkGekocht ?? (() => {})}
+      />
+    )
+  }
+
   // ── Overview ────────────────────────────────────────────────────────────────
   if (view === 'overview') {
     const nwChef = nextWeekData?.wochenchef ?? null
@@ -238,17 +279,21 @@ export default function MehrScreen({
           </button>
 
           <button
-            onClick={() => { setHistory([]); setOpenWeek(null); setHistoryLoaded(false); setHistoryError(null); setHasMoreHistory(false); setHistoryLimit(12); setView('verlauf') }}
+            onClick={() => setView('rezeptbuch')}
             style={{
               display: 'flex', alignItems: 'center', gap: 14, width: '100%',
               background: '#fff', border: '1px solid #E5E7EB', borderRadius: 14,
               padding: '16px 18px', marginTop: 12, cursor: 'pointer', textAlign: 'left',
             }}
           >
-            <span style={{ fontSize: 26 }}>📅</span>
+            <span style={{ fontSize: 26 }}>📖</span>
             <div>
-              <div style={{ fontSize: 15, fontWeight: 700, color: '#111' }}>Verlauf</div>
-              <div style={{ fontSize: 12, color: '#888', marginTop: 2 }}>Vergangene Wochen ansehen</div>
+              <div style={{ fontSize: 15, fontWeight: 700, color: '#111' }}>Rezepte</div>
+              <div style={{ fontSize: 12, color: '#888', marginTop: 2 }}>
+                {rezeptbuchEntries.length > 0
+                  ? `${rezeptbuchEntries.length} Rezept${rezeptbuchEntries.length === 1 ? '' : 'e'} gespeichert`
+                  : 'Lieblingsrezepte & Kochverlauf'}
+              </div>
             </div>
             <span style={{ marginLeft: 'auto', color: '#bbb', fontSize: 18 }}>›</span>
           </button>

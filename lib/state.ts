@@ -93,6 +93,27 @@ export interface Rezept {
   offeneAllergene?: string[]  // deterministic post-check: unresolved issues after Rémy retry
 }
 
+export interface RezeptbewertungEintrag {
+  memberId: Chef
+  sterne: number
+  datum: string
+}
+
+export interface RezeptbuchEntry {
+  id: string
+  rezept: Rezept
+  kategorie: string | null
+  isFavorit: boolean
+  sterneSumme: number
+  anzahlStimmen: number
+  bewertungen: RezeptbewertungEintrag[]
+  zuletztGekocht: string | null
+  malGekocht: number
+  vermeiden: boolean
+  erstelltVon: Chef
+  erstelltAm: string
+}
+
 export interface ShoppingItem {
   id: string
   name: string

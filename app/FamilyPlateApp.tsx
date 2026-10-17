@@ -6,7 +6,8 @@ import { loadFamilyProfile, saveFamilyProfile, applyChefStats, incrementWochench
 import { generateShoppingList } from '../lib/shoppingLogic'
 import { signOut, onAuthChange, SETUP_NEEDED } from '../lib/auth'
 import { supabase, getFamilyId } from '../lib/supabase'
-import type { WeekPlanEntry, Rezept, FreezerItem, PantryItem, ShoppingItem, Tab, Wish, Chef, FamilyProfile, DayAttendance, ChangeProposal, NextWeekData, NextWeekWish, MemberRole, PlanSettings, WochenSlot } from '../lib/state'
+import { loadRezeptbuch, saveRezeptToBook, updateRezeptInBook, deleteRezeptFromBook, toggleFavoritInBook, markGekochtInBook } from '../lib/rezeptbuchLogic'
+import type { WeekPlanEntry, Rezept, FreezerItem, PantryItem, ShoppingItem, Tab, Wish, Chef, FamilyProfile, DayAttendance, ChangeProposal, NextWeekData, NextWeekWish, MemberRole, PlanSettings, WochenSlot, RezeptbuchEntry } from '../lib/state'
 import LoginScreen from './LoginScreen'
 import RegisterScreen from './RegisterScreen'
 import SetupScreen from './SetupScreen'
@@ -49,6 +50,7 @@ export default function FamilyPlateApp() {
   const [nextWeekData, setNextWeekData] = useState<NextWeekData | null>(null)
   const [memberStatuses, setMemberStatuses] = useState<{ kuerzel: string; role: string; isLinked: boolean }[]>([])
   const [wocheInitView, setWocheInitView] = useState<'home' | 'attendance'>('home')
+  const [rezeptbuchEntries, setRezeptbuchEntries] = useState<RezeptbuchEntry[]>([])
   const [activeTab, setActiveTab] = useState<Tab>('woche')
   const [authView, setAuthView] = useState<'login' | 'register'>('login')
   const [profileSaveError, setProfileSaveError] = useState<string | null>(null)
@@ -198,6 +200,7 @@ export default function FamilyPlateApp() {
       setMemberStatuses(memberSts)
       setDataLoading(false)
       loadLastDishes().then(setLastDishes).catch(() => {})
+      loadRezeptbuch().then(setRezeptbuchEntries).catch(() => {})
       // Recovery: if plan is confirmed but shopping list was lost (e.g. app closed during recipe load)
       if (pc && sl.length === 0 && plan.length > 0 && latestProfile) {
         const mbs = latestProfile.members.length ? latestProfile.members : DEFAULT_MEMBERS
@@ -361,6 +364,46 @@ export default function FamilyPlateApp() {
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
       body: JSON.stringify({ defaultMealConfig, defaultPlanWE }),
     })
+  }
+
+  async function handleSaveToBook(rezept: Rezept) {
+    if (!currentUser) return
+    const duplicate = rezeptbuchEntries.find(e => e.rezept.name.toLowerCase() === rezept.name.toLowerCase())
+    if (duplicate) {
+      const replace = window.confirm(`"${rezept.name}" ist bereits im Rezeptbuch.\nOK = Rezept ersetzen · Abbrechen = als zweite Version speichern`)
+      if (replace) {
+        await updateRezeptInBook(duplicate.id, rezept)
+        setRezeptbuchEntries(prev => prev.map(e => e.id === duplicate.id ? { ...e, rezept } : e))
+      } else {
+        const saved = await saveRezeptToBook(rezept, currentUser)
+        if (saved) setRezeptbuchEntries(prev => [saved, ...prev])
+      }
+    } else {
+      const saved = await saveRezeptToBook(rezept, currentUser)
+      if (saved) setRezeptbuchEntries(prev => [saved, ...prev])
+    }
+  }
+
+  async function handleUpdateRezeptInBook(id: string, rezept: Rezept) {
+    await updateRezeptInBook(id, rezept)
+    setRezeptbuchEntries(prev => prev.map(e => e.id === id ? { ...e, rezept } : e))
+  }
+
+  async function handleToggleFavorit(id: string, isFavorit: boolean) {
+    await toggleFavoritInBook(id, isFavorit)
+    setRezeptbuchEntries(prev => prev.map(e => e.id === id ? { ...e, isFavorit } : e))
+  }
+
+  async function handleDeleteRezept(id: string) {
+    await deleteRezeptFromBook(id)
+    setRezeptbuchEntries(prev => prev.filter(e => e.id !== id))
+  }
+
+  function handleMarkGekocht(id: string) {
+    void markGekochtInBook(id)
+    setRezeptbuchEntries(prev => prev.map(e => e.id === id ? {
+      ...e, malGekocht: e.malGekocht + 1, zuletztGekocht: new Date().toISOString().slice(0, 10)
+    } : e))
   }
 
   async function handlePlanConfirm(confirmedEntries: WeekPlanEntry[]) {
@@ -551,6 +594,9 @@ export default function FamilyPlateApp() {
             defaultPlanWE={familyProfile?.defaultPlanWE}
             memberStatuses={memberStatuses}
             onGoToMehr={() => setActiveTab('mehr')}
+            rezeptbuchEntries={rezeptbuchEntries}
+            onSaveToBook={handleSaveToBook}
+            onMarkGekocht={handleMarkGekocht}
           />
         </div>
         {activeTab === 'gefriertruhe' && (
@@ -620,6 +666,15 @@ export default function FamilyPlateApp() {
             defaultMealConfig={familyProfile.defaultMealConfig}
             defaultPlanWE={familyProfile.defaultPlanWE ?? false}
             onDefaultMealConfigChange={handleDefaultMealConfigChange}
+            rezeptbuchEntries={rezeptbuchEntries}
+            mealsData={mealsData}
+            weekStart={weekStart}
+            attendance={attendance}
+            onRbSaveToBook={handleSaveToBook}
+            onRbUpdateRezept={handleUpdateRezeptInBook}
+            onRbToggleFavorit={handleToggleFavorit}
+            onRbDeleteRezept={handleDeleteRezept}
+            onRbMarkGekocht={handleMarkGekocht}
           />
         )}
       </div>
