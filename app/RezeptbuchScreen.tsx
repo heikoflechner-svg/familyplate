@@ -102,6 +102,8 @@ export default function RezeptbuchScreen({
   const imageInputRef = useRef<HTMLInputElement>(null)
 
   const isSelectionMode = !!selectionSlot
+  // In selection mode the add/edit screens must never appear (they require props not passed in this mode)
+  const effectiveAddScreen = isSelectionMode ? null : addScreen
 
   useEffect(() => {
     if (historyLoaded) return
@@ -237,7 +239,7 @@ export default function RezeptbuchScreen({
     if (!selectionSlot || !isFullRecipe(rezept)) return []
     const dayAtt = attendance.find(a => a.tag === selectionSlot.tag)
     if (!dayAtt) return []
-    const presentChefs = selectionSlot.slot === 'Mittag' ? dayAtt.mittagAnwesend : dayAtt.abendAnwesend
+    const presentChefs = (selectionSlot.slot === 'Mittag' ? dayAtt.mittagAnwesend : dayAtt.abendAnwesend) ?? []
     const slotMembers = members
       .filter(m => presentChefs.includes(m.id as Chef))
       .filter(m => m.allergien.length > 0)
@@ -432,7 +434,7 @@ export default function RezeptbuchScreen({
   }
 
   // ── R3: Add screens ──────────────────────────────────────────────────────────
-  if (addScreen === 'options') {
+  if (effectiveAddScreen === 'options') {
     return (
       <div className="screen active">
         <div className="topbar">
@@ -470,7 +472,7 @@ export default function RezeptbuchScreen({
     )
   }
 
-  if (addScreen === 'input-text') {
+  if (effectiveAddScreen === 'input-text') {
     return (
       <div className="screen active">
         <div className="topbar">
@@ -490,7 +492,7 @@ export default function RezeptbuchScreen({
     )
   }
 
-  if (addScreen === 'input-url') {
+  if (effectiveAddScreen === 'input-url') {
     return (
       <div className="screen active">
         <div className="topbar">
@@ -510,7 +512,7 @@ export default function RezeptbuchScreen({
     )
   }
 
-  if (addScreen === 'preview' && previewRezept) {
+  if (effectiveAddScreen === 'preview' && previewRezept) {
     return (
       <div className="screen active" style={{ overflowY: 'auto' }}>
         <div className="topbar">
@@ -529,7 +531,7 @@ export default function RezeptbuchScreen({
     )
   }
 
-  if (addScreen === 'edit' && editEntry) {
+  if (effectiveAddScreen === 'edit' && editEntry) {
     return (
       <div className="screen active" style={{ overflowY: 'auto' }}>
         <div className="topbar">
@@ -749,8 +751,8 @@ export default function RezeptbuchScreen({
               const warns = dish.rezept ? getSlotAllergenWarnings(dish.rezept) : []
               return (
                 <div key={i} style={{ background: 'white', border: '1px solid #E5E7EB', borderRadius: 12, marginBottom: 6, overflow: 'hidden', marginTop: i === 0 ? 12 : 0 }}>
-                  <button onClick={() => setModal({ kind: 'history', dish })}
-                    style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', padding: '10px 14px', cursor: 'pointer', textAlign: 'left', background: 'none', border: 'none' }}>
+                  <div onClick={() => setModal({ kind: 'history', dish })}
+                    style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', padding: '10px 14px', cursor: 'pointer', textAlign: 'left' }}>
                     <span style={{ fontSize: 20 }}>{dish.emoji}</span>
                     <div style={{ flex: 1 }}>
                       <div style={{ fontSize: 13, fontWeight: 600, color: '#111', display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -776,7 +778,7 @@ export default function RezeptbuchScreen({
                       </button>
                     )}
                     <span style={{ color: '#bbb', fontSize: 16 }}>›</span>
-                  </button>
+                  </div>
                   {onRateGericht && (
                     <div style={{ borderTop: '1px solid #f5f5f5', padding: '5px 14px', display: 'flex', alignItems: 'center', gap: 4 }}>
                       <span style={{ fontSize: 10, color: '#aaa', marginRight: 2 }}>Wie war's?</span>
