@@ -91,6 +91,11 @@ export interface Rezept {
   personenAnzahl?: number
   rezeptVersion?: number
   offeneAllergene?: string[]  // deterministic post-check: unresolved issues after Rémy retry
+  arbeitszeitMinuten?: number
+  zeitGeschaetzt?: boolean
+  quelle?: string
+  quelleUrl?: string
+  notizen?: string
 }
 
 export interface RezeptbewertungEintrag {

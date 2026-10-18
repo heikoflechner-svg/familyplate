@@ -19,6 +19,7 @@ export interface RecipeModalProps {
   onToggleFavorit?: () => void
   onDelete?: () => void
   onUebernehmen?: () => void
+  onEdit?: () => void
 }
 
 export default function RecipeModal({
@@ -26,7 +27,7 @@ export default function RecipeModal({
   allergieHinweise, offeneAllergene,
   onSaveToBook, savedToBook, saveToBookLoading,
   isFavorit, onToggleFavorit, onDelete,
-  onUebernehmen,
+  onUebernehmen, onEdit,
 }: RecipeModalProps) {
   const [confirmRewrite, setConfirmRewrite] = useState(false)
   const [adjustMode, setAdjustMode] = useState(false)
@@ -41,9 +42,15 @@ export default function RecipeModal({
       <div className="topbar">
         <button className="back" onClick={onClose}>‹</button>
         <h1 style={{ fontSize: 15 }}>{rezept?.emoji ?? '🍽'} {name}</h1>
+        {onEdit && (
+          <button onClick={onEdit}
+            style={{ marginLeft: 'auto', marginRight: 2, background: 'none', border: 'none', fontSize: 16, cursor: 'pointer', padding: '4px 8px', color: '#666' }}>
+            ✏️
+          </button>
+        )}
         {onToggleFavorit && (
           <button onClick={onToggleFavorit}
-            style={{ marginLeft: 'auto', marginRight: 4, background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', padding: '4px 8px' }}>
+            style={{ marginLeft: onEdit ? 0 : 'auto', marginRight: 4, background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', padding: '4px 8px' }}>
             {isFavorit ? '⭐' : '☆'}
           </button>
         )}
@@ -61,7 +68,9 @@ export default function RecipeModal({
           <>
             <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
               <span style={{ fontSize: 11, background: '#f0f0f0', borderRadius: 6, padding: '3px 8px', color: '#666' }}>{rezept.schwierigkeit}</span>
-              <span style={{ fontSize: 11, background: '#f0f0f0', borderRadius: 6, padding: '3px 8px', color: '#666' }}>⏱ {rezept.minuten} min</span>
+              <span style={{ fontSize: 11, background: '#f0f0f0', borderRadius: 6, padding: '3px 8px', color: '#666' }}>
+                ⏱ {rezept.zeitGeschaetzt ? 'ca. ' : ''}{rezept.minuten} min{rezept.arbeitszeitMinuten && rezept.arbeitszeitMinuten !== rezept.minuten ? ` (davon ${rezept.arbeitszeitMinuten} min Arbeit)` : ''}
+              </span>
               {rezept.personenAnzahl && <span style={{ fontSize: 11, background: '#f0f0f0', borderRadius: 6, padding: '3px 8px', color: '#666' }}>👥 {rezept.personenAnzahl} Person{rezept.personenAnzahl === 1 ? '' : 'en'}</span>}
             </div>
 
@@ -117,6 +126,24 @@ export default function RecipeModal({
             <div style={{ marginTop: 12, padding: '8px 10px', background: '#F9FAFB', borderRadius: 8, border: '1px solid #E5E7EB' }}>
               <span style={{ fontSize: 11, color: '#6B7280' }}>ℹ️ Bitte Packungsangaben selbst prüfen.</span>
             </div>
+
+            {rezept.quelle && (
+              <div style={{ marginTop: 8, padding: '6px 10px', background: '#F9FAFB', borderRadius: 6 }}>
+                <span style={{ fontSize: 11, color: '#9CA3AF' }}>Quelle: </span>
+                {rezept.quelleUrl ? (
+                  <a href={rezept.quelleUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: '#1D9E75', textDecoration: 'underline' }}>{rezept.quelle}</a>
+                ) : (
+                  <span style={{ fontSize: 11, color: '#6B7280' }}>{rezept.quelle}</span>
+                )}
+              </div>
+            )}
+
+            {rezept.notizen && (
+              <div style={{ marginTop: 8, padding: '8px 10px', background: '#FFFBEB', borderRadius: 8, border: '1px solid #FDE68A' }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: '#92400E', marginBottom: 3 }}>Notizen</div>
+                <div style={{ fontSize: 12, color: '#92400E', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{rezept.notizen}</div>
+              </div>
+            )}
 
             {onSaveToBook && !savedToBook && (
               <button

@@ -4,16 +4,17 @@ export const maxDuration = 30
 
 type Zutat = { menge: string; name: string; typ: string }
 type RezeptResult = {
-  name: string; emoji: string; zutaten: Zutat[]
-  schritte: string[]; minuten: number; schwierigkeit: string
-  personenAnzahl?: number
+  name: string; emoji: string; zutaten: Zutat[]; schritte: string[]
+  minuten: number; schwierigkeit: string; personenAnzahl?: number
+  arbeitszeitMinuten?: number; zeitGeschaetzt?: boolean
+  quelle?: string; quelleUrl?: string
 }
 
 function parseIsoDuration(s: string): number {
-  if (!s) return 30
+  if (!s || typeof s !== 'string') return 0
   const h = parseInt(s.match(/(\d+)H/)?.[1] ?? '0')
   const m = parseInt(s.match(/(\d+)M/)?.[1] ?? '0')
-  return h * 60 + m || 30
+  return h * 60 + m
 }
 
 function extractJsonLd(html: string): Record<string, unknown> | null {
@@ -26,7 +27,7 @@ function extractJsonLd(html: string): Record<string, unknown> | null {
       for (const entry of candidates) {
         if (!entry || typeof entry !== 'object') continue
         const t = (entry as Record<string, unknown>)['@type']
-        if (t === 'Recipe' || (Array.isArray(t) && t.includes('Recipe'))) {
+        if (t === 'Recipe' || (Array.isArray(t) && (t as string[]).includes('Recipe'))) {
           return entry as Record<string, unknown>
         }
       }
@@ -35,7 +36,18 @@ function extractJsonLd(html: string): Record<string, unknown> | null {
   return null
 }
 
-function jsonLdToRezept(data: Record<string, unknown>): RezeptResult {
+function extractAuthorName(auth: unknown): string {
+  if (!auth) return ''
+  if (typeof auth === 'string') return auth
+  if (Array.isArray(auth) && auth.length > 0) {
+    const a = auth[0] as Record<string, unknown>
+    return String(a?.name ?? '')
+  }
+  if (typeof auth === 'object') return String((auth as Record<string, unknown>).name ?? '')
+  return ''
+}
+
+function jsonLdToRezept(data: Record<string, unknown>, sourceUrl?: string): RezeptResult {
   const name = String(data.name ?? 'Unbekanntes Rezept')
 
   const rawIngredients = (data.recipeIngredient as string[] | undefined) ?? []
@@ -52,8 +64,11 @@ function jsonLdToRezept(data: Record<string, unknown>): RezeptResult {
     .map(s => typeof s === 'string' ? s : String((s as Record<string, unknown>).text ?? ''))
     .filter(s => s.trim().length > 0)
 
-  const totalTime = String(data.totalTime ?? data.cookTime ?? data.prepTime ?? '')
-  const minuten = parseIsoDuration(totalTime)
+  const totalDur = parseIsoDuration(String(data.totalTime ?? ''))
+  const cookDur = parseIsoDuration(String(data.cookTime ?? ''))
+  const prepDur = parseIsoDuration(String(data.prepTime ?? ''))
+  const minuten = totalDur || cookDur + prepDur || cookDur || prepDur || 30
+  const arbeitszeitMinuten = prepDur && prepDur !== minuten ? prepDur : undefined
 
   const yld = data.recipeYield
   let personenAnzahl = 4
@@ -61,7 +76,15 @@ function jsonLdToRezept(data: Record<string, unknown>): RezeptResult {
   else if (typeof yld === 'string') { const n = parseInt(yld); if (!isNaN(n)) personenAnzahl = n }
   else if (Array.isArray(yld) && yld.length > 0) { const n = parseInt(String(yld[0])); if (!isNaN(n)) personenAnzahl = n }
 
-  return { name, emoji: '🍽️', zutaten, schritte, minuten, schwierigkeit: 'Mittel', personenAnzahl }
+  const pubRaw = data.publisher as string | Record<string, unknown> | undefined
+  const pubName = pubRaw ? (typeof pubRaw === 'string' ? pubRaw : String((pubRaw as Record<string, unknown>).name ?? '')) : ''
+  const authName = extractAuthorName(data.author)
+  let quelle = pubName && authName ? `${pubName} – ${authName}` : pubName || authName
+  if (!quelle && sourceUrl) {
+    try { quelle = new URL(sourceUrl).hostname.replace(/^www\./, '') } catch { /* */ }
+  }
+
+  return { name, emoji: '🍽️', zutaten, schritte, minuten, schwierigkeit: 'Mittel', personenAnzahl, arbeitszeitMinuten, zeitGeschaetzt: false, quelle: quelle || undefined, quelleUrl: sourceUrl || undefined }
 }
 
 function stripHtml(html: string): string {
@@ -73,9 +96,14 @@ function stripHtml(html: string): string {
     .trim()
 }
 
-const PARSE_PROMPT = `Extrahiere aus dem folgenden Text ein Rezept auf Deutsch. Antworte NUR als reines JSON ohne Markdown-Codeblock:
-{"name":"Rezeptname","emoji":"passendes Emoji","zutaten":[{"menge":"200g","name":"Mehl","typ":"Trocken"}],"schritte":["Schritt 1","Schritt 2"],"minuten":30,"schwierigkeit":"Einfach","personenAnzahl":4}
-Schwierigkeit: "Einfach", "Mittel" oder "Schwer". Typ: "Gemüse","Fleisch","Fisch","Trocken","Milch","Ei","Sonstiges".`
+const PARSE_PROMPT = `Extrahiere aus dem folgenden Text/Bild ein Rezept auf Deutsch. Antworte NUR als reines JSON ohne Markdown-Codeblock:
+{"name":"Rezeptname","emoji":"passendes Emoji","zutaten":[{"menge":"200g","name":"Mehl","typ":"Trocken"}],"schritte":["Schritt 1","Schritt 2"],"minuten":30,"arbeitszeitMinuten":15,"zeitGeschaetzt":false,"schwierigkeit":"Einfach","personenAnzahl":4,"quelle":"Quelle falls erkennbar"}
+Regeln:
+- Schwierigkeit: "Einfach", "Mittel" oder "Schwer". Typ: "Gemüse","Fleisch","Fisch","Trocken","Milch","Ei","Sonstiges".
+- minuten = Gesamtzeit (Arbeitszeit + Ruhezeit/Wartezeit) für die Planung. Suche nach "Gesamtzeit", "Arbeitszeit", "Zubereitungszeit", "Koch-/Backzeit", "Ruhezeit" und rechne sie zusammen.
+- arbeitszeitMinuten = nur die aktive Zubereitungszeit (ohne Ruhezeit, Kühlzeit, Backzeit). Weglassen wenn gleich wie minuten.
+- zeitGeschaetzt: true wenn keine Zeit im Text steht und du schätzt, false wenn die Zeit explizit angegeben ist.
+- quelle: Website-Name und/oder Autor falls erkennbar, sonst Feld weglassen.`
 
 async function callClaude(apiKey: string, messages: object[]): Promise<RezeptResult | null> {
   const resp = await fetch('https://api.anthropic.com/v1/messages', {
@@ -116,10 +144,14 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ fehler: 'Seite konnte nicht geladen werden. Bitte Link prüfen.' })
       }
       const jsonLd = extractJsonLd(html)
-      if (jsonLd) return NextResponse.json({ rezept: jsonLdToRezept(jsonLd) })
+      if (jsonLd) return NextResponse.json({ rezept: jsonLdToRezept(jsonLd, content) })
       const text = stripHtml(html).slice(0, 5000)
+      let quelleFromUrl = ''
+      try { quelleFromUrl = new URL(content).hostname.replace(/^www\./, '') } catch { /* */ }
       const rezept = await callClaude(apiKey, [{ role: 'user', content: `${PARSE_PROMPT}\n\n${text}` }])
       if (!rezept) return NextResponse.json({ fehler: 'Rezept konnte nicht ausgelesen werden.' })
+      if (!rezept.quelle && quelleFromUrl) rezept.quelle = quelleFromUrl
+      if (!rezept.quelleUrl) rezept.quelleUrl = content
       return NextResponse.json({ rezept })
     }
 
