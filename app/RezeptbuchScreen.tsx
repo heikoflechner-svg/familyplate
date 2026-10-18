@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import type { Rezept, WeekPlanEntry, DayAttendance, FamilyMember, Chef } from '../lib/state'
 import type { RezeptbuchEntry } from '../lib/state'
 import { loadWeekHistory, isFullRecipe } from '../lib/mealLogic'
@@ -77,6 +77,20 @@ export default function RezeptbuchScreen({
   const [savedToBookName, setSavedToBookName] = useState<string | null>(null)
   const [savedInlineNames, setSavedInlineNames] = useState<Set<string>>(new Set())
 
+  // R3 – Rezept hinzufügen
+  const [addScreen, setAddScreen] = useState<null | 'options' | 'input-text' | 'input-url' | 'preview'>(null)
+  const [addTextVal, setAddTextVal] = useState('')
+  const [addUrlVal, setAddUrlVal] = useState('')
+  const [addLoading, setAddLoading] = useState(false)
+  const [addError, setAddError] = useState<string | null>(null)
+  const [previewRezept, setPreviewRezept] = useState<Rezept | null>(null)
+  const [prevName, setPrevName] = useState('')
+  const [prevEmoji, setPrevEmoji] = useState('')
+  const [prevMins, setPrevMins] = useState(30)
+  const [prevSchw, setPrevSchw] = useState('Einfach')
+  const [prevSaving, setPrevSaving] = useState(false)
+  const imageInputRef = useRef<HTMLInputElement>(null)
+
   const isSelectionMode = !!selectionSlot
 
   useEffect(() => {
@@ -88,6 +102,76 @@ export default function RezeptbuchScreen({
       setHistoryLoaded(true)
     })
   }, [historyLoaded])
+
+  function compressImage(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const img = new Image()
+      const url = URL.createObjectURL(file)
+      img.onload = () => {
+        URL.revokeObjectURL(url)
+        const MAX = 800
+        let w = img.width, h = img.height
+        if (w > MAX || h > MAX) {
+          if (w > h) { h = Math.round(h * MAX / w); w = MAX }
+          else { w = Math.round(w * MAX / h); h = MAX }
+        }
+        const canvas = document.createElement('canvas')
+        canvas.width = w; canvas.height = h
+        canvas.getContext('2d')!.drawImage(img, 0, 0, w, h)
+        resolve(canvas.toDataURL('image/jpeg', 0.85))
+      }
+      img.onerror = reject
+      img.src = url
+    })
+  }
+
+  async function callAusQuelle(type: string, content: string): Promise<void> {
+    setAddLoading(true)
+    setAddError(null)
+    try {
+      const resp = await fetch('/api/rezeptbuch/aus-quelle', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type, content }),
+      })
+      const data = await resp.json() as { rezept?: Rezept; fehler?: string }
+      if (data.fehler) { setAddError(data.fehler); return }
+      if (!data.rezept) { setAddError('Kein Rezept gefunden.'); return }
+      const r = data.rezept
+      setPreviewRezept(r)
+      setPrevName(r.name)
+      setPrevEmoji(r.emoji)
+      setPrevMins(r.minuten ?? 30)
+      setPrevSchw(r.schwierigkeit ?? 'Einfach')
+      setAddScreen('preview')
+    } catch {
+      setAddError('Netzwerkfehler. Bitte erneut versuchen.')
+    } finally {
+      setAddLoading(false)
+    }
+  }
+
+  async function handlePreviewSave(): Promise<void> {
+    if (!previewRezept || !onSaveToBook) return
+    const rezept: Rezept = {
+      ...previewRezept,
+      name: prevName.trim() || previewRezept.name,
+      emoji: prevEmoji || previewRezept.emoji,
+      minuten: prevMins,
+      schwierigkeit: prevSchw,
+    }
+    setPrevSaving(true)
+    try {
+      await onSaveToBook(rezept)
+      setAddScreen(null)
+      setPreviewRezept(null)
+      setAddTextVal('')
+      setAddUrlVal('')
+      setAddError(null)
+    } finally {
+      setPrevSaving(false)
+    }
+  }
 
   function canEdit(entry: RezeptbuchEntry): boolean {
     return !isSelectionMode && (entry.erstelltVon === currentUser || canEditSettings)
@@ -177,6 +261,225 @@ export default function RezeptbuchScreen({
   function formatDate(iso: string): string {
     const d = new Date(iso + 'T00:00:00')
     return `${d.getDate()}. ${M[d.getMonth()]} ${d.getFullYear()}`
+  }
+
+  // ── R3: Rezept hinzufügen – Screens ─────────────────────────────────────────
+  if (addScreen === 'options') {
+    return (
+      <div className="screen active">
+        <div className="topbar">
+          <button className="back" onClick={() => { setAddScreen(null); setAddError(null) }}>‹</button>
+          <h1 style={{ fontSize: 16 }}>+ Rezept hinzufügen</h1>
+        </div>
+        <div className="content" style={{ padding: '24px 16px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <input
+            ref={imageInputRef}
+            type="file"
+            accept="image/*"
+            style={{ display: 'none' }}
+            onChange={async e => {
+              const file = e.target.files?.[0]
+              if (!file) return
+              e.target.value = ''
+              setAddError(null)
+              try {
+                const compressed = await compressImage(file)
+                await callAusQuelle('image', compressed)
+              } catch {
+                setAddError('Bild konnte nicht verarbeitet werden.')
+              }
+            }}
+          />
+          <button
+            onClick={() => imageInputRef.current?.click()}
+            disabled={addLoading}
+            style={{ padding: '16px 20px', fontSize: 15, background: 'white', border: '1px solid #E5E7EB', borderRadius: 14, cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 12 }}>
+            <span style={{ fontSize: 24 }}>📷</span>
+            <div>
+              <div style={{ fontWeight: 600, color: '#111' }}>Foto</div>
+              <div style={{ fontSize: 12, color: '#888', marginTop: 2 }}>Kamera oder Galerie</div>
+            </div>
+          </button>
+          <button
+            onClick={() => { setAddError(null); setAddScreen('input-text') }}
+            disabled={addLoading}
+            style={{ padding: '16px 20px', fontSize: 15, background: 'white', border: '1px solid #E5E7EB', borderRadius: 14, cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 12 }}>
+            <span style={{ fontSize: 24 }}>📝</span>
+            <div>
+              <div style={{ fontWeight: 600, color: '#111' }}>Text einfügen</div>
+              <div style={{ fontSize: 12, color: '#888', marginTop: 2 }}>Rezepttext einfügen</div>
+            </div>
+          </button>
+          <button
+            onClick={() => { setAddError(null); setAddScreen('input-url') }}
+            disabled={addLoading}
+            style={{ padding: '16px 20px', fontSize: 15, background: 'white', border: '1px solid #E5E7EB', borderRadius: 14, cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 12 }}>
+            <span style={{ fontSize: 24 }}>🔗</span>
+            <div>
+              <div style={{ fontWeight: 600, color: '#111' }}>Link einfügen</div>
+              <div style={{ fontSize: 12, color: '#888', marginTop: 2 }}>Rezept-URL eingeben</div>
+            </div>
+          </button>
+          {addLoading && <div style={{ color: '#888', fontSize: 13, textAlign: 'center', marginTop: 8 }}>⏳ Rémy liest Rezept aus…</div>}
+          {addError && <div style={{ color: '#EF4444', fontSize: 13, marginTop: 4 }}>{addError}</div>}
+        </div>
+      </div>
+    )
+  }
+
+  if (addScreen === 'input-text') {
+    return (
+      <div className="screen active">
+        <div className="topbar">
+          <button className="back" onClick={() => { setAddScreen('options'); setAddError(null) }}>‹</button>
+          <h1 style={{ fontSize: 15 }}>📝 Rezepttext einfügen</h1>
+        </div>
+        <div className="content" style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <textarea
+            value={addTextVal}
+            onChange={e => setAddTextVal(e.target.value)}
+            placeholder="Rezepttext hier einfügen…"
+            rows={10}
+            style={{ width: '100%', fontSize: 13, padding: '10px 12px', border: '1px solid #E5E7EB', borderRadius: 12, outline: 'none', resize: 'vertical', boxSizing: 'border-box', fontFamily: 'inherit' }}
+          />
+          {addError && <div style={{ color: '#EF4444', fontSize: 13 }}>{addError}</div>}
+          <button
+            onClick={() => { if (addTextVal.trim()) void callAusQuelle('text', addTextVal.trim()) }}
+            disabled={addLoading || !addTextVal.trim()}
+            style={{ padding: '12px', fontSize: 14, fontWeight: 600, background: addLoading || !addTextVal.trim() ? '#E5E7EB' : '#1D9E75', color: addLoading || !addTextVal.trim() ? '#aaa' : 'white', border: 'none', borderRadius: 12, cursor: addLoading || !addTextVal.trim() ? 'default' : 'pointer' }}>
+            {addLoading ? '⏳ Rémy liest aus…' : 'Rezept auslesen'}
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  if (addScreen === 'input-url') {
+    return (
+      <div className="screen active">
+        <div className="topbar">
+          <button className="back" onClick={() => { setAddScreen('options'); setAddError(null) }}>‹</button>
+          <h1 style={{ fontSize: 15 }}>🔗 Rezept-Link</h1>
+        </div>
+        <div className="content" style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <input
+            type="url"
+            value={addUrlVal}
+            onChange={e => setAddUrlVal(e.target.value)}
+            placeholder="https://…"
+            style={{ width: '100%', fontSize: 14, padding: '10px 12px', border: '1px solid #E5E7EB', borderRadius: 12, outline: 'none', boxSizing: 'border-box' }}
+          />
+          {addError && <div style={{ color: '#EF4444', fontSize: 13 }}>{addError}</div>}
+          <button
+            onClick={() => { if (addUrlVal.trim()) void callAusQuelle('url', addUrlVal.trim()) }}
+            disabled={addLoading || !addUrlVal.trim()}
+            style={{ padding: '12px', fontSize: 14, fontWeight: 600, background: addLoading || !addUrlVal.trim() ? '#E5E7EB' : '#1D9E75', color: addLoading || !addUrlVal.trim() ? '#aaa' : 'white', border: 'none', borderRadius: 12, cursor: addLoading || !addUrlVal.trim() ? 'default' : 'pointer' }}>
+            {addLoading ? '⏳ Rémy liest aus…' : 'Rezept auslesen'}
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  if (addScreen === 'preview' && previewRezept) {
+    const allAllergenWarnings = formatAllergenWarningsCard(
+      checkAllergens(
+        { zutaten: previewRezept.zutaten },
+        members.filter(m => m.allergien.length > 0).map(m => ({ name: m.name, allergien: m.allergien }))
+      )
+    )
+    return (
+      <div className="screen active" style={{ overflowY: 'auto' }}>
+        <div className="topbar">
+          <button className="back" onClick={() => setAddScreen('options')}>‹</button>
+          <h1 style={{ fontSize: 15 }}>Rezept prüfen</h1>
+        </div>
+        <div className="content" style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div style={{ background: '#F9FAFB', borderRadius: 12, padding: '14px' }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: '#888', textTransform: 'uppercase', marginBottom: 10 }}>Rezept bearbeiten</div>
+            <div style={{ display: 'flex', gap: 10, marginBottom: 10 }}>
+              <div style={{ flex: '0 0 56px' }}>
+                <div style={{ fontSize: 11, color: '#888', marginBottom: 4 }}>Emoji</div>
+                <input
+                  value={prevEmoji}
+                  onChange={e => setPrevEmoji(e.target.value)}
+                  style={{ width: '100%', fontSize: 22, textAlign: 'center', padding: '6px', border: '1px solid #E5E7EB', borderRadius: 8, outline: 'none', background: 'white', boxSizing: 'border-box' }}
+                />
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 11, color: '#888', marginBottom: 4 }}>Name</div>
+                <input
+                  value={prevName}
+                  onChange={e => setPrevName(e.target.value)}
+                  style={{ width: '100%', fontSize: 14, padding: '8px 10px', border: '1px solid #E5E7EB', borderRadius: 8, outline: 'none', background: 'white', boxSizing: 'border-box' }}
+                />
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 11, color: '#888', marginBottom: 4 }}>Minuten</div>
+                <input
+                  type="number"
+                  value={prevMins}
+                  onChange={e => setPrevMins(Math.max(1, parseInt(e.target.value) || 1))}
+                  style={{ width: '100%', fontSize: 14, padding: '8px 10px', border: '1px solid #E5E7EB', borderRadius: 8, outline: 'none', background: 'white', boxSizing: 'border-box' }}
+                />
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 11, color: '#888', marginBottom: 4 }}>Schwierigkeit</div>
+                <select
+                  value={prevSchw}
+                  onChange={e => setPrevSchw(e.target.value)}
+                  style={{ width: '100%', fontSize: 14, padding: '8px 10px', border: '1px solid #E5E7EB', borderRadius: 8, outline: 'none', background: 'white', boxSizing: 'border-box' }}>
+                  <option>Einfach</option>
+                  <option>Mittel</option>
+                  <option>Schwer</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {previewRezept.zutaten.length > 0 && (
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 700, color: '#555', marginBottom: 6 }}>Zutaten</div>
+              {previewRezept.zutaten.map((z, i) => (
+                <div key={i} style={{ fontSize: 13, color: '#333', padding: '3px 0', borderBottom: '1px solid #f5f5f5' }}>
+                  {z.menge && <span style={{ color: '#888', marginRight: 6 }}>{z.menge}</span>}
+                  {z.name}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {previewRezept.schritte.length > 0 && (
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 700, color: '#555', marginBottom: 6 }}>Zubereitung</div>
+              {previewRezept.schritte.map((s, i) => (
+                <div key={i} style={{ display: 'flex', gap: 10, marginBottom: 8 }}>
+                  <div style={{ flexShrink: 0, width: 20, height: 20, borderRadius: '50%', background: '#1D9E75', color: 'white', fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{i + 1}</div>
+                  <div style={{ fontSize: 13, color: '#333', lineHeight: 1.5, paddingTop: 2 }}>{s}</div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {allAllergenWarnings.length > 0 && (
+            <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 10, padding: '10px 12px' }}>
+              {allAllergenWarnings.map((w, i) => (
+                <div key={i} style={{ fontSize: 12, color: '#DC2626' }}>{w}</div>
+              ))}
+            </div>
+          )}
+
+          <button
+            onClick={() => void handlePreviewSave()}
+            disabled={prevSaving || !prevName.trim()}
+            style={{ padding: '14px', fontSize: 15, fontWeight: 700, background: prevSaving || !prevName.trim() ? '#E5E7EB' : '#1D9E75', color: prevSaving || !prevName.trim() ? '#aaa' : 'white', border: 'none', borderRadius: 12, cursor: prevSaving || !prevName.trim() ? 'default' : 'pointer', marginBottom: 8 }}>
+            {prevSaving ? '⏳ Wird gespeichert…' : '✓ Im Rezeptbuch speichern'}
+          </button>
+        </div>
+      </div>
+    )
   }
 
   // ── Modals ───────────────────────────────────────────────────────────────────
@@ -299,6 +602,14 @@ export default function RezeptbuchScreen({
                 ))}
               </div>
             </div>
+
+            {!isSelectionMode && onSaveToBook && (
+              <button
+                onClick={() => { setAddError(null); setAddScreen('options') }}
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, width: '100%', padding: '10px', fontSize: 13, fontWeight: 600, color: '#1D9E75', background: '#F0FDF8', border: '1px dashed #6EE7B7', borderRadius: 10, cursor: 'pointer', marginTop: 4, marginBottom: 4 }}>
+                + Rezept hinzufügen
+              </button>
+            )}
 
             {entries.length === 0 && (
               <div style={{ textAlign: 'center', padding: '32px 0', color: '#aaa', fontSize: 13, lineHeight: 1.6 }}>
