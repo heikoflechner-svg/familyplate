@@ -290,7 +290,7 @@ export default function RezeptbuchScreen({
                   ['gekocht', 'Oft gekocht'],
                   ['recent', 'Zuletzt'],
                   ['rating', '⭐ Bewertung'],
-                  ['longAgo', 'Nicht gekocht'],
+                  ['longAgo', 'Lange nicht gekocht'],
                 ] as [SortMode, string][]).map(([m, label]) => (
                   <button key={m} onClick={() => setSortMode(m)}
                     style={{ flex: '1 1 auto', padding: '4px 6px', fontSize: 10, border: `1px solid ${sortMode === m ? '#1D9E75' : '#ddd'}`, borderRadius: 6, background: sortMode === m ? '#E1F5EE' : 'white', color: sortMode === m ? '#0F6E56' : '#888', cursor: 'pointer', whiteSpace: 'nowrap' }}>
