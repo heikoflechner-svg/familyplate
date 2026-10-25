@@ -1,4 +1,5 @@
 import type { ShoppingItem, WeekPlanEntry, Rezept, Rezeptzutat, WochenSlot } from './state'
+import { getMeal } from './mealsDataUtils'
 
 const WOCHENTAGE = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag']
 
@@ -45,7 +46,7 @@ export function isWaterIngredient(name: string): boolean {
 }
 
 function generateItemsForEntry(entry: WeekPlanEntry, mealsData: Record<string, Rezept>, nextWeek = false): ShoppingItem[] {
-  const rezept = mealsData[entry.gericht]
+  const rezept = getMeal(mealsData, entry.tag, entry.slot, entry.gericht)
   if (!rezept) return []
   const items: ShoppingItem[] = []
   const seen = new Set<string>()

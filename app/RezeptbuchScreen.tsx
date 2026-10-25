@@ -3,6 +3,7 @@ import { useState, useEffect, useRef } from 'react'
 import type { Rezept, Rezeptzutat, WeekPlanEntry, DayAttendance, FamilyMember, Chef } from '../lib/state'
 import type { RezeptbuchEntry } from '../lib/state'
 import { loadWeekHistory, isFullRecipe } from '../lib/mealLogic'
+import { getMeal } from '../lib/mealsDataUtils'
 import { checkAllergens, formatAllergenWarningsCard } from '../lib/allergenCheck'
 import { computeRatingAvg, fmtAvg, type DishRating } from '../lib/dishRatingsLogic'
 import RecipeModal from './RecipeModal'
@@ -262,7 +263,7 @@ export default function RezeptbuchScreen({
         const key = entry.gericht.toLowerCase()
         if (seen.has(key)) continue
         seen.add(key)
-        result.push({ gericht: entry.gericht, emoji: entry.emoji, date: dayDate.toISOString().slice(0, 10), rezept: mealsData[entry.gericht] ?? null })
+        result.push({ gericht: entry.gericht, emoji: entry.emoji, date: dayDate.toISOString().slice(0, 10), rezept: getMeal(mealsData, entry.tag, entry.slot, entry.gericht) ?? null })
       }
     }
     for (const week of history) {
@@ -274,7 +275,7 @@ export default function RezeptbuchScreen({
         const dayIdx = WOCHENTAGE.indexOf(entry.tag)
         const dayDate = new Date(mon)
         if (dayIdx >= 0) dayDate.setDate(mon.getDate() + dayIdx)
-        result.push({ gericht: entry.gericht, emoji: entry.emoji, date: dayDate.toISOString().slice(0, 10), rezept: week.mealsData?.[entry.gericht] ?? null })
+        result.push({ gericht: entry.gericht, emoji: entry.emoji, date: dayDate.toISOString().slice(0, 10), rezept: getMeal(week.mealsData ?? {}, entry.tag, entry.slot, entry.gericht) ?? null })
       }
     }
     return result.sort((a, b) => b.date.localeCompare(a.date)).slice(0, 20)

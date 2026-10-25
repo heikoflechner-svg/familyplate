@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
 import { loadWeekPlan, saveWeekPlan, saveAttendance, saveShoppingList, saveProposals, saveWochenchef, savePlanConfirmed, saveShopDone, saveShoppingDays, saveShoppingPersons, loadLastDishes, getMondayIso, getNextMondayIso, saveWeekStart, loadNextWeekData, saveNextWeekData, activateNextWeek, buildDefaultAttendance, loadMissingRecipes, getPersonCountForSlot } from '../lib/mealLogic'
+import { needsMigration, migrateMealsDataAddSlotKeys } from '../lib/mealsDataUtils'
 import { loadFreezerItems, loadPantryItems, getFreezerListString, getPantryListString } from '../lib/freezerLogic'
 import { loadFamilyProfile, saveFamilyProfile, applyChefStats, incrementWochenchefStat, DEFAULT_MEMBERS, buildFamilyPrompt } from '../lib/familyLogic'
 import { generateShoppingList } from '../lib/shoppingLogic'
@@ -178,7 +179,9 @@ export default function FamilyPlateApp() {
         saveAttendance(resolvedAtt, []).catch(() => {})
       }
       setWeekPlan(plan)
-      setMealsData(md)
+      const migratedMd = needsMigration(plan, md) ? migrateMealsDataAddSlotKeys(plan, md) : md
+      if (migratedMd !== md) void saveWeekPlan(plan, migratedMd, w)
+      setMealsData(migratedMd)
       setWishes(w)
       setAttendance(resolvedAtt)
       setAttendanceConfirmed(ac)
@@ -191,7 +194,14 @@ export default function FamilyPlateApp() {
       setShoppingPersons(sp)
       setWeekStart(ws)
       setNextWeekStart(nws)
-      setNextWeekData(nwd)
+      if (nwd?.plan && nwd?.mealsData && needsMigration(nwd.plan, nwd.mealsData)) {
+        const migratedNwMeals = migrateMealsDataAddSlotKeys(nwd.plan, nwd.mealsData)
+        const migratedNwd = { ...nwd, mealsData: migratedNwMeals }
+        setNextWeekData(migratedNwd)
+        void saveNextWeekData(nws ?? getNextMondayIso(), migratedNwd)
+      } else {
+        setNextWeekData(nwd)
+      }
       setPlanSettings(resolvedPs)
       setMittagsloseTage(resolvedPs?.mittagsloseTage ?? effectiveMtl)
       setPlanWE(resolvedPs?.planWE ?? effectivePlanWE)
@@ -213,7 +223,8 @@ export default function FamilyPlateApp() {
         const pntStr = getPantryListString(pantry)
         const pcCb = (t: string, s: string) => getPersonCountForSlot(t, s as WochenSlot, resolvedAtt, mbs)
         void loadMissingRecipes(plan, md, frzStr, pntStr, fp, pcCb, acm)
-          .then(full => {
+          .then(rawFull => {
+            const full = migrateMealsDataAddSlotKeys(plan, rawFull)
             const list = generateShoppingList(plan, full)
             setShoppingList(list)
             setMealsData(full)

@@ -11,6 +11,7 @@ import { supabase } from '../lib/supabase'
 import SlotWunschPanel from './SlotWunschPanel'
 import RecipeModal from './RecipeModal'
 import RezeptbuchScreen, { type RezeptSelection } from './RezeptbuchScreen'
+import { getMeal, mealsKey, migrateMealsDataAddSlotKeys } from '../lib/mealsDataUtils'
 
 const WOCHENTAGE = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag']
 const TAG_SHORT: Record<string, string> = {
@@ -538,7 +539,7 @@ export default function WocheScreen({
       const entryDate = new Date(mondayDate)
       entryDate.setDate(mondayDate.getDate() + dayIdx)
       if (entryDate < today) continue
-      const r = mealsData[entry.gericht]
+      const r = getMeal(mealsData, entry.tag, entry.slot, entry.gericht)
       if (!r || !isFullRecipe(r)) continue
       if ((r.rezeptVersion ?? 0) >= 2) continue
       tasks.push({ entry, isNextWeek: false })
@@ -546,7 +547,7 @@ export default function WocheScreen({
 
     if (onNextWeekDataChange && nextWeekData?.plan && nextWeekData.mealsData) {
       for (const entry of nextWeekData.plan) {
-        const r = nextWeekData.mealsData[entry.gericht]
+        const r = getMeal(nextWeekData.mealsData, entry.tag, entry.slot, entry.gericht)
         if (!r || !isFullRecipe(r)) continue
         if ((r.rezeptVersion ?? 0) >= 2) continue
         tasks.push({ entry, isNextWeek: true })
@@ -739,7 +740,8 @@ export default function WocheScreen({
     if (!nwPendingPlan || !onNextWeekDataChange) return
     setNwSaving(true)
     const nextMonday = nextWeekStart ?? getNextMondayIso()
-    await onNextWeekDataChange({ plan: nwPendingPlan, mealsData: nwPendingMeals, planConfirmed: false }, nextMonday)
+    const migratedNwMeals = migrateMealsDataAddSlotKeys(nwPendingPlan, nwPendingMeals)
+    await onNextWeekDataChange({ plan: nwPendingPlan, mealsData: migratedNwMeals, planConfirmed: false }, nextMonday)
     setNwPendingPlan(null)
     setNwPendingMeals({})
     setNwSaving(false)
@@ -1332,7 +1334,7 @@ export default function WocheScreen({
     if (!pendingDay) return
     setSaving(true)
     const newPlan = [...weekPlan.filter(e => e.tag !== pendingDay.tag), ...pendingDay.entries]
-    await onWeekPlanChange(newPlan, { ...mealsData, ...pendingDayMeals })
+    await onWeekPlanChange(newPlan, migrateMealsDataAddSlotKeys(newPlan, { ...mealsData, ...pendingDayMeals }))
     await onPlanConfirm?.(pendingDay.entries)
     setPendingDay(null)
     setPendingDayMeals({})
@@ -1568,8 +1570,8 @@ export default function WocheScreen({
     const pc2 = getPersonCountForSlot(t2, s2, attendance, mbs)
 
     if (pc1 !== pc2) {
-      const rezept1 = mealsData[e1.gericht]
-      const rezept2 = mealsData[e2.gericht]
+      const rezept1 = getMeal(mealsData, t1, s1, e1.gericht)
+      const rezept2 = getMeal(mealsData, t2, s2, e2.gericht)
       if (rezept1 && isFullRecipe(rezept1) && (rezept1.personenAnzahl ?? pc1) !== pc2) {
         const rescaled = await rescaleRecipe(rezept1, pc2)
         if (rescaled) {
@@ -1587,6 +1589,10 @@ export default function WocheScreen({
     }
 
     newShoppingList = swapShoppingItemsTags(newShoppingList, t1, s1, e1.gericht, t2, s2, e2.gericht)
+    const r1ForSwap = newMealsData[e1.gericht] ?? getMeal(mealsData, t1, s1, e1.gericht)
+    const r2ForSwap = newMealsData[e2.gericht] ?? getMeal(mealsData, t2, s2, e2.gericht)
+    if (r1ForSwap) newMealsData[mealsKey(t2, s2)] = r1ForSwap
+    if (r2ForSwap) newMealsData[mealsKey(t1, s1)] = r2ForSwap
 
     await onWeekPlanChange(newPlan, newMealsData)
     await onShoppingListChange(newShoppingList)
@@ -1756,7 +1762,7 @@ export default function WocheScreen({
   async function openRecipe(gericht: string, emoji: string, tag: string, slot: WochenSlot) {
     setSelectedMealName(gericht)
     setRecipeContext({ tag, slot, source: 'current', emoji })
-    const existing = mealsData[gericht]
+    const existing = getMeal(mealsData, tag, slot, gericht)
     const personCount = getPersonCountForSlot(tag, slot, attendance, members.length ? members : DEFAULT_MEMBERS)
     if (isFullRecipe(existing) && existing?.personenAnzahl === personCount) return
     setRecipeLoading(gericht)
@@ -1764,7 +1770,7 @@ export default function WocheScreen({
       if (isFullRecipe(existing) && existing!.personenAnzahl !== undefined && existing!.personenAnzahl !== personCount) {
         const rescaled = await rescaleRecipe(existing!, personCount)
         if (rescaled) {
-          await onWeekPlanChange(weekPlan, { ...mealsData, [gericht]: rescaled })
+          await onWeekPlanChange(weekPlan, { ...mealsData, [gericht]: rescaled, [mealsKey(tag, slot)]: rescaled })
           await onShoppingListChange(rescaleShoppingListMengen(shoppingList, gericht, rescaled.zutaten, false))
         }
       } else {
@@ -1775,7 +1781,7 @@ export default function WocheScreen({
             personenAnzahl: personCount,
             ersetzteZutaten: rezept.ersetzteZutaten?.length ? rezept.ersetzteZutaten : (existing?.ersetzteZutaten ?? []),
           }
-          await onWeekPlanChange(weekPlan, { ...mealsData, [gericht]: merged })
+          await onWeekPlanChange(weekPlan, { ...mealsData, [gericht]: merged, [mealsKey(tag, slot)]: merged })
         }
       }
     } finally {
@@ -1840,7 +1846,7 @@ export default function WocheScreen({
   async function openNwSavedRecipe(gericht: string, emoji: string, tag: string, slot: WochenSlot) {
     setSelectedMealName(gericht)
     setRecipeContext({ tag, slot, source: 'nwSaved', emoji })
-    const existing = nextWeekData?.mealsData?.[gericht]
+    const existing = getMeal(nextWeekData?.mealsData ?? {}, tag, slot, gericht)
     const nwAtt = nextWeekData?.attendance ?? []
     const personCount = getPersonCountForSlot(tag, slot, nwAtt, members.length ? members : DEFAULT_MEMBERS)
     if (isFullRecipe(existing) && existing?.personenAnzahl === personCount) return
@@ -1853,7 +1859,7 @@ export default function WocheScreen({
         if (rescaled) {
           const nwList = nextWeekData?.shoppingList ?? []
           await onNextWeekDataChange({
-            mealsData: { ...(nextWeekData?.mealsData ?? {}), [gericht]: rescaled },
+            mealsData: { ...(nextWeekData?.mealsData ?? {}), [gericht]: rescaled, [mealsKey(tag, slot)]: rescaled },
             shoppingList: rescaleShoppingListMengen(nwList, gericht, rescaled.zutaten, false),
           }, nextMonday)
           if (shoppingList.some(i => i.gericht === gericht && !!i.nextWeek && !i.erledigt)) {
@@ -1864,7 +1870,7 @@ export default function WocheScreen({
         const rezept = await generateRecipe(gericht, emoji, getFreezerListString(freezerItems), getPantryListString(pantryItems), familyPrompt, personCount, allergenCheckMembers)
         if (rezept) {
           const merged: Rezept = { ...rezept, personenAnzahl: personCount, ersetzteZutaten: rezept.ersetzteZutaten?.length ? rezept.ersetzteZutaten : (existing?.ersetzteZutaten ?? []) }
-          await onNextWeekDataChange({ mealsData: { ...(nextWeekData?.mealsData ?? {}), [gericht]: merged } }, nextMonday)
+          await onNextWeekDataChange({ mealsData: { ...(nextWeekData?.mealsData ?? {}), [gericht]: merged, [mealsKey(tag, slot)]: merged } }, nextMonday)
         }
       }
     } finally {
@@ -1886,7 +1892,9 @@ export default function WocheScreen({
 
   // Rezept fürs Modal auflösen – über alle Stores (Plan-Vorschau, aktuelle Woche, NW-Vorschlag, NW-gespeichert)
   function selectedRezept(name: string): Rezept | null {
-    const cands = [pendingPlanMeals[name], mealsData[name], nwPendingMeals[name], nextWeekData?.mealsData?.[name]]
+    const curMeal = recipeContext ? getMeal(mealsData, recipeContext.tag, recipeContext.slot, name) : mealsData[name]
+    const nwMeal = recipeContext ? getMeal(nextWeekData?.mealsData ?? {}, recipeContext.tag, recipeContext.slot, name) : nextWeekData?.mealsData?.[name]
+    const cands = [pendingPlanMeals[name], curMeal, nwPendingMeals[name], nwMeal]
     return cands.find(r => isFullRecipe(r)) ?? cands.find((r): r is Rezept => !!r) ?? null
   }
 
@@ -1902,7 +1910,8 @@ export default function WocheScreen({
       if (!rezept) return
       const merged: Rezept = { ...rezept, personenAnzahl: personCount, ersetzteZutaten: rezept.ersetzteZutaten?.length ? rezept.ersetzteZutaten : [] }
       if (source === 'current') {
-        await onWeekPlanChange(weekPlan, { ...mealsData, [selectedMealName]: merged })
+        const slotK = mealsKey(tag, slot)
+        await onWeekPlanChange(weekPlan, { ...mealsData, [selectedMealName]: merged, [slotK]: merged })
         if (planConfirmed) {
           const entry = weekPlan.find(e => e.tag === tag && e.slot === slot)
           if (entry) await onShoppingListChange(rewriteShoppingItemsForDish(shoppingList, entry, merged, false))
@@ -1916,7 +1925,7 @@ export default function WocheScreen({
         const entry = (nextWeekData?.plan ?? []).find(e => e.tag === tag && e.slot === slot)
         const nwList = nextWeekData?.shoppingList ?? []
         await onNextWeekDataChange({
-          mealsData: { ...(nextWeekData?.mealsData ?? {}), [selectedMealName]: merged },
+          mealsData: { ...(nextWeekData?.mealsData ?? {}), [selectedMealName]: merged, [mealsKey(tag, slot)]: merged },
           ...(entry ? { shoppingList: rewriteShoppingItemsForDish(nwList, entry, merged, false) } : {}),
         }, nextMonday)
         if (entry && shoppingList.some(i => i.gericht === entry.gericht && !!i.nextWeek && !i.erledigt)) {
@@ -1945,7 +1954,8 @@ export default function WocheScreen({
       const merged: Rezept = { ...rezept, personenAnzahl: personCount, ersetzteZutaten: rezept.ersetzteZutaten?.length ? rezept.ersetzteZutaten : (existing.ersetzteZutaten ?? []) }
       if (allergieHinweise.length > 0) setAdjustAllergieHinweise(allergieHinweise)
       if (source === 'current') {
-        await onWeekPlanChange(weekPlan, { ...mealsData, [selectedMealName]: merged })
+        const slotK = mealsKey(tag, slot)
+        await onWeekPlanChange(weekPlan, { ...mealsData, [selectedMealName]: merged, [slotK]: merged })
         if (planConfirmed) {
           const entry = weekPlan.find(e => e.tag === tag && e.slot === slot)
           if (entry) await onShoppingListChange(rewriteShoppingItemsForDish(shoppingList, entry, merged, false))
@@ -1959,7 +1969,7 @@ export default function WocheScreen({
         const entry = (nextWeekData?.plan ?? []).find(e => e.tag === tag && e.slot === slot)
         const nwList = nextWeekData?.shoppingList ?? []
         await onNextWeekDataChange({
-          mealsData: { ...(nextWeekData?.mealsData ?? {}), [selectedMealName]: merged },
+          mealsData: { ...(nextWeekData?.mealsData ?? {}), [selectedMealName]: merged, [mealsKey(tag, slot)]: merged },
           ...(entry ? { shoppingList: rewriteShoppingItemsForDish(nwList, entry, merged, false) } : {}),
         }, nextMonday)
         if (entry && shoppingList.some(i => i.gericht === entry.gericht && !!i.nextWeek && !i.erledigt)) {
@@ -2011,7 +2021,7 @@ export default function WocheScreen({
 
   async function acceptPlan() {
     setSaving(true)
-    const mergedMeals = { ...mealsData, ...pendingPlanMeals }
+    const mergedMeals = migrateMealsDataAddSlotKeys(pendingPlan, { ...mealsData, ...pendingPlanMeals })
     const isChefConfirm = currentUser === wochenchef
     const planSnapshot = pendingPlan
     await onWeekPlanChange(planSnapshot, mergedMeals)
@@ -2083,7 +2093,7 @@ export default function WocheScreen({
           ? { ...e, gericht: wish.dishName, emoji: wish.emoji }
           : e
       )
-      if (!mealsData[wish.dishName]) confirmedAlts.push({ gericht: wish.dishName, emoji: wish.emoji, tag, slot })
+      if (!getMeal(mealsData, tag, slot, wish.dishName)) confirmedAlts.push({ gericht: wish.dishName, emoji: wish.emoji, tag, slot })
     }
 
     // Rezepte für neu bestätigte Alternativ-Gerichte laden (nötig vor dem Speichern)
@@ -2094,9 +2104,13 @@ export default function WocheScreen({
     await Promise.all(confirmedAlts.map(async ({ gericht, emoji, tag, slot }) => {
       const personCount = getPersonCountForSlot(tag, slot, attendance, membersForCount)
       const rezept = await generateRecipe(gericht, emoji, freezerStr, pantryStr, familyPrompt, personCount)
-      if (rezept) newMeals[gericht] = { ...rezept, personenAnzahl: personCount }
+      if (rezept) {
+        const r = { ...rezept, personenAnzahl: personCount }
+        newMeals[gericht] = r
+        newMeals[mealsKey(tag, slot)] = r
+      }
     }))
-    const altMealsData = { ...mealsData, ...newMeals }
+    const altMealsData = migrateMealsDataAddSlotKeys(finalPlan, { ...mealsData, ...newMeals })
     const pcCallback = (tag: string, slot: WochenSlot) => getPersonCountForSlot(tag, slot, attendance, membersForCount)
 
     // Aktivierte Ergänzungen an Einkaufsliste übergeben
@@ -2132,7 +2146,7 @@ export default function WocheScreen({
     setSaving(false)
     // Restliche fehlende/veraltete Rezepte im Hintergrund nachladen
     void loadMissingRecipes(finalPlan, altMealsData, freezerStr, pantryStr, familyPrompt, pcCallback, allergenCheckMembers)
-      .then(full => onWeekPlanChange(finalPlan, full))
+      .then(rawFull => onWeekPlanChange(finalPlan, migrateMealsDataAddSlotKeys(finalPlan, rawFull)))
   }
 
   async function festmachenPlan() {
@@ -2146,7 +2160,7 @@ export default function WocheScreen({
 
     if (pendingPlan.length > 0) {
       finalPlan = pendingPlan
-      finalMeals = { ...mealsData, ...pendingPlanMeals }
+      finalMeals = migrateMealsDataAddSlotKeys(finalPlan, { ...mealsData, ...pendingPlanMeals })
       const matchedIds = new Set<string>()
       for (const entry of pendingPlan) {
         if (entry.quelle !== 'reste' && entry.quelle !== 'gefriertruhe') continue
@@ -2172,12 +2186,12 @@ export default function WocheScreen({
         const altTag = key.slice(0, dashIdx)
         const altSlot = key.slice(dashIdx + 1) as WochenSlot
         finalPlan = finalPlan.map(e => e.tag === altTag && e.slot === altSlot ? { ...e, gericht: wish.dishName, emoji: wish.emoji } : e)
-        if (!finalMeals[wish.dishName]) confirmedAlts.push({ gericht: wish.dishName, emoji: wish.emoji, tag: altTag, slot: altSlot })
+        if (!getMeal(finalMeals, altTag, altSlot, wish.dishName)) confirmedAlts.push({ gericht: wish.dishName, emoji: wish.emoji, tag: altTag, slot: altSlot })
       }
       await Promise.all(confirmedAlts.map(async ({ gericht, emoji, tag, slot }) => {
         const personCount = pc(tag, slot)
         const rezept = await generateRecipe(gericht, emoji, freezerStr, pantryStr, familyPrompt, personCount)
-        if (rezept) finalMeals[gericht] = { ...rezept, personenAnzahl: personCount }
+        if (rezept) { const r = { ...rezept, personenAnzahl: personCount }; finalMeals[gericht] = r; finalMeals[mealsKey(tag, slot)] = r }
       }))
       const newItems: ShoppingItem[] = []
       for (const wishId of chefErgaenzungIds) {
@@ -2203,7 +2217,8 @@ export default function WocheScreen({
     setView('home')
 
     void loadMissingRecipes(finalPlan, finalMeals, freezerStr, pantryStr, familyPrompt, pc, allergenCheckMembers)
-      .then(full => {
+      .then(rawFull => {
+        const full = migrateMealsDataAddSlotKeys(finalPlan, rawFull)
         void onWeekPlanChange(finalPlan, full)
         const list = generateShoppingList(finalPlan, full)
         void onShoppingListChange(list)
@@ -2252,14 +2267,17 @@ export default function WocheScreen({
           ? { ...e, gericht: wish.dishName, emoji: wish.emoji }
           : e
       )
-      if (!mealsData[wish.dishName]) {
+      if (!getMeal(mealsData, wish.tag ?? '', wish.slot ?? 'Mittag', wish.dishName)) {
         const rezept = await generateRecipe(wish.dishName, wish.emoji, getFreezerListString(freezerItems), getPantryListString(pantryItems), familyPrompt)
-        if (rezept) newMeals[wish.dishName] = rezept
+        if (rezept) {
+          newMeals[wish.dishName] = rezept
+          if (wish.tag && wish.slot) newMeals[mealsKey(wish.tag, wish.slot)] = rezept
+        }
       }
     }))
     const processedIds = new Set(nachtragsAltWishes.map(w => w.id))
     const newWishes = wishes.filter(w => !processedIds.has(w.id))
-    await onWeekPlanAndWishesChange(finalPlan, { ...mealsData, ...newMeals }, newWishes)
+    await onWeekPlanAndWishesChange(finalPlan, migrateMealsDataAddSlotKeys(finalPlan, { ...mealsData, ...newMeals }), newWishes)
     setNachtragsAltIds([])
     setSaving(false)
   }
@@ -2334,7 +2352,7 @@ export default function WocheScreen({
                 tag, slot: slot as 'Mittag' | 'Abend',
                 applyFn: (sel) => {
                   const newEntry = { tag, slot, gericht: sel.gericht, emoji: sel.emoji, quelle: 'rezeptbuch' as const, chef: wochenchef, minuten: sel.minuten }
-                  void onWeekPlanChange([...weekPlan, newEntry], { ...mealsData, [sel.gericht]: sel.rezept })
+                  void onWeekPlanChange([...weekPlan, newEntry], { ...mealsData, [sel.gericht]: sel.rezept, [mealsKey(tag, slot as 'Mittag' | 'Abend')]: sel.rezept })
                   closeMealPanel()
                 },
               })}
@@ -2718,7 +2736,7 @@ export default function WocheScreen({
                                 tag, slot: slot as 'Mittag' | 'Abend',
                                 applyFn: (sel) => {
                                   setPendingPlan(prev => prev.map(p => p.tag === tag && p.slot === slot ? { ...p, gericht: sel.gericht, emoji: sel.emoji, minuten: sel.minuten, quelle: 'rezeptbuch' } : p))
-                                  setPendingPlanMeals(prev => ({ ...prev, [sel.gericht]: sel.rezept }))
+                                  setPendingPlanMeals(prev => ({ ...prev, [sel.gericht]: sel.rezept, [mealsKey(tag, slot as 'Mittag' | 'Abend')]: sel.rezept }))
                                   closeMealPanel()
                                 },
                               }),
@@ -2790,8 +2808,8 @@ export default function WocheScreen({
           const anw2 = getSlotAnwesend(t2, s2)
           const chef1MissingAtSlot2 = !anw2.includes(e1.chef)
           const chef2MissingAtSlot1 = !anw1.includes(e2.chef)
-          const rezept1 = mealsData[e1.gericht]
-          const rezept2 = mealsData[e2.gericht]
+          const rezept1 = getMeal(mealsData, t1, s1, e1.gericht)
+          const rezept2 = getMeal(mealsData, t2, s2, e2.gericht)
           const allergie1 = rezept1 ? checkAllergiesForSwap(rezept1, t1, s1, t2, s2, mbs, attendance) : []
           const allergie2 = rezept2 ? checkAllergiesForSwap(rezept2, t2, s2, t1, s1, mbs, attendance) : []
           const fresh1 = rezept1 ? checkFreshnessWarning(rezept1, t1, t2) : false
@@ -3176,7 +3194,7 @@ export default function WocheScreen({
                                       tag, slot: slot as 'Mittag' | 'Abend',
                                       applyFn: (sel) => {
                                         const newPlan = weekPlan.map(p => p.tag === tag && p.slot === slot ? { ...p, gericht: sel.gericht, emoji: sel.emoji, minuten: sel.minuten, quelle: 'rezeptbuch' } : p)
-                                        void onWeekPlanChange(newPlan, { ...mealsData, [sel.gericht]: sel.rezept })
+                                        void onWeekPlanChange(newPlan, { ...mealsData, [sel.gericht]: sel.rezept, [mealsKey(tag, slot as 'Mittag' | 'Abend')]: sel.rezept })
                                         closeMealPanel()
                                       },
                                     }),
@@ -3228,15 +3246,15 @@ export default function WocheScreen({
                             <div style={{ fontSize: 13, fontWeight: 700, color: '#111', display: 'flex', alignItems: 'center', gap: 4 }}>
                               {e.gericht}<span style={{ fontSize: 10, color: '#bbb' }}>›</span>
                               {e.mahlzeitTyp === 'leicht' && <span style={{ fontSize: 9, background: '#EEF2FF', color: '#4338CA', borderRadius: 4, padding: '1px 5px', fontWeight: 600 }}>leicht</span>}
-                              {getRecipeAllergenWarnings(mealsData[e.gericht]).length > 0 && (
+                              {getRecipeAllergenWarnings(getMeal(mealsData, e.tag, e.slot, e.gericht)).length > 0 && (
                                 <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 14, height: 14, borderRadius: '50%', background: '#EF4444', color: 'white', fontSize: 9, fontWeight: 700, flexShrink: 0 }}>!</span>
                               )}
                             </div>
-                            {(mealsData[e.gericht]?.ersetzteZutaten?.length ?? 0) > 0 && (
-                              <div style={{ fontSize: 10, color: '#DC2626', marginTop: 1 }}>⚠️ {mealsData[e.gericht]!.ersetzteZutaten!.join(' · ')}</div>
+                            {(getMeal(mealsData, e.tag, e.slot, e.gericht)?.ersetzteZutaten?.length ?? 0) > 0 && (
+                              <div style={{ fontSize: 10, color: '#DC2626', marginTop: 1 }}>⚠️ {getMeal(mealsData, e.tag, e.slot, e.gericht)!.ersetzteZutaten!.join(' · ')}</div>
                             )}
-                            {getRecipeAllergenWarnings(mealsData[e.gericht]).length > 0 && (
-                              <div style={{ fontSize: 10, color: '#991B1B', marginTop: 1 }}>⚠️ Prüfen: {getRecipeAllergenWarnings(mealsData[e.gericht]).join(' · ')}</div>
+                            {getRecipeAllergenWarnings(getMeal(mealsData, e.tag, e.slot, e.gericht)).length > 0 && (
+                              <div style={{ fontSize: 10, color: '#991B1B', marginTop: 1 }}>⚠️ Prüfen: {getRecipeAllergenWarnings(getMeal(mealsData, e.tag, e.slot, e.gericht)).join(' · ')}</div>
                             )}
                             {planSettings?.mahlzeitenBestaetigt && planSettings.mahlzeitenKonfig?.[tag] && (() => {
                               const k = planSettings.mahlzeitenKonfig![tag]
@@ -3291,7 +3309,7 @@ export default function WocheScreen({
                                             <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                                               {[1,2,3,4,5].map(s => (
                                                 <button key={s}
-                                                  onClick={() => onRateGericht?.(e.gericht, s, currentUser, mealsData[e.gericht])}
+                                                  onClick={() => onRateGericht?.(e.gericht, s, currentUser, getMeal(mealsData, e.tag, e.slot, e.gericht))}
                                                   style={{ fontSize: 20, background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px', lineHeight: 1, color: s <= myRating ? '#F59E0B' : '#d1d5db' }}>★</button>
                                               ))}
                                               {avg && <span style={{ fontSize: 10, color: '#888', marginLeft: 4 }}>{fmtAvg(avg.avg, avg.count)}</span>}
@@ -3306,7 +3324,7 @@ export default function WocheScreen({
                                                     <span style={{ fontSize: 10, color: '#888', minWidth: 38, flexShrink: 0 }}>{mName}:</span>
                                                     {[1,2,3,4,5].map(s => (
                                                       <button key={s}
-                                                        onClick={() => onRateGericht?.(e.gericht, s, m, mealsData[e.gericht])}
+                                                        onClick={() => onRateGericht?.(e.gericht, s, m, getMeal(mealsData, e.tag, e.slot, e.gericht))}
                                                         style={{ fontSize: 16, background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px', lineHeight: 1, color: s <= mRating ? '#F59E0B' : '#d1d5db' }}>★</button>
                                                     ))}
                                                   </div>
@@ -3658,7 +3676,7 @@ export default function WocheScreen({
                                             tag: e!.tag, slot: e!.slot as 'Mittag' | 'Abend',
                                             applyFn: (sel) => {
                                               setNwPendingPlan(prev => prev ? prev.map(p => p.tag === e!.tag && p.slot === e!.slot ? { ...p, gericht: sel.gericht, emoji: sel.emoji, minuten: sel.minuten, quelle: 'rezeptbuch' } : p) : null)
-                                              setNwPendingMeals(prev => ({ ...prev, [sel.gericht]: sel.rezept }))
+                                              setNwPendingMeals(prev => ({ ...prev, [sel.gericht]: sel.rezept, [mealsKey(e!.tag, e!.slot as 'Mittag' | 'Abend')]: sel.rezept }))
                                               setNwGerichtEditKey(null); setNwMealSubMode(null); setNwManualDish('')
                                             },
                                           }),
@@ -3859,7 +3877,7 @@ export default function WocheScreen({
                                                 if (!onNextWeekDataChange || !nextWeekData?.plan) return
                                                 const nextMonday = nextWeekStart ?? getNextMondayIso()
                                                 const newPlan = nextWeekData.plan.map(p => p.tag === tag && p.slot === slot ? { ...p, gericht: sel.gericht, emoji: sel.emoji, minuten: sel.minuten, quelle: 'rezeptbuch' } : p)
-                                                void onNextWeekDataChange({ plan: newPlan, mealsData: { ...(nextWeekData.mealsData ?? {}), [sel.gericht]: sel.rezept } }, nextMonday)
+                                                void onNextWeekDataChange({ plan: newPlan, mealsData: { ...(nextWeekData.mealsData ?? {}), [sel.gericht]: sel.rezept, [mealsKey(tag, slot as 'Mittag' | 'Abend')]: sel.rezept } }, nextMonday)
                                                 setNwEditMealKey(null); setNwMealSubMode(null); setNwManualDish('')
                                               },
                                             }),
@@ -4076,7 +4094,7 @@ export default function WocheScreen({
                       tag, slot: slot as 'Mittag' | 'Abend',
                       applyFn: (sel) => {
                         const newPlan = weekPlan.map(p => p.tag === tag && p.slot === slot ? { ...p, gericht: sel.gericht, emoji: sel.emoji, minuten: sel.minuten, quelle: 'rezeptbuch' } : p)
-                        void onWeekPlanChange(newPlan, { ...mealsData, [sel.gericht]: sel.rezept })
+                        void onWeekPlanChange(newPlan, { ...mealsData, [sel.gericht]: sel.rezept, [mealsKey(tag, slot as 'Mittag' | 'Abend')]: sel.rezept })
                         closeMealPanel()
                       },
                     }),
@@ -4128,15 +4146,15 @@ export default function WocheScreen({
             <div style={{ fontSize: 13, fontWeight: 700, color: '#111', display: 'flex', alignItems: 'center', gap: 4 }}>
               {entry.gericht}<span style={{ fontSize: 10, color: '#bbb' }}>›</span>
               {entry.mahlzeitTyp === 'leicht' && <span style={{ fontSize: 9, background: '#EEF2FF', color: '#4338CA', borderRadius: 4, padding: '1px 5px', fontWeight: 600 }}>leicht</span>}
-              {getRecipeAllergenWarnings(mealsData[entry.gericht]).length > 0 && (
+              {getRecipeAllergenWarnings(getMeal(mealsData, entry.tag, entry.slot, entry.gericht)).length > 0 && (
                 <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 14, height: 14, borderRadius: '50%', background: '#EF4444', color: 'white', fontSize: 9, fontWeight: 700, flexShrink: 0 }}>!</span>
               )}
             </div>
-            {(mealsData[entry.gericht]?.ersetzteZutaten?.length ?? 0) > 0 && (
-              <div style={{ fontSize: 10, color: '#DC2626', marginTop: 1 }}>⚠️ {mealsData[entry.gericht]!.ersetzteZutaten!.join(' · ')}</div>
+            {(getMeal(mealsData, entry.tag, entry.slot, entry.gericht)?.ersetzteZutaten?.length ?? 0) > 0 && (
+              <div style={{ fontSize: 10, color: '#DC2626', marginTop: 1 }}>⚠️ {getMeal(mealsData, entry.tag, entry.slot, entry.gericht)!.ersetzteZutaten!.join(' · ')}</div>
             )}
-            {getRecipeAllergenWarnings(mealsData[entry.gericht]).length > 0 && (
-              <div style={{ fontSize: 10, color: '#991B1B', marginTop: 1 }}>⚠️ Prüfen: {getRecipeAllergenWarnings(mealsData[entry.gericht]).join(' · ')}</div>
+            {getRecipeAllergenWarnings(getMeal(mealsData, entry.tag, entry.slot, entry.gericht)).length > 0 && (
+              <div style={{ fontSize: 10, color: '#991B1B', marginTop: 1 }}>⚠️ Prüfen: {getRecipeAllergenWarnings(getMeal(mealsData, entry.tag, entry.slot, entry.gericht)).join(' · ')}</div>
             )}
             {planSettings?.mahlzeitenBestaetigt && planSettings.mahlzeitenKonfig?.[tag] && (() => {
               const k = planSettings.mahlzeitenKonfig![tag]
@@ -4170,7 +4188,7 @@ export default function WocheScreen({
               const myRating = dishRatings.find(r => r.gerName.toLowerCase() === entry.gericht.toLowerCase() && r.member === currentUser)?.sterne ?? 0
               return (
                 <button key={s}
-                  onClick={() => onRateGericht(entry.gericht, s, currentUser, mealsData[entry.gericht])}
+                  onClick={() => onRateGericht(entry.gericht, s, currentUser, getMeal(mealsData, entry.tag, entry.slot, entry.gericht))}
                   style={{ fontSize: 18, background: 'none', border: 'none', cursor: 'pointer', padding: '0 1px', lineHeight: 1, color: s <= myRating ? '#F59E0B' : '#d1d5db' }}>★</button>
               )
             })}
@@ -4268,8 +4286,8 @@ export default function WocheScreen({
         const anw2 = getSlotAnwesend(t2, s2)
         const chef1MissingAtSlot2 = !anw2.includes(e1.chef)
         const chef2MissingAtSlot1 = !anw1.includes(e2.chef)
-        const rezept1 = mealsData[e1.gericht]
-        const rezept2 = mealsData[e2.gericht]
+        const rezept1 = getMeal(mealsData, t1, s1, e1.gericht)
+        const rezept2 = getMeal(mealsData, t2, s2, e2.gericht)
         const allergie1 = rezept1 ? checkAllergiesForSwap(rezept1, t1, s1, t2, s2, mbs, attendance) : []
         const allergie2 = rezept2 ? checkAllergiesForSwap(rezept2, t2, s2, t1, s1, mbs, attendance) : []
         const fresh1 = rezept1 ? checkFreshnessWarning(rezept1, t1, t2) : false
