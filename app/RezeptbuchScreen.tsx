@@ -78,6 +78,8 @@ export default function RezeptbuchScreen({
   const [saveToBookLoading, setSaveToBookLoading] = useState(false)
   const [savedToBookName, setSavedToBookName] = useState<string | null>(null)
   const [savedInlineNames, setSavedInlineNames] = useState<Set<string>>(new Set())
+  const [selectedCardId, setSelectedCardId] = useState<string | null>(null)
+  const [selectedCardData, setSelectedCardData] = useState<{ gericht: string; emoji: string; minuten: number; rezept: Rezept; bookEntryId?: string } | null>(null)
 
   // R3 – Rezept hinzufügen / bearbeiten
   const [addScreen, setAddScreen] = useState<AddScreen>(null)
@@ -643,6 +645,15 @@ export default function RezeptbuchScreen({
         )}
       </div>
 
+      {isSelectionMode && (
+        <div style={{ padding: '8px 16px', background: 'white' }}>
+          <button
+            onClick={() => { if (selectedCardData && onSelect) { onSelect(selectedCardData) } }}
+            style={{ width: '100%', padding: '10px 16px', borderRadius: 10, border: 'none', cursor: selectedCardData ? 'pointer' : 'default', background: selectedCardData ? '#1D9E75' : '#e0e0e0', color: selectedCardData ? 'white' : '#aaa', fontSize: 14, fontWeight: 700 }}>
+            {selectedCardData ? `✓ ${selectedCardData.gericht} übernehmen` : '✓ Übernehmen'}
+          </button>
+        </div>
+      )}
       <div style={{ display: 'flex', borderBottom: '1px solid #f0f0f0', background: 'white', flexShrink: 0 }}>
         <button onClick={() => setActiveTab('book')}
           style={{ flex: 1, padding: '10px 0', fontSize: 13, fontWeight: activeTab === 'book' ? 700 : 400, color: activeTab === 'book' ? '#1D9E75' : '#888', background: 'none', border: 'none', borderBottom: activeTab === 'book' ? '2px solid #1D9E75' : '2px solid transparent', cursor: 'pointer' }}>
@@ -689,9 +700,16 @@ export default function RezeptbuchScreen({
                 {favEntries.map(entry => {
                   const warns = getSlotAllergenWarnings(entry.rezept)
                   return (
-                    <div key={entry.id} style={{ display: 'flex', alignItems: 'stretch', width: '100%', background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 12, marginBottom: 8, overflow: 'hidden' }}>
-                      <div onClick={() => setModal({ kind: 'bookEntry', entry })}
-                        style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, padding: '12px 14px', cursor: 'pointer', textAlign: 'left' }}>
+                    <div key={entry.id}
+                      onClick={isSelectionMode ? () => {
+                        if (selectedCardId === entry.id) { setSelectedCardId(null); setSelectedCardData(null) }
+                        else { setSelectedCardId(entry.id); setSelectedCardData({ gericht: entry.rezept.name, emoji: entry.rezept.emoji, minuten: entry.rezept.minuten, rezept: entry.rezept, bookEntryId: entry.id }) }
+                      } : undefined}
+                      style={{ display: 'flex', alignItems: 'stretch', width: '100%', background: selectedCardId === entry.id ? '#F0FDF4' : '#FFFBEB', border: `1px solid ${selectedCardId === entry.id ? '#1D9E75' : '#FDE68A'}`, borderRadius: 12, marginBottom: 8, overflow: 'hidden', cursor: isSelectionMode ? 'pointer' : undefined }}>
+                      <div
+                        onClick={!isSelectionMode ? () => setModal({ kind: 'bookEntry', entry }) : undefined}
+                        style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, padding: '12px 14px', cursor: !isSelectionMode ? 'pointer' : undefined, textAlign: 'left' }}>
+                        {selectedCardId === entry.id && <span style={{ color: '#1D9E75', fontSize: 16, fontWeight: 700, flexShrink: 0 }}>✓</span>}
                         <span style={{ fontSize: 22 }}>{entry.rezept.emoji}</span>
                         <div style={{ flex: 1 }}>
                           <div style={{ fontSize: 14, fontWeight: 700, color: '#111', display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -705,14 +723,10 @@ export default function RezeptbuchScreen({
                             {(() => { const avg = computeRatingAvg(dishRatings, entry.rezept.name); return avg ? <> · {fmtAvg(avg.avg, avg.count)}</> : null })()}
                           </div>
                         </div>
-                        <span style={{ color: '#bbb', fontSize: 16 }}>›</span>
+                        {isSelectionMode
+                          ? <button onClick={(ev) => { ev.stopPropagation(); setModal({ kind: 'bookEntry', entry }) }} style={{ color: '#bbb', fontSize: 18, background: 'none', border: 'none', cursor: 'pointer', padding: '4px 2px', flexShrink: 0 }}>›</button>
+                          : <span style={{ color: '#bbb', fontSize: 16 }}>›</span>}
                       </div>
-                      {isSelectionMode && onSelect && (
-                        <button onClick={() => onSelect({ gericht: entry.rezept.name, emoji: entry.rezept.emoji, minuten: entry.rezept.minuten, rezept: entry.rezept, bookEntryId: entry.id })}
-                          style={{ padding: '0 14px', background: '#1D9E75', color: 'white', border: 'none', borderLeft: '1px solid #FDE68A', cursor: 'pointer', fontSize: 11, fontWeight: 700, flexShrink: 0 }}>
-                          ✓ Übernehmen
-                        </button>
-                      )}
                     </div>
                   )
                 })}
@@ -729,9 +743,16 @@ export default function RezeptbuchScreen({
                 {filteredEntries.map(entry => {
                   const warns = getSlotAllergenWarnings(entry.rezept)
                   return (
-                    <div key={entry.id} style={{ display: 'flex', alignItems: 'stretch', width: '100%', background: 'white', border: '1px solid #E5E7EB', borderRadius: 12, marginBottom: 8, overflow: 'hidden' }}>
-                      <div onClick={() => setModal({ kind: 'bookEntry', entry })}
-                        style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, padding: '12px 14px', cursor: 'pointer', textAlign: 'left' }}>
+                    <div key={entry.id}
+                      onClick={isSelectionMode ? () => {
+                        if (selectedCardId === entry.id) { setSelectedCardId(null); setSelectedCardData(null) }
+                        else { setSelectedCardId(entry.id); setSelectedCardData({ gericht: entry.rezept.name, emoji: entry.rezept.emoji, minuten: entry.rezept.minuten, rezept: entry.rezept, bookEntryId: entry.id }) }
+                      } : undefined}
+                      style={{ display: 'flex', alignItems: 'stretch', width: '100%', background: selectedCardId === entry.id ? '#F0FDF4' : 'white', border: `1px solid ${selectedCardId === entry.id ? '#1D9E75' : '#E5E7EB'}`, borderRadius: 12, marginBottom: 8, overflow: 'hidden', cursor: isSelectionMode ? 'pointer' : undefined }}>
+                      <div
+                        onClick={!isSelectionMode ? () => setModal({ kind: 'bookEntry', entry }) : undefined}
+                        style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, padding: '12px 14px', cursor: !isSelectionMode ? 'pointer' : undefined, textAlign: 'left' }}>
+                        {selectedCardId === entry.id && <span style={{ color: '#1D9E75', fontSize: 16, fontWeight: 700, flexShrink: 0 }}>✓</span>}
                         <span style={{ fontSize: 22 }}>{entry.rezept.emoji}</span>
                         <div style={{ flex: 1 }}>
                           <div style={{ fontSize: 14, fontWeight: 600, color: '#111', display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -746,14 +767,10 @@ export default function RezeptbuchScreen({
                           </div>
                         </div>
                         {entry.isFavorit && <span style={{ fontSize: 14 }}>⭐</span>}
-                        <span style={{ color: '#bbb', fontSize: 16 }}>›</span>
+                        {isSelectionMode
+                          ? <button onClick={(ev) => { ev.stopPropagation(); setModal({ kind: 'bookEntry', entry }) }} style={{ color: '#bbb', fontSize: 18, background: 'none', border: 'none', cursor: 'pointer', padding: '4px 2px', flexShrink: 0 }}>›</button>
+                          : <span style={{ color: '#bbb', fontSize: 16 }}>›</span>}
                       </div>
-                      {isSelectionMode && onSelect && (
-                        <button onClick={() => onSelect({ gericht: entry.rezept.name, emoji: entry.rezept.emoji, minuten: entry.rezept.minuten, rezept: entry.rezept, bookEntryId: entry.id })}
-                          style={{ padding: '0 14px', background: '#1D9E75', color: 'white', border: 'none', borderLeft: '1px solid #E5E7EB', cursor: 'pointer', fontSize: 11, fontWeight: 700, flexShrink: 0 }}>
-                          ✓ Übernehmen
-                        </button>
-                      )}
                     </div>
                   )
                 })}
@@ -769,10 +786,17 @@ export default function RezeptbuchScreen({
             {pastDishes.map((dish, i) => {
               const isInBook = entries.some(e => e.rezept.name.toLowerCase() === dish.gericht.toLowerCase())
               const warns = dish.rezept ? getSlotAllergenWarnings(dish.rezept) : []
+              const histKey = `hist-${i}`
+              const isSelected = isSelectionMode && selectedCardId === histKey
               return (
-                <div key={i} style={{ background: 'white', border: '1px solid #E5E7EB', borderRadius: 12, marginBottom: 6, overflow: 'hidden', marginTop: i === 0 ? 12 : 0 }}>
-                  <div onClick={() => setModal({ kind: 'history', dish })}
+                <div key={i} style={{ background: isSelected ? '#F0FDF4' : 'white', border: `1px solid ${isSelected ? '#1D9E75' : '#E5E7EB'}`, borderRadius: 12, marginBottom: 6, overflow: 'hidden', marginTop: i === 0 ? 12 : 0 }}>
+                  <div
+                    onClick={isSelectionMode && dish.rezept ? () => {
+                      if (selectedCardId === histKey) { setSelectedCardId(null); setSelectedCardData(null) }
+                      else { setSelectedCardId(histKey); setSelectedCardData({ gericht: dish.gericht, emoji: dish.emoji, minuten: dish.rezept!.minuten, rezept: dish.rezept! }) }
+                    } : () => setModal({ kind: 'history', dish })}
                     style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', padding: '10px 14px', cursor: 'pointer', textAlign: 'left' }}>
+                    {isSelected && <span style={{ color: '#1D9E75', fontSize: 16, fontWeight: 700, flexShrink: 0 }}>✓</span>}
                     <span style={{ fontSize: 20 }}>{dish.emoji}</span>
                     <div style={{ flex: 1 }}>
                       <div style={{ fontSize: 13, fontWeight: 600, color: '#111', display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -797,15 +821,9 @@ export default function RezeptbuchScreen({
                         + Rezeptbuch
                       </button>
                     )}
-                    {isSelectionMode && onSelect && dish.rezept && (
-                      <button onClick={(ev) => {
-                        ev.stopPropagation()
-                        onSelect({ gericht: dish.gericht, emoji: dish.emoji, minuten: dish.rezept!.minuten, rezept: dish.rezept!, bookEntryId: undefined })
-                      }} style={{ fontSize: 11, color: 'white', background: '#1D9E75', border: 'none', borderRadius: 6, padding: '3px 8px', cursor: 'pointer', flexShrink: 0, fontWeight: 700 }}>
-                        ✓ Übernehmen
-                      </button>
-                    )}
-                    <span style={{ color: '#bbb', fontSize: 16 }}>›</span>
+                    {isSelectionMode
+                      ? <button onClick={(ev) => { ev.stopPropagation(); setModal({ kind: 'history', dish }) }} style={{ color: '#bbb', fontSize: 18, background: 'none', border: 'none', cursor: 'pointer', padding: '4px 2px', flexShrink: 0 }}>›</button>
+                      : <span style={{ color: '#bbb', fontSize: 16 }}>›</span>}
                   </div>
                   {onRateGericht && (
                     <div style={{ borderTop: '1px solid #f5f5f5', padding: '5px 14px', display: 'flex', alignItems: 'center', gap: 4 }}>
