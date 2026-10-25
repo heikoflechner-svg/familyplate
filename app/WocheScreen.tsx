@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { generateWeekPlan, getRemySuggestions, generateRecipe, rescaleRecipe, adjustRecipe, loadMissingRecipes, getPersonCountForSlot, saveLastDishes, isFullRecipe, getMondayIso, getNextMondayIso, applySwap, checkAllergiesForSwap, checkFreshnessWarning, loadHistoryDishes } from '../lib/mealLogic'
 import { checkAllergens, formatAllergenWarningsCard } from '../lib/allergenCheck'
-import { rescaleShoppingListMengen, rewriteShoppingItemsForDish, swapShoppingItemsTags, generateShoppingList } from '../lib/shoppingLogic'
+import { rescaleShoppingListMengen, rewriteShoppingItemsForDish, swapShoppingItemsTags, generateShoppingList, removeShoppingItemsForDish, moveShoppingItemsForDish } from '../lib/shoppingLogic'
 import { getFreezerListString, getPantryListString, addFreezerItem, deleteFreezerItem } from '../lib/freezerLogic'
 import { buildFamilyPrompt, buildMemberCfg, DEFAULT_MEMBERS } from '../lib/familyLogic'
 import type { WeekPlanEntry, Rezept, FreezerItem, PantryItem, Wish, Chef, WochenSlot, FamilyMember, DayAttendance, ChangeProposal, ShoppingItem, RemyVorschlag, NextWeekData, NextWeekWish, PlanSettings, TagMahlzeitenKonfig, RezeptbuchEntry } from '../lib/state'
@@ -471,6 +471,11 @@ export default function WocheScreen({
   const [swapSaving, setSwapSaving] = useState(false)
   const [swapChef1, setSwapChef1] = useState<Chef | null>(null)
   const [swapChef2, setSwapChef2] = useState<Chef | null>(null)
+
+  const [removeConfirmKey, setRemoveConfirmKey] = useState<string | null>(null)
+  const [moveSource, setMoveSource] = useState<{ tag: string; slot: WochenSlot; entry: WeekPlanEntry } | null>(null)
+  const [movePendingTarget, setMovePendingTarget] = useState<{ tag: string; slot: WochenSlot; isNextWeek: boolean } | null>(null)
+  const [moveSaving, setMoveSaving] = useState(false)
 
   const [nwSwapSource, setNwSwapSource] = useState<{ tag: string; slot: WochenSlot; entry: WeekPlanEntry } | null>(null)
   const [nwSwapTarget, setNwSwapTarget] = useState<{ tag: string; slot: WochenSlot; entry: WeekPlanEntry } | null>(null)
@@ -1134,7 +1139,9 @@ export default function WocheScreen({
     const chefProposals = proposals.filter(p => !p.type || p.type === 'chef')
     const einkaufProposals = proposals.filter(p => p.type === 'einkauf')
     const swapProposals = proposals.filter(p => p.type === 'tauschen')
-    const total = chefProposals.length + einkaufProposals.length + swapProposals.length + nachtragsAltWishes.length + nachtragsErgWishes.length
+    const verschiebenProposals = proposals.filter(p => p.type === 'verschieben')
+    const entfernenProposals = proposals.filter(p => p.type === 'entfernen')
+    const total = chefProposals.length + einkaufProposals.length + swapProposals.length + verschiebenProposals.length + entfernenProposals.length + nachtragsAltWishes.length + nachtragsErgWishes.length
     const showPreConfirm = !planConfirmed && weekPlan.length > 0
     if (total === 0 && !showPreConfirm) return null
     return (
@@ -1223,6 +1230,64 @@ export default function WocheScreen({
                   </div>
                   <div style={{ display: 'flex', gap: 6 }}>
                     <button onClick={() => acceptSwapProposal(p)} disabled={swapSaving} style={{ flex: 1, padding: '5px', background: '#1D9E75', color: 'white', border: 'none', borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>✅ Übernehmen</button>
+                    <button onClick={() => rejectProposal(p.id)} style={{ padding: '5px 10px', background: 'white', border: '1px solid #ddd', borderRadius: 6, fontSize: 11, cursor: 'pointer', color: '#888' }}>✕ Ablehnen</button>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+
+        {/* Verschieben-Vorschläge */}
+        {verschiebenProposals.length > 0 && (
+          <div style={{ padding: '10px 14px', borderBottom: (entfernenProposals.length + nachtragsAltWishes.length + nachtragsErgWishes.length) > 0 ? '1px solid #FDE68A' : 'none', background: '#FFFBEB' }}>
+            <div style={{ fontSize: 11, fontWeight: 600, color: '#92400E', marginBottom: 8 }}>→ Verschieben ({verschiebenProposals.length})</div>
+            {verschiebenProposals.map(p => {
+              const srcEntry = weekPlan.find(e => e.tag === p.tag && e.slot === p.slot)
+              const dstEntry = p.dstNextWeek
+                ? nextWeekData?.plan?.find(e => e.tag === p.dstTag && e.slot === p.dstSlot)
+                : weekPlan.find(e => e.tag === p.dstTag && e.slot === p.dstSlot)
+              return (
+                <div key={p.id} style={{ background: 'white', border: '1px solid #FCD34D', borderRadius: 8, padding: '8px 10px', marginBottom: 6 }}>
+                  <div style={{ fontSize: 10, color: '#92400E', fontWeight: 700, marginBottom: 4 }}>
+                    {personNames[p.vonChef]} schlägt Verschieben vor:
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6, fontSize: 11 }}>
+                    <div style={{ flex: 1 }}>
+                      <span style={{ color: '#888' }}>{p.tag} {p.slot === 'Mittag' ? '☀️' : '🌙'}</span>
+                      <br /><span style={{ fontWeight: 600 }}>{srcEntry ? `${srcEntry.emoji} ${srcEntry.gericht}` : '—'}</span>
+                    </div>
+                    <span style={{ fontSize: 14 }}>→</span>
+                    <div style={{ flex: 1 }}>
+                      <span style={{ color: '#888' }}>{p.dstNextWeek ? 'NW ' : ''}{p.dstTag} {p.dstSlot === 'Mittag' ? '☀️' : '🌙'}</span>
+                      <br /><span style={{ color: dstEntry ? '#DC2626' : '#bbb' }}>{dstEntry ? `⚠️ ersetzt ${dstEntry.emoji} ${dstEntry.gericht}` : '— leer'}</span>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button onClick={() => void acceptMoveProposal(p)} disabled={moveSaving} style={{ flex: 1, padding: '5px', background: '#1D9E75', color: 'white', border: 'none', borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>✅ Übernehmen</button>
+                    <button onClick={() => rejectProposal(p.id)} style={{ padding: '5px 10px', background: 'white', border: '1px solid #ddd', borderRadius: 6, fontSize: 11, cursor: 'pointer', color: '#888' }}>✕ Ablehnen</button>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+
+        {/* Entfernen-Vorschläge */}
+        {entfernenProposals.length > 0 && (
+          <div style={{ padding: '10px 14px', borderBottom: (nachtragsAltWishes.length + nachtragsErgWishes.length) > 0 ? '1px solid #FDE68A' : 'none', background: '#FFFBEB' }}>
+            <div style={{ fontSize: 11, fontWeight: 600, color: '#92400E', marginBottom: 8 }}>🗑 Entfernen ({entfernenProposals.length})</div>
+            {entfernenProposals.map(p => {
+              const entry = weekPlan.find(e => e.tag === p.tag && e.slot === p.slot)
+              return (
+                <div key={p.id} style={{ background: 'white', border: '1px solid #FCD34D', borderRadius: 8, padding: '8px 10px', marginBottom: 6 }}>
+                  <div style={{ fontSize: 10, color: '#92400E', fontWeight: 700, marginBottom: 3 }}>{p.tag} · {p.slot === 'Mittag' ? '☀️' : '🌙'} {p.slot}</div>
+                  <div style={{ fontSize: 12, color: '#111', marginBottom: 6 }}>
+                    <span style={{ color: '#888' }}>{personNames[p.vonChef]} schlägt vor: Gericht entfernen</span>
+                    <br /><span style={{ fontWeight: 600 }}>{entry ? `${entry.emoji} ${entry.gericht}` : '(nicht mehr vorhanden)'}</span>
+                  </div>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button onClick={() => void acceptRemoveProposal(p)} style={{ flex: 1, padding: '5px', background: '#DC2626', color: 'white', border: 'none', borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>🗑 Entfernen</button>
                     <button onClick={() => rejectProposal(p.id)} style={{ padding: '5px 10px', background: 'white', border: '1px solid #ddd', borderRadius: 6, fontSize: 11, cursor: 'pointer', color: '#888' }}>✕ Ablehnen</button>
                   </div>
                 </div>
@@ -1745,6 +1810,134 @@ export default function WocheScreen({
     if (!e1 || !e2) { await onProposalsChange(proposals.filter(p => p.id !== proposal.id)); return }
     await onProposalsChange(proposals.filter(p => p.id !== proposal.id))
     await executeNwSwap(t1, s1, e1, t2, s2, e2)
+  }
+
+  async function executeRemove(tag: string, slot: WochenSlot, entry: WeekPlanEntry) {
+    const newPlan = weekPlan.filter(e => !(e.tag === tag && e.slot === slot))
+    const newMealsData = { ...mealsData }
+    delete newMealsData[mealsKey(tag, slot)]
+    const { list: newShoppingList } = removeShoppingItemsForDish(shoppingList, tag, slot, entry.gericht, false)
+    await onWeekPlanChange(newPlan, newMealsData)
+    await onShoppingListChange(newShoppingList)
+    setRemoveConfirmKey(null)
+  }
+
+  async function handleRemoveRequest(tag: string, slot: WochenSlot, entry: WeekPlanEntry) {
+    if (currentUser === wochenchef || canEditSettings) {
+      await executeRemove(tag, slot, entry)
+    } else {
+      await onProposalsChange([...proposals, {
+        id: crypto.randomUUID(),
+        type: 'entfernen' as const,
+        tag, slot,
+        vonChef: currentUser,
+        fuerChef: wochenchef,
+        createdAt: new Date().toISOString(),
+      }])
+      setRemoveConfirmKey(null)
+    }
+  }
+
+  async function executeMove(
+    srcTag: string, srcSlot: WochenSlot, srcEntry: WeekPlanEntry,
+    dstTag: string, dstSlot: WochenSlot, dstNextWeek: boolean,
+  ) {
+    setMoveSaving(true)
+    try {
+      const srcItems = shoppingList.filter(i => i.tag === srcTag && i.slot === srcSlot && i.gericht === srcEntry.gericht && !i.nextWeek)
+      const allErledigt = srcItems.length > 0 && srcItems.every(i => i.erledigt)
+      const newEntry: WeekPlanEntry = { ...srcEntry, tag: dstTag, slot: dstSlot, ...(allErledigt ? { zutatenschonDa: true } : {}) }
+
+      if (!dstNextWeek) {
+        const existingDst = weekPlan.find(e => e.tag === dstTag && e.slot === dstSlot)
+        let newPlan = weekPlan.filter(e => !(e.tag === srcTag && e.slot === srcSlot) && !(e.tag === dstTag && e.slot === dstSlot))
+        newPlan = [...newPlan, newEntry]
+        const newMealsData = { ...mealsData }
+        delete newMealsData[mealsKey(srcTag, srcSlot)]
+        if (existingDst) delete newMealsData[mealsKey(dstTag, dstSlot)]
+        const srcRezept = getMeal(mealsData, srcTag, srcSlot, srcEntry.gericht)
+        if (srcRezept) newMealsData[mealsKey(dstTag, dstSlot)] = srcRezept
+        let newShoppingList = shoppingList
+        if (existingDst) {
+          const { list } = removeShoppingItemsForDish(newShoppingList, dstTag, dstSlot, existingDst.gericht, false)
+          newShoppingList = list
+        }
+        newShoppingList = moveShoppingItemsForDish(newShoppingList, srcTag, srcSlot, srcEntry.gericht, false, dstTag, dstSlot, false)
+        await onWeekPlanChange(newPlan, newMealsData)
+        await onShoppingListChange(newShoppingList)
+      } else {
+        if (!onNextWeekDataChange) return
+        const newPlan = weekPlan.filter(e => !(e.tag === srcTag && e.slot === srcSlot))
+        const newMealsData = { ...mealsData }
+        delete newMealsData[mealsKey(srcTag, srcSlot)]
+        const { list: newShoppingListCurrent } = removeShoppingItemsForDish(shoppingList, srcTag, srcSlot, srcEntry.gericht, false)
+        const srcNonErledigt = shoppingList.filter(i => !i.erledigt && i.tag === srcTag && i.slot === srcSlot && i.gericht === srcEntry.gericht && !i.nextWeek)
+        const nwPlan = nextWeekData?.plan ?? []
+        const nwMealsData = { ...(nextWeekData?.mealsData ?? {}) }
+        const existingNwDst = nwPlan.find(e => e.tag === dstTag && e.slot === dstSlot)
+        let newNwPlan = nwPlan.filter(e => !(e.tag === dstTag && e.slot === dstSlot))
+        newNwPlan = [...newNwPlan, newEntry]
+        if (existingNwDst) delete nwMealsData[mealsKey(dstTag, dstSlot)]
+        const srcRezept = getMeal(mealsData, srcTag, srcSlot, srcEntry.gericht)
+        if (srcRezept) { nwMealsData[srcEntry.gericht] = srcRezept; nwMealsData[mealsKey(dstTag, dstSlot)] = srcRezept }
+        let newNwShoppingList = nextWeekData?.shoppingList ?? []
+        if (existingNwDst) {
+          const { list } = removeShoppingItemsForDish(newNwShoppingList, dstTag, dstSlot, existingNwDst.gericht, true)
+          newNwShoppingList = list
+        }
+        const srcNonErledigtAsNw = srcNonErledigt.map(i => ({ ...i, tag: dstTag, slot: dstSlot as WochenSlot, nextWeek: true as const }))
+        newNwShoppingList = [...newNwShoppingList, ...srcNonErledigtAsNw]
+        const nextMonday = nextWeekStart ?? getNextMondayIso()
+        await onWeekPlanChange(newPlan, newMealsData)
+        await onShoppingListChange(newShoppingListCurrent)
+        await onNextWeekDataChange({ plan: newNwPlan, mealsData: nwMealsData, shoppingList: newNwShoppingList }, nextMonday)
+      }
+    } finally {
+      setMoveSaving(false)
+      setMoveSource(null)
+      setMovePendingTarget(null)
+    }
+  }
+
+  async function handleMoveRequest(dstTag: string, dstSlot: WochenSlot, dstNextWeek: boolean) {
+    if (!moveSource) return
+    const { tag: srcTag, slot: srcSlot, entry: srcEntry } = moveSource
+    if (currentUser === wochenchef || canEditSettings) {
+      await executeMove(srcTag, srcSlot, srcEntry, dstTag, dstSlot, dstNextWeek)
+    } else {
+      await onProposalsChange([...proposals, {
+        id: crypto.randomUUID(),
+        type: 'verschieben' as const,
+        tag: srcTag, slot: srcSlot,
+        vonChef: currentUser,
+        fuerChef: wochenchef,
+        dstTag, dstSlot, ...(dstNextWeek ? { dstNextWeek: true } : {}),
+        createdAt: new Date().toISOString(),
+      }])
+      setMoveSource(null)
+      setMovePendingTarget(null)
+    }
+  }
+
+  async function acceptRemoveProposal(proposal: ChangeProposal) {
+    const tag = proposal.tag
+    const slot = proposal.slot!
+    const entry = weekPlan.find(e => e.tag === tag && e.slot === slot)
+    if (!entry) { await onProposalsChange(proposals.filter(p => p.id !== proposal.id)); return }
+    await onProposalsChange(proposals.filter(p => p.id !== proposal.id))
+    await executeRemove(tag, slot, entry)
+  }
+
+  async function acceptMoveProposal(proposal: ChangeProposal) {
+    const srcTag = proposal.tag
+    const srcSlot = proposal.slot!
+    const dstTag = proposal.dstTag!
+    const dstSlot = proposal.dstSlot!
+    const dstNextWeek = proposal.dstNextWeek ?? false
+    const srcEntry = weekPlan.find(e => e.tag === srcTag && e.slot === srcSlot)
+    if (!srcEntry) { await onProposalsChange(proposals.filter(p => p.id !== proposal.id)); return }
+    await onProposalsChange(proposals.filter(p => p.id !== proposal.id))
+    await executeMove(srcTag, srcSlot, srcEntry, dstTag, dstSlot, dstNextWeek)
   }
 
   function slotEssenLabel(tag: string, slot: WochenSlot): string {
@@ -3208,6 +3401,127 @@ export default function WocheScreen({
                             </div>
                           )
                         })()}
+                        {planConfirmed && !wvIsSwapMode && !moveSource && (
+                          <div style={{ borderTop: '1px solid #f5f5f5', display: 'flex', gap: 4, padding: '4px 12px 6px' }}>
+                            <button
+                              onClick={() => { setMoveSource({ tag, slot, entry: e }); setRemoveConfirmKey(null) }}
+                              style={{ flex: 1, padding: '5px 4px', border: '1px solid #ddd', borderRadius: 7, background: 'white', cursor: 'pointer', fontSize: 11, color: '#555' }}
+                            >→ Verschieben</button>
+                            <button
+                              onClick={() => setRemoveConfirmKey(removeConfirmKey === key ? null : key)}
+                              style={{ flex: 1, padding: '5px 4px', border: `1px solid ${removeConfirmKey === key ? '#DC2626' : '#ddd'}`, borderRadius: 7, background: removeConfirmKey === key ? '#FEF2F2' : 'white', cursor: 'pointer', fontSize: 11, color: removeConfirmKey === key ? '#DC2626' : '#555' }}
+                            >🗑 Entfernen</button>
+                          </div>
+                        )}
+                        {removeConfirmKey === key && planConfirmed && !wvIsSwapMode && !moveSource && (
+                          <div style={{ padding: '8px 12px', background: '#FEF2F2', borderTop: '1px solid #FECACA' }}>
+                            <div style={{ fontSize: 12, color: '#B91C1C', fontWeight: 600, marginBottom: 6 }}>
+                              {e.emoji} {e.gericht} wirklich entfernen?
+                            </div>
+                            {shopDone && (
+                              <div style={{ fontSize: 11, color: '#92400E', background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 6, padding: '4px 8px', marginBottom: 6 }}>
+                                Einkauf ist abgeschlossen – trotzdem entfernen?
+                              </div>
+                            )}
+                            <div style={{ display: 'flex', gap: 6 }}>
+                              <button onClick={() => void handleRemoveRequest(tag, slot, e)} style={{ flex: 2, padding: '7px', background: '#DC2626', color: 'white', border: 'none', borderRadius: 7, fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
+                                {currentUser === wochenchef || canEditSettings ? '🗑 Ja, entfernen' : '📤 Entfernen vorschlagen'}
+                              </button>
+                              <button onClick={() => setRemoveConfirmKey(null)} style={{ flex: 1, padding: '7px', background: 'white', border: '1px solid #ddd', borderRadius: 7, fontSize: 11, cursor: 'pointer', color: '#555' }}>Abbrechen</button>
+                            </div>
+                          </div>
+                        )}
+                        {moveSource?.tag === tag && moveSource.slot === slot && (
+                          <div style={{ borderTop: '1px solid #B2DFCC', background: '#F0FAF5', padding: '8px 12px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                              <span style={{ fontSize: 11, fontWeight: 600, color: '#0F6E56' }}>→ Zielslot wählen</span>
+                              <button onClick={() => { setMoveSource(null); setMovePendingTarget(null) }} style={{ fontSize: 11, color: '#B91C1C', background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px' }}>✕ Abbrechen</button>
+                            </div>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4, marginBottom: 4 }}>
+                              {WOCHENTAGE.flatMap(t =>
+                                (['Mittag', 'Abend'] as const).map(s => {
+                                  if (s === 'Mittag' && !hasMittag(t)) return null
+                                  if (t === tag && s === slot) return null
+                                  const isPast = WOCHENTAGE.indexOf(t) < todayWocheIdx
+                                  const existing = getSlot(weekPlan, t, s)
+                                  const isPendingThis = movePendingTarget?.tag === t && movePendingTarget.slot === s && !movePendingTarget.isNextWeek
+                                  return (
+                                    <button
+                                      key={`${t}-${s}`}
+                                      disabled={isPast}
+                                      onClick={() => isPendingThis ? void handleMoveRequest(t, s, false) : setMovePendingTarget({ tag: t, slot: s, isNextWeek: false })}
+                                      style={{ padding: '5px 6px', border: `1px solid ${isPendingThis ? '#1D9E75' : '#ddd'}`, borderRadius: 7, background: isPendingThis ? '#E1F5EE' : 'white', cursor: isPast ? 'default' : 'pointer', textAlign: 'left', opacity: isPast ? 0.4 : 1, fontSize: 10 }}
+                                    >
+                                      <span style={{ color: '#888' }}>{TAG_SHORT[t]} {s === 'Mittag' ? '☀️' : '🌙'}</span>
+                                      <br />
+                                      <span style={{ fontWeight: existing ? 600 : 400, color: existing ? '#333' : '#bbb' }}>
+                                        {existing ? `${existing.emoji} ${existing.gericht.slice(0, 14)}${existing.gericht.length > 14 ? '…' : ''}` : '— leer'}
+                                      </span>
+                                    </button>
+                                  )
+                                })
+                              )}
+                            </div>
+                            {onNextWeekDataChange && (
+                              <div>
+                                <div style={{ fontSize: 10, color: '#888', fontWeight: 600, margin: '4px 0 4px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Nächste Woche</div>
+                                {!nextWeekData?.plan?.length ? (
+                                  <div style={{ fontSize: 11, color: '#bbb', fontStyle: 'italic' }}>Nächste Woche ist noch nicht geplant</div>
+                                ) : (
+                                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
+                                    {WOCHENTAGE.flatMap(t =>
+                                      (['Mittag', 'Abend'] as const).map(s => {
+                                        if (s === 'Mittag' && !hasMittag(t)) return null
+                                        const existing = nextWeekData.plan!.find(en => en.tag === t && en.slot === s)
+                                        const isPendingThis = movePendingTarget?.tag === t && movePendingTarget.slot === s && movePendingTarget.isNextWeek
+                                        return (
+                                          <button
+                                            key={`nw-${t}-${s}`}
+                                            onClick={() => isPendingThis ? void handleMoveRequest(t, s, true) : setMovePendingTarget({ tag: t, slot: s, isNextWeek: true })}
+                                            style={{ padding: '5px 6px', border: `1px solid ${isPendingThis ? '#1D9E75' : '#ddd'}`, borderRadius: 7, background: isPendingThis ? '#E1F5EE' : 'white', cursor: 'pointer', textAlign: 'left', fontSize: 10 }}
+                                          >
+                                            <span style={{ color: '#888' }}>NW {TAG_SHORT[t]} {s === 'Mittag' ? '☀️' : '🌙'}</span>
+                                            <br />
+                                            <span style={{ fontWeight: existing ? 600 : 400, color: existing ? '#333' : '#bbb' }}>
+                                              {existing ? `${existing.emoji} ${existing.gericht.slice(0, 14)}${existing.gericht.length > 14 ? '…' : ''}` : '— leer'}
+                                            </span>
+                                          </button>
+                                        )
+                                      })
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                            {movePendingTarget && (
+                              <div style={{ marginTop: 8, padding: '8px', background: 'white', border: '1px solid #1D9E75', borderRadius: 8 }}>
+                                <div style={{ fontSize: 11, color: '#0F6E56', fontWeight: 600, marginBottom: 4 }}>
+                                  → Nach {movePendingTarget.isNextWeek ? 'nächste Woche, ' : ''}{movePendingTarget.tag} {movePendingTarget.slot === 'Mittag' ? 'Mittag' : 'Abend'} verschieben?
+                                </div>
+                                {(() => {
+                                  const tgt = movePendingTarget.isNextWeek
+                                    ? nextWeekData?.plan?.find(en => en.tag === movePendingTarget.tag && en.slot === movePendingTarget.slot)
+                                    : weekPlan.find(en => en.tag === movePendingTarget.tag && en.slot === movePendingTarget.slot)
+                                  return tgt ? (
+                                    <div style={{ fontSize: 11, color: '#92400E', background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 6, padding: '4px 8px', marginBottom: 6 }}>
+                                      ⚠️ {tgt.emoji} {tgt.gericht} wird ersetzt
+                                    </div>
+                                  ) : null
+                                })()}
+                                <div style={{ display: 'flex', gap: 6 }}>
+                                  <button
+                                    onClick={() => void handleMoveRequest(movePendingTarget.tag, movePendingTarget.slot, movePendingTarget.isNextWeek)}
+                                    disabled={moveSaving}
+                                    style={{ flex: 2, padding: '7px', background: '#1D9E75', color: 'white', border: 'none', borderRadius: 7, fontSize: 11, fontWeight: 600, cursor: moveSaving ? 'default' : 'pointer', opacity: moveSaving ? 0.6 : 1 }}
+                                  >
+                                    {moveSaving ? '⏳…' : currentUser === wochenchef || canEditSettings ? '✓ Verschieben' : '📤 Vorschlagen'}
+                                  </button>
+                                  <button onClick={() => setMovePendingTarget(null)} style={{ flex: 1, padding: '7px', background: 'white', border: '1px solid #ddd', borderRadius: 7, fontSize: 11, cursor: 'pointer', color: '#555' }}>Zurück</button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
                         {isAttendanceEdit && !wvIsSwapMode && (
                           <div style={{ padding: '6px 12px 8px', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6, background: '#f9f9f9', borderTop: '1px solid #f0f0f0' }}>
                             <span style={{ fontSize: 11, color: '#888', width: '100%' }}>Wer isst mit?</span>
@@ -3248,6 +3562,9 @@ export default function WocheScreen({
                               {e.mahlzeitTyp === 'leicht' && <span style={{ fontSize: 9, background: '#EEF2FF', color: '#4338CA', borderRadius: 4, padding: '1px 5px', fontWeight: 600 }}>leicht</span>}
                               {getRecipeAllergenWarnings(getMeal(mealsData, e.tag, e.slot, e.gericht)).length > 0 && (
                                 <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 14, height: 14, borderRadius: '50%', background: '#EF4444', color: 'white', fontSize: 9, fontWeight: 700, flexShrink: 0 }}>!</span>
+                              )}
+                              {shoppingList.some(i => i.erledigt && i.tag === tag && i.slot === slot && i.gericht === e.gericht) && (
+                                <span style={{ fontSize: 9, background: '#DCFCE7', color: '#15803D', borderRadius: 4, padding: '1px 5px', fontWeight: 600, flexShrink: 0 }}>🛒✓</span>
                               )}
                             </div>
                             {(getMeal(mealsData, e.tag, e.slot, e.gericht)?.ersetzteZutaten?.length ?? 0) > 0 && (

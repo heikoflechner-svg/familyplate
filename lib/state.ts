@@ -38,13 +38,14 @@ export interface WeekPlanEntry {
   quelle: string
   chef: Chef
   mahlzeitTyp?: 'leicht' | 'normal'
+  zutatenschonDa?: boolean
 }
 
 export interface ChangeProposal {
   id: string
-  type?: 'chef' | 'einkauf' | 'tauschen' | 'nwtauschen'  // undefined = 'chef' (Rückwärtskompatibilität)
+  type?: 'chef' | 'einkauf' | 'tauschen' | 'nwtauschen' | 'verschieben' | 'entfernen'  // undefined = 'chef' (Rückwärtskompatibilität)
   tag: string
-  slot?: WochenSlot           // chef + tauschen proposals
+  slot?: WochenSlot           // chef + tauschen + verschieben + entfernen proposals
   vonChef: Chef
   fuerChef?: Chef             // chef + tauschen proposals
   newChef?: Chef              // chef proposals
@@ -53,6 +54,10 @@ export interface ChangeProposal {
   // tauschen proposals:
   nachTag?: string
   nachSlot?: WochenSlot
+  // verschieben proposals:
+  dstTag?: string
+  dstSlot?: WochenSlot
+  dstNextWeek?: boolean
 }
 
 export type Wish = {

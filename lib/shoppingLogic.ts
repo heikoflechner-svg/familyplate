@@ -46,6 +46,7 @@ export function isWaterIngredient(name: string): boolean {
 }
 
 function generateItemsForEntry(entry: WeekPlanEntry, mealsData: Record<string, Rezept>, nextWeek = false): ShoppingItem[] {
+  if (entry.zutatenschonDa) return []
   const rezept = getMeal(mealsData, entry.tag, entry.slot, entry.gericht)
   if (!rezept) return []
   const items: ShoppingItem[] = []
@@ -288,6 +289,36 @@ export function swapShoppingItemsTags(
     }
     if (item.tag === tag2 && item.slot === slot2 && item.gericht === gericht2) {
       return { ...item, tag: tag1, slot: slot1, gericht: gericht1 }
+    }
+    return item
+  })
+}
+
+export function removeShoppingItemsForDish(
+  list: ShoppingItem[],
+  tag: string,
+  slot: WochenSlot,
+  gericht: string,
+  nextWeek: boolean,
+): { list: ShoppingItem[]; removedCount: number } {
+  const toRemove = list.filter(
+    item => !item.erledigt && item.tag === tag && item.slot === slot && item.gericht === gericht && Boolean(item.nextWeek) === nextWeek,
+  )
+  return { list: list.filter(item => !toRemove.includes(item)), removedCount: toRemove.length }
+}
+
+export function moveShoppingItemsForDish(
+  list: ShoppingItem[],
+  srcTag: string, srcSlot: WochenSlot, gericht: string, srcNextWeek: boolean,
+  dstTag: string, dstSlot: WochenSlot, dstNextWeek: boolean,
+): ShoppingItem[] {
+  return list.map(item => {
+    if (item.erledigt) return item
+    if (item.tag === srcTag && item.slot === srcSlot && item.gericht === gericht && Boolean(item.nextWeek) === srcNextWeek) {
+      const updated: ShoppingItem = { ...item, tag: dstTag, slot: dstSlot }
+      if (dstNextWeek) updated.nextWeek = true
+      else delete updated.nextWeek
+      return updated
     }
     return item
   })
