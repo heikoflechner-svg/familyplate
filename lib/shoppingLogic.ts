@@ -49,6 +49,9 @@ function generateItemsForEntry(entry: WeekPlanEntry, mealsData: Record<string, R
   if (entry.zutatenschonDa) return []
   const rezept = getMeal(mealsData, entry.tag, entry.slot, entry.gericht)
   if (!rezept) return []
+  const bought = entry.zutatenSchonGekauft?.length
+    ? new Set(entry.zutatenSchonGekauft.map(n => n.toLowerCase()))
+    : null
   const items: ShoppingItem[] = []
   const seen = new Set<string>()
   for (const zutat of rezept.zutaten) {
@@ -62,7 +65,7 @@ function generateItemsForEntry(entry: WeekPlanEntry, mealsData: Record<string, R
       name: zutat.name,
       menge: zutat.menge,
       kategorie: KATEGORIE_MAP[zutat.typ] ?? 'Sonstiges',
-      erledigt: false,
+      erledigt: bought?.has(key) ?? false,
       tag: entry.tag,
       slot: entry.slot,
       gericht: entry.gericht,
@@ -75,12 +78,13 @@ function generateItemsForEntry(entry: WeekPlanEntry, mealsData: Record<string, R
   const hasFuerMarkierung = rezept.zutaten.some(z => z.fuer)
   if (!hasFuerMarkierung) {
     for (const ersatz of (rezept.ersetzteZutaten ?? [])) {
+      const ersatzKey = ersatz.toLowerCase()
       items.push({
         id: randomId(),
         name: ersatz,
         menge: '',
         kategorie: 'Ersatz-Zutat',
-        erledigt: false,
+        erledigt: bought?.has(ersatzKey) ?? false,
         tag: entry.tag,
         slot: entry.slot,
         gericht: entry.gericht,

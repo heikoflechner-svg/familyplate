@@ -39,6 +39,7 @@ export interface WeekPlanEntry {
   chef: Chef
   mahlzeitTyp?: 'leicht' | 'normal'
   zutatenschonDa?: boolean
+  zutatenSchonGekauft?: string[]
 }
 
 export interface ChangeProposal {

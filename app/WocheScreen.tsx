@@ -1846,7 +1846,14 @@ export default function WocheScreen({
     try {
       const srcItems = shoppingList.filter(i => i.tag === srcTag && i.slot === srcSlot && i.gericht === srcEntry.gericht && !i.nextWeek)
       const allErledigt = srcItems.length > 0 && srcItems.every(i => i.erledigt)
-      const newEntry: WeekPlanEntry = { ...srcEntry, tag: dstTag, slot: dstSlot, ...(allErledigt ? { zutatenschonDa: true } : {}) }
+      const erledigteNames = srcItems.filter(i => i.erledigt).map(i => i.name.toLowerCase())
+      const newEntry: WeekPlanEntry = {
+        ...srcEntry,
+        tag: dstTag,
+        slot: dstSlot,
+        ...(allErledigt ? { zutatenschonDa: true } : {}),
+        ...(!allErledigt && erledigteNames.length > 0 ? { zutatenSchonGekauft: erledigteNames } : {}),
+      }
 
       if (!dstNextWeek) {
         const existingDst = weekPlan.find(e => e.tag === dstTag && e.slot === dstSlot)
