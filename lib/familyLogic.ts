@@ -35,10 +35,24 @@ export async function loadFamilyProfile(): Promise<FamilyProfile | null> {
   }
   if (!data) return null
   if (!data.onboarding_done) return null
+
+  // Split zutaten_laden into three semantic maps using __wg.* and __alias.* namespace prefixes
+  const raw = (data.zutaten_laden as Record<string, string> | null) ?? {}
+  const zutatenLaden: Record<string, string> = {}
+  const zutatenWarengruppe: Record<string, string> = {}
+  const zutatenAliase: Record<string, string> = {}
+  for (const [key, value] of Object.entries(raw)) {
+    if (key.startsWith('__wg.')) zutatenWarengruppe[key.slice(5)] = value
+    else if (key.startsWith('__alias.')) zutatenAliase[key.slice(8)] = value
+    else zutatenLaden[key] = value
+  }
+
   return {
     members: data.members as FamilyMember[],
     laeden: (data.laeden as string[] | null) ?? DEFAULT_LAEDEN,
-    zutatenLaden: (data.zutaten_laden as Record<string, string> | null) ?? {},
+    zutatenLaden,
+    zutatenWarengruppe,
+    zutatenAliase,
     defaultMealConfig: (data.default_meal_config as Record<string, TagMahlzeitenKonfig> | null) ?? undefined,
     defaultPlanWE: (data.default_plan_we as boolean | null) ?? undefined,
   }
@@ -66,8 +80,36 @@ export async function saveFamilyProfile(profile: FamilyProfile): Promise<FamilyP
     throw new Error(err.error ?? `Speichern fehlgeschlagen (${res.status}).`)
   }
 
-  const data = await res.json() as { profile: FamilyProfile }
-  return data.profile
+  const data = await res.json() as { profile: { members: FamilyMember[]; laeden: string[]; zutatenLaden: Record<string, string> } }
+  // Preserve shopping-config fields not managed by this route
+  return {
+    ...profile,
+    members: data.profile.members,
+    laeden: data.profile.laeden,
+    zutatenLaden: data.profile.zutatenLaden,
+  }
+}
+
+export async function saveShoppingConfig(
+  warengruppe: Record<string, string>,
+  aliase: Record<string, string>,
+): Promise<void> {
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session?.access_token) throw new Error('Nicht eingeloggt.')
+
+  const res = await fetch('/api/shopping-config', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${session.access_token}`,
+    },
+    body: JSON.stringify({ warengruppe, aliase }),
+  })
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({})) as { error?: string }
+    throw new Error(err.error ?? `Speichern fehlgeschlagen (${res.status}).`)
+  }
 }
 
 export async function incrementWochenchefStat(wochenchef: Chef, weekStart: string, profile: FamilyProfile): Promise<FamilyProfile | null> {

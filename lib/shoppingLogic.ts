@@ -10,6 +10,61 @@ const KATEGORIE_MAP: Record<string, string> = {
   gefriertruhe: 'Gefriertruhe',
 }
 
+export const WARENGRUPPEN = [
+  'Obst & Gemüse',
+  'Fleisch & Fisch',
+  'Milch & Käse',
+  'Brot & Backwaren',
+  'Tiefkühl',
+  'Konserven',
+  'Getränke',
+  'Sonstiges',
+] as const
+
+export const NO_MERGE = '__NO_MERGE__'
+
+const STOP_WORDS = new Set([
+  'tk', 'tiefgekühlt', 'tiefgekühlte', 'tiefgekühlter', 'tiefgefroren', 'tiefgefrorene',
+  'frisch', 'frische', 'frischer', 'bio', 'konventionell',
+])
+
+export function normalizeName(name: string): string {
+  let n = name.toLowerCase().trim()
+  // Remove parenthetical content: "(Dose)", "(TK)", "(bio)"
+  n = n.replace(/\s*\([^)]+\)/g, '').trim()
+  // Strip trailing color word lists: "rot, grün, gelb" / "rot/grün"
+  n = n.replace(/[,\s]+(rot[e]?[rn]?|grün[e]?[rn]?|gelb[e]?[rn]?|orange[n]?|weiß[e]?[rn]?|lila|braun[e]?[rn]?|bunte?[rn]?)(\s*[,/]\s*(rot[e]?[rn]?|grün[e]?[rn]?|gelb[e]?[rn]?|orange[n]?|weiß[e]?[rn]?|lila|braun[e]?[rn]?|bunte?[rn]?))*/g, '').trim()
+  // Strip leading color adjective: "rote Paprika" → "Paprika"
+  n = n.replace(/^(rot[e]?[rn]?|grün[e]?[rn]?|gelb[e]?[rn]?|orange[n]?|weiß[e]?[rn]?|lila|braun[e]?[rn]?)\s+/, '').trim()
+  // Strip trailing phrase modifiers
+  n = n.replace(/\s+(im\s+netz|am\s+stück|am\s+stiel|in\s+scheiben|ohne\s+knochen)$/, '').trim()
+  // Strip trailing stop words (one at a time from the end)
+  const words = n.split(/\s+/)
+  while (words.length > 1 && STOP_WORDS.has(words[words.length - 1])) words.pop()
+  n = words.join(' ')
+  // German plural: strip trailing 'n' from -en (Tomaten→Tomate) or -eln/-ern (Zwiebeln→Zwiebel)
+  if (n.length > 5 && n.endsWith('en')) n = n.slice(0, -1)
+  else if (n.length > 5 && (n.endsWith('eln') || n.endsWith('ern'))) n = n.slice(0, -1)
+  return n.trim()
+}
+
+function capitalize(s: string): string {
+  return s ? s.charAt(0).toUpperCase() + s.slice(1) : s
+}
+
+export function getDefaultWarengruppe(name: string, kategorie: string): string {
+  const n = name.toLowerCase()
+  if (kategorie === 'Tiefkühl') return 'Tiefkühl'
+  if (/\b(tk|tiefgekühlt|tiefgefroren)\b/.test(n)) return 'Tiefkühl'
+  if (/\b(hack|gulasch|schnitzel|steak|brust|schenkel|keule|speck|lachs|thunfisch|garnelen|fisch|forelle|krabben|meeresfrüchte|ente|hähnchen|huhn|pute|schwein|rind|lamm|kalb|wild|fleisch|wurst|filet|chorizo|salami|schinken|kabeljau|rotbarsch)\b/.test(n)) return 'Fleisch & Fisch'
+  if (/\b(milch|joghurt|butter|käse|quark|sahne|creme|mozzarella|parmesan|ricotta|schmand|skyr|kefir|rahm|frischkäse|mascarpone)\b/.test(n)) return 'Milch & Käse'
+  if (/\b(brot|brötchen|toast|mehl|hefe|backpulver|teig|tortilla|wrap|laugenbrezel|croissant|bagel|pita|ciabatta|semmel)\b/.test(n)) return 'Brot & Backwaren'
+  if (/\b(konserve|tomatenpaste|tomatenmark)\b/.test(n) || (n.includes('dose') && !/tiefkühl/.test(n))) return 'Konserven'
+  if (/\b(wasser|saft|limonade|cola|bier|wein|tee|kaffee|kakao|smoothie|nektar)\b/.test(n)) return 'Getränke'
+  if (/\b(apfel|birne|banane|orange|zitrone|traube|beere|erdbeere|kirsche|pflaume|mango|ananas|avocado|papaya|melone|tomate|kartoffel|karotte|möhre|gurke|paprika|salat|spinat|brokkoli|blumenkohl|zucchini|aubergine|sellerie|lauch|zwiebel|knoblauch|petersilie|basilikum|kräuter|pilz|champignon|porree|kohlrabi|weißkohl|rotkohl|wirsing|fenchel|rucola|radieschen|spargel|pak\s+choi)\b/.test(n)) return 'Obst & Gemüse'
+  return 'Sonstiges'
+}
+
 function randomId(): string {
   return Math.random().toString(36).slice(2, 9)
 }
@@ -193,9 +248,17 @@ export interface ConsolidatedItem {
   name: string
   menge: string
   kategorie: string
+  warengruppe: string
   erledigt: boolean
   ids: string[]
   sources: Array<{ tag: string; slot: WochenSlot; gericht: string }>
+  variants?: Array<{
+    name: string
+    menge: string
+    fuer?: string
+    ids: string[]
+    erledigt: boolean
+  }>
 }
 
 function mergeMenge(mengen: string[]): string {
@@ -223,26 +286,64 @@ function mergeMenge(mengen: string[]): string {
   return mengen.join(' + ')
 }
 
-export function consolidateShoppingList(items: ShoppingItem[]): ConsolidatedItem[] {
-  const map = new Map<string, { items: ShoppingItem[] }>()
+export function consolidateShoppingList(
+  items: ShoppingItem[],
+  zutatenWarengruppe?: Record<string, string>,
+  zutatenAliase?: Record<string, string>,
+): ConsolidatedItem[] {
+  const aliase = zutatenAliase ?? {}
+  const warengruppe = zutatenWarengruppe ?? {}
+
+  type Group = { items: ShoppingItem[]; canonicalName: string; wg: string }
+  const map = new Map<string, Group>()
 
   for (const item of items) {
-    const key = item.name.toLowerCase()
-    if (!map.has(key)) map.set(key, { items: [] })
+    const normalized = normalizeName(item.name)
+    const alias = aliase[normalized]
+    const isNoMerge = alias === NO_MERGE
+    const key = isNoMerge
+      ? `${item.name.toLowerCase()}::${item.fuer ?? ''}`
+      : `${alias ?? normalized}::${item.fuer ?? ''}`
+
+    if (!map.has(key)) {
+      const canonicalName = isNoMerge
+        ? item.name
+        : alias ? capitalize(alias) : capitalize(normalized)
+      const wg = warengruppe[normalized] ?? (alias && alias !== NO_MERGE ? warengruppe[alias] : undefined) ?? getDefaultWarengruppe(item.name, item.kategorie)
+      map.set(key, { items: [], canonicalName, wg })
+    }
     map.get(key)!.items.push(item)
   }
 
-  return [...map.values()].map(({ items: group }) => {
-    const first = group[0]
+  return [...map.values()].map(({ items: group, canonicalName, wg }) => {
+    // Collect distinct original names within the group for variant display
+    const nameGroups = new Map<string, ShoppingItem[]>()
+    for (const i of group) {
+      const k = i.name.toLowerCase()
+      if (!nameGroups.has(k)) nameGroups.set(k, [])
+      nameGroups.get(k)!.push(i)
+    }
+    const variants: ConsolidatedItem['variants'] = nameGroups.size > 1
+      ? [...nameGroups.values()].map(vItems => ({
+          name: vItems[0].name,
+          menge: mergeMenge(vItems.map(i => i.menge).filter(Boolean)),
+          fuer: vItems[0].fuer,
+          ids: vItems.map(i => i.id),
+          erledigt: vItems.every(i => i.erledigt),
+        }))
+      : undefined
+
     return {
-      name: first.name,
+      name: canonicalName,
       menge: mergeMenge(group.map(i => i.menge).filter(Boolean)),
-      kategorie: first.kategorie,
+      kategorie: group[0].kategorie,
+      warengruppe: wg,
       erledigt: group.every(i => i.erledigt),
       ids: group.map(i => i.id),
       sources: group
         .filter(i => i.tag && i.gericht)
         .map(i => ({ tag: i.tag!, slot: i.slot!, gericht: i.gericht! })),
+      ...(variants ? { variants } : {}),
     }
   }).sort((a, b) => a.name.localeCompare(b.name, 'de'))
 }
@@ -334,23 +435,47 @@ export function toggleConsolidatedItem(list: ShoppingItem[], ids: string[]): Sho
   return list.map(item => idSet.has(item.id) ? { ...item, erledigt: !allDone } : item)
 }
 
+export interface LadenGroupSection {
+  warengruppe: string
+  items: ConsolidatedItem[]
+}
+
 export interface LadenGroup {
   laden: string
   items: ConsolidatedItem[]
+  sections: LadenGroupSection[]
   unassigned: boolean
+}
+
+function buildSections(items: ConsolidatedItem[]): LadenGroupSection[] {
+  const byWg = new Map<string, ConsolidatedItem[]>(WARENGRUPPEN.map(wg => [wg, []]))
+  for (const item of items) {
+    const wg = byWg.has(item.warengruppe) ? item.warengruppe : 'Sonstiges'
+    byWg.get(wg)!.push(item)
+  }
+  return WARENGRUPPEN
+    .filter(wg => (byWg.get(wg)?.length ?? 0) > 0)
+    .map(wg => ({ warengruppe: wg, items: byWg.get(wg)! }))
 }
 
 export function groupByLaden(
   items: ShoppingItem[],
   zutatenLaden: Record<string, string>,
   laeden: string[],
+  zutatenWarengruppe?: Record<string, string>,
+  zutatenAliase?: Record<string, string>,
 ): LadenGroup[] {
-  const consolidated = consolidateShoppingList(items)
+  const consolidated = consolidateShoppingList(items, zutatenWarengruppe, zutatenAliase)
   const byLaden = new Map<string, ConsolidatedItem[]>(laeden.map(l => [l, []]))
   const unassigned: ConsolidatedItem[] = []
 
   for (const item of consolidated) {
-    const laden = zutatenLaden[item.name.toLowerCase()]
+    // Look up by canonical name, then by each variant's original name (backward compat)
+    const candidateKeys = [
+      item.name.toLowerCase(),
+      ...(item.variants?.map(v => v.name.toLowerCase()) ?? []),
+    ]
+    const laden = candidateKeys.map(k => zutatenLaden[k]).find(v => v !== undefined)
     if (laden && byLaden.has(laden)) {
       byLaden.get(laden)!.push(item)
     } else {
@@ -359,11 +484,14 @@ export function groupByLaden(
   }
 
   const result: LadenGroup[] = laeden
-    .filter(l => byLaden.get(l)!.length > 0)
-    .map(l => ({ laden: l, items: byLaden.get(l)!, unassigned: false }))
+    .filter(l => (byLaden.get(l)?.length ?? 0) > 0)
+    .map(l => {
+      const groupItems = byLaden.get(l)!
+      return { laden: l, items: groupItems, sections: buildSections(groupItems), unassigned: false }
+    })
 
   if (unassigned.length > 0) {
-    result.unshift({ laden: '__unassigned__', items: unassigned, unassigned: true })
+    result.unshift({ laden: '__unassigned__', items: unassigned, sections: buildSections(unassigned), unassigned: true })
   }
 
   return result

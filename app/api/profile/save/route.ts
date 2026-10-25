@@ -91,11 +91,22 @@ export async function POST(req: NextRequest) {
 
   // ── zutatenLaden ──────────────────────────────────────────────────────────
   if (incomingZutatenLaden !== undefined) {
-    const changed = JSON.stringify(incomingZutatenLaden) !== JSON.stringify(newZutatenLaden)
+    // Ignore any namespaced entries the client may have sent (managed via /api/shopping-config)
+    const plainIncoming = Object.fromEntries(
+      Object.entries(incomingZutatenLaden).filter(([k]) => !k.startsWith('__wg.') && !k.startsWith('__alias.'))
+    )
+    const plainExisting = Object.fromEntries(
+      Object.entries(newZutatenLaden).filter(([k]) => !k.startsWith('__wg.') && !k.startsWith('__alias.'))
+    )
+    const changed = JSON.stringify(plainIncoming) !== JSON.stringify(plainExisting)
     if (changed && !isOwnerOrAdmin && !isParent) {
       return NextResponse.json({ error: 'Keine Berechtigung, Laden-Zuordnungen zu ändern.' }, { status: 403 })
     }
-    newZutatenLaden = incomingZutatenLaden
+    // Preserve __wg.* and __alias.* entries; replace plain entries with incoming
+    const namespacedFromDb = Object.fromEntries(
+      Object.entries(newZutatenLaden).filter(([k]) => k.startsWith('__wg.') || k.startsWith('__alias.'))
+    )
+    newZutatenLaden = { ...namespacedFromDb, ...plainIncoming }
   }
 
   // ── members ───────────────────────────────────────────────────────────────

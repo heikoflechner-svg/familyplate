@@ -214,6 +214,8 @@ export interface FamilyProfile {
   zutatenLaden: Record<string, string>
   defaultMealConfig?: Record<string, TagMahlzeitenKonfig>
   defaultPlanWE?: boolean
+  zutatenWarengruppe?: Record<string, string>
+  zutatenAliase?: Record<string, string>
 }
 
 export interface AppState {

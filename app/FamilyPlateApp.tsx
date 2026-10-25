@@ -3,7 +3,7 @@ import { useState, useEffect, useRef } from 'react'
 import { loadWeekPlan, saveWeekPlan, saveAttendance, saveShoppingList, saveProposals, saveWochenchef, savePlanConfirmed, saveShopDone, saveShoppingDays, saveShoppingPersons, loadLastDishes, getMondayIso, getNextMondayIso, saveWeekStart, loadNextWeekData, saveNextWeekData, activateNextWeek, buildDefaultAttendance, loadMissingRecipes, getPersonCountForSlot } from '../lib/mealLogic'
 import { needsMigration, migrateMealsDataAddSlotKeys } from '../lib/mealsDataUtils'
 import { loadFreezerItems, loadPantryItems, getFreezerListString, getPantryListString } from '../lib/freezerLogic'
-import { loadFamilyProfile, saveFamilyProfile, applyChefStats, incrementWochenchefStat, DEFAULT_MEMBERS, buildFamilyPrompt } from '../lib/familyLogic'
+import { loadFamilyProfile, saveFamilyProfile, saveShoppingConfig, applyChefStats, incrementWochenchefStat, DEFAULT_MEMBERS, buildFamilyPrompt } from '../lib/familyLogic'
 import { generateShoppingList } from '../lib/shoppingLogic'
 import { signOut, onAuthChange, SETUP_NEEDED } from '../lib/auth'
 import { supabase, getFamilyId } from '../lib/supabase'
@@ -351,6 +351,30 @@ export default function FamilyPlateApp() {
     }
   }
 
+  async function handleZutatenWarengruppeChange(mapping: Record<string, string>) {
+    if (!familyProfile) return
+    const previous = familyProfile
+    const updated: FamilyProfile = { ...familyProfile, zutatenWarengruppe: mapping }
+    setFamilyProfile(updated)
+    try {
+      await saveShoppingConfig(mapping, familyProfile.zutatenAliase ?? {})
+    } catch {
+      setFamilyProfile(previous)
+    }
+  }
+
+  async function handleZutatenAliasChange(aliase: Record<string, string>) {
+    if (!familyProfile) return
+    const previous = familyProfile
+    const updated: FamilyProfile = { ...familyProfile, zutatenAliase: aliase }
+    setFamilyProfile(updated)
+    try {
+      await saveShoppingConfig(familyProfile.zutatenWarengruppe ?? {}, aliase)
+    } catch {
+      setFamilyProfile(previous)
+    }
+  }
+
   async function handleLaedenChange(newLaeden: string[]) {
     if (!familyProfile) return
     const previous = familyProfile
@@ -665,6 +689,10 @@ export default function FamilyPlateApp() {
             laeden={familyProfile.laeden}
             zutatenLaden={familyProfile.zutatenLaden}
             onZutatenLadenChange={handleZutatenLadenChange}
+            zutatenWarengruppe={familyProfile.zutatenWarengruppe}
+            zutatenAliase={familyProfile.zutatenAliase}
+            onZutatenWarengruppeChange={handleZutatenWarengruppeChange}
+            onZutatenAliasChange={handleZutatenAliasChange}
             canEditSettings={currentMemberRole !== 'member'}
             planConfirmed={planConfirmed}
             attendance={attendance}

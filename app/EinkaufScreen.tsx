@@ -11,6 +11,9 @@ import {
   clearCompleted,
   computeNextWeekCoverage,
   isWaterIngredient,
+  normalizeName,
+  WARENGRUPPEN,
+  NO_MERGE,
 } from '../lib/shoppingLogic'
 import type { ConsolidatedItem } from '../lib/shoppingLogic'
 import { generateRecipe, isFullRecipe, getPersonCountForSlot, getMondayIso, getNextMondayIso } from '../lib/mealLogic'
@@ -79,6 +82,10 @@ interface Props {
   laeden: string[]
   zutatenLaden: Record<string, string>
   onZutatenLadenChange: (mapping: Record<string, string>) => Promise<void>
+  zutatenWarengruppe?: Record<string, string>
+  zutatenAliase?: Record<string, string>
+  onZutatenWarengruppeChange?: (mapping: Record<string, string>) => Promise<void>
+  onZutatenAliasChange?: (aliase: Record<string, string>) => Promise<void>
   canEditSettings: boolean
   planConfirmed?: boolean
   attendance?: DayAttendance[]
@@ -97,7 +104,9 @@ type ViewMode = 'tag' | 'zusammen' | 'laden'
 export default function EinkaufScreen({
   weekPlan, mealsData, shoppingList, onShoppingListChange, onMealsDataChange,
   currentUser, wochenchef, shopDone, onShopDoneChange, laeden, zutatenLaden,
-  onZutatenLadenChange, canEditSettings, planConfirmed = false, attendance = [],
+  onZutatenLadenChange, zutatenWarengruppe, zutatenAliase,
+  onZutatenWarengruppeChange, onZutatenAliasChange,
+  canEditSettings, planConfirmed = false, attendance = [],
   shoppingDays = [], nextWeekData = null, freezerItems, pantryItems, members,
   onNextWeekDataChange, weekStart = null, nextWeekStart = null,
 }: Props) {
@@ -105,6 +114,7 @@ export default function EinkaufScreen({
   const [newMenge, setNewMenge] = useState('')
   const [generating, setGenerating] = useState(false)
   const [viewMode, setViewMode] = useState<ViewMode>('tag')
+  const [editingItem, setEditingItem] = useState<string | null>(null)
   const [selectedDates, setSelectedDates] = useState<Set<string>>(new Set())
   const autoLoadDoneRef = useRef(false)
   const nwAutoLoadRef = useRef(false)
@@ -360,7 +370,7 @@ export default function EinkaufScreen({
   const manualItems = filteredItems.filter(i => !i.gericht && !i.fromLastWeek)
   const hasNwItems = recipeItems.some(i => i.nextWeek)
   const groups = groupShoppingByMeal(recipeItems, weekPlan, hasNwItems ? nwPlan : undefined)
-  const consolidated = consolidateShoppingList(recipeItems)
+  const consolidated = consolidateShoppingList(recipeItems, zutatenWarengruppe, zutatenAliase)
   const doneCount = filteredItems.filter(i => i.erledigt).length
   const dayCount = new Set(recipeItems.map(i => itemIso(i)).filter(Boolean)).size
   const gerichtCount = new Set(recipeItems.map(i => i.gericht)).size
@@ -650,51 +660,112 @@ export default function EinkaufScreen({
             {viewMode === 'zusammen' && (
               <>
                 {consolidated.map(item => (
-                  <ConsolidatedRow key={item.name} item={item} onToggle={() => combinedToggleConsolidated(item.ids)} />
+                  <div key={item.name}>
+                    <ConsolidatedRow
+                      item={item}
+                      onToggle={() => combinedToggleConsolidated(item.ids)}
+                      onEdit={() => setEditingItem(editingItem === item.name ? null : item.name)}
+                      editing={editingItem === item.name}
+                    />
+                    {item.variants && item.variants.length > 1 && (
+                      <div style={{ paddingLeft: 42, marginTop: -6, marginBottom: 4, display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                        {item.variants.map((v, i) => (
+                          <span key={i} style={{ fontSize: 10, color: '#aaa', background: '#f5f5f5', borderRadius: 8, padding: '1px 6px' }}>
+                            {v.name}{v.menge ? ` · ${v.menge}` : ''}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    {editingItem === item.name && (
+                      <WarengruppePanel
+                        item={item}
+                        zutatenWarengruppe={zutatenWarengruppe}
+                        zutatenAliase={zutatenAliase}
+                        onWarengruppeChange={onZutatenWarengruppeChange}
+                        onAliasChange={onZutatenAliasChange}
+                        onClose={() => setEditingItem(null)}
+                      />
+                    )}
+                  </div>
                 ))}
               </>
             )}
 
             {viewMode === 'laden' && (
               <>
-                {groupByLaden(recipeItems, zutatenLaden, laeden).map(group => (
+                {groupByLaden(recipeItems, zutatenLaden, laeden, zutatenWarengruppe, zutatenAliase).map(group => (
                   <div key={group.laden} style={{ marginBottom: 18 }}>
                     <div style={{ fontSize: 11, fontWeight: 700, color: '#888', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 6, paddingBottom: 4, borderBottom: '1.5px solid #eee' }}>
                       {group.unassigned ? 'Noch keinem Laden zugeordnet' : group.laden}
                     </div>
-                    {group.items.map(item => (
-                      <div key={item.name}>
-                        <ConsolidatedRow item={item} onToggle={() => combinedToggleConsolidated(item.ids)} />
-                        {group.unassigned ? (
-                          canEditSettings ? (
-                            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', paddingLeft: 42, paddingBottom: 10, marginTop: -4 }}>
-                              {laeden.map(l => (
-                                <button
-                                  key={l}
-                                  onClick={() => onZutatenLadenChange({ ...zutatenLaden, [item.name.toLowerCase()]: l })}
-                                  style={{ fontSize: 10, padding: '3px 10px', border: '1px solid #ddd', borderRadius: 12, background: '#f5f5f5', cursor: 'pointer', color: '#555' }}
-                                >
-                                  {l}
-                                </button>
-                              ))}
-                            </div>
-                          ) : null
-                        ) : (
-                          canEditSettings ? (
-                            <div style={{ paddingLeft: 42, paddingBottom: 8, marginTop: -4 }}>
-                              <button
-                                onClick={() => {
-                                  const next = { ...zutatenLaden }
-                                  delete next[item.name.toLowerCase()]
-                                  onZutatenLadenChange(next)
-                                }}
-                                style={{ fontSize: 10, padding: '2px 8px', border: '1px solid #ddd', borderRadius: 12, background: '#f0f8f5', cursor: 'pointer', color: '#1D9E75' }}
-                              >
-                                {group.laden} ×
-                              </button>
-                            </div>
-                          ) : null
+                    {group.sections.map(section => (
+                      <div key={section.warengruppe}>
+                        {group.sections.length > 1 && (
+                          <div style={{ fontSize: 10, color: '#bbb', fontWeight: 600, marginTop: 8, marginBottom: 2, paddingLeft: 2 }}>
+                            {section.warengruppe}
+                          </div>
                         )}
+                        {section.items.map(item => (
+                          <div key={item.name}>
+                            <ConsolidatedRow
+                              item={item}
+                              onToggle={() => combinedToggleConsolidated(item.ids)}
+                              onEdit={() => setEditingItem(editingItem === item.name ? null : item.name)}
+                              editing={editingItem === item.name}
+                            />
+                            {item.variants && item.variants.length > 1 && (
+                              <div style={{ paddingLeft: 42, marginTop: -6, marginBottom: 4, display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                                {item.variants.map((v, i) => (
+                                  <span key={i} style={{ fontSize: 10, color: '#aaa', background: '#f5f5f5', borderRadius: 8, padding: '1px 6px' }}>
+                                    {v.name}{v.menge ? ` · ${v.menge}` : ''}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                            {editingItem === item.name && (
+                              <WarengruppePanel
+                                item={item}
+                                zutatenWarengruppe={zutatenWarengruppe}
+                                zutatenAliase={zutatenAliase}
+                                onWarengruppeChange={onZutatenWarengruppeChange}
+                                onAliasChange={onZutatenAliasChange}
+                                onClose={() => setEditingItem(null)}
+                              />
+                            )}
+                            {group.unassigned ? (
+                              canEditSettings ? (
+                                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', paddingLeft: 42, paddingBottom: 10, marginTop: -4 }}>
+                                  {laeden.map(l => (
+                                    <button
+                                      key={l}
+                                      onClick={() => onZutatenLadenChange({ ...zutatenLaden, [item.name.toLowerCase()]: l })}
+                                      style={{ fontSize: 10, padding: '3px 10px', border: '1px solid #ddd', borderRadius: 12, background: '#f5f5f5', cursor: 'pointer', color: '#555' }}
+                                    >
+                                      {l}
+                                    </button>
+                                  ))}
+                                </div>
+                              ) : null
+                            ) : (
+                              canEditSettings ? (
+                                <div style={{ paddingLeft: 42, paddingBottom: 8, marginTop: -4 }}>
+                                  <button
+                                    onClick={() => {
+                                      const next = { ...zutatenLaden }
+                                      delete next[item.name.toLowerCase()]
+                                      // also remove legacy keys from variants
+                                      item.variants?.forEach(v => { delete next[v.name.toLowerCase()] })
+                                      onZutatenLadenChange(next)
+                                    }}
+                                    style={{ fontSize: 10, padding: '2px 8px', border: '1px solid #ddd', borderRadius: 12, background: '#f0f8f5', cursor: 'pointer', color: '#1D9E75' }}
+                                  >
+                                    {group.laden} ×
+                                  </button>
+                                </div>
+                              ) : null
+                            )}
+                          </div>
+                        ))}
                       </div>
                     ))}
                     {!group.unassigned && manualItems
@@ -834,7 +905,12 @@ function ItemRow({ item, onToggle, onRemove }: { item: ShoppingItem; onToggle: (
   )
 }
 
-function ConsolidatedRow({ item, onToggle }: { item: ConsolidatedItem; onToggle: () => void }) {
+function ConsolidatedRow({ item, onToggle, onEdit, editing }: {
+  item: ConsolidatedItem
+  onToggle: () => void
+  onEdit?: () => void
+  editing?: boolean
+}) {
   const isErsatz = item.kategorie === 'Ersatz-Zutat'
   const textColor = item.erledigt ? '#bbb' : isErsatz ? '#2563EB' : '#111'
   return (
@@ -855,6 +931,83 @@ function ConsolidatedRow({ item, onToggle }: { item: ConsolidatedItem; onToggle:
           </div>
         )}
       </div>
+      {onEdit && (
+        <button
+          onClick={onEdit}
+          style={{
+            border: 'none', background: 'none', fontSize: 14, cursor: 'pointer', lineHeight: 1,
+            color: editing ? '#1D9E75' : '#ccc', padding: '0 8px 0 0', flexShrink: 0,
+          }}
+        >⋯</button>
+      )}
+    </div>
+  )
+}
+
+function WarengruppePanel({ item, zutatenWarengruppe, zutatenAliase, onWarengruppeChange, onAliasChange, onClose }: {
+  item: ConsolidatedItem
+  zutatenWarengruppe?: Record<string, string>
+  zutatenAliase?: Record<string, string>
+  onWarengruppeChange?: (m: Record<string, string>) => Promise<void>
+  onAliasChange?: (a: Record<string, string>) => Promise<void>
+  onClose: () => void
+}) {
+  const normKey = normalizeName(item.name)
+  const currentWg = zutatenWarengruppe?.[normKey] ?? item.warengruppe
+  const isCurrentlyNoMerge = (zutatenAliase ?? {})[normKey] === NO_MERGE
+  const hasVariants = (item.variants?.length ?? 0) > 1
+
+  return (
+    <div style={{ paddingLeft: 32, paddingRight: 8, paddingBottom: 12, paddingTop: 4, background: '#fafafa', borderBottom: '1px solid #f0f0f0' }}>
+      <div style={{ fontSize: 10, color: '#888', marginBottom: 5, fontWeight: 600 }}>Warengruppe</div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+        {WARENGRUPPEN.map(wg => (
+          <button
+            key={wg}
+            onClick={() => {
+              const newMap = { ...(zutatenWarengruppe ?? {}), [normKey]: wg }
+              onWarengruppeChange?.(newMap)
+              onClose()
+            }}
+            style={{
+              fontSize: 10, padding: '3px 8px',
+              border: `1px solid ${wg === currentWg ? '#1D9E75' : '#ddd'}`,
+              borderRadius: 12, cursor: 'pointer',
+              background: wg === currentWg ? '#e8f9f3' : '#f5f5f5',
+              color: wg === currentWg ? '#1D9E75' : '#555',
+              fontWeight: wg === currentWg ? 700 : 400,
+            }}
+          >{wg}</button>
+        ))}
+      </div>
+      {(hasVariants || isCurrentlyNoMerge) && (
+        <div style={{ marginTop: 8 }}>
+          {isCurrentlyNoMerge ? (
+            <button
+              onClick={() => {
+                const aliase = { ...(zutatenAliase ?? {}) }
+                delete aliase[normKey]
+                onAliasChange?.(aliase)
+                onClose()
+              }}
+              style={{ fontSize: 10, padding: '3px 8px', border: '1px solid #1D9E75', borderRadius: 12, background: '#e8f9f3', cursor: 'pointer', color: '#1D9E75' }}
+            >
+              Zusammenfassen
+            </button>
+          ) : hasVariants ? (
+            <button
+              onClick={() => {
+                const aliase = { ...(zutatenAliase ?? {}), [normKey]: NO_MERGE }
+                onAliasChange?.(aliase)
+                onClose()
+              }}
+              style={{ fontSize: 10, padding: '3px 8px', border: '1px solid #ddd', borderRadius: 12, background: '#fff3cd', cursor: 'pointer', color: '#92400E' }}
+            >
+              Nicht zusammenfassen
+            </button>
+          ) : null}
+        </div>
+      )}
     </div>
   )
 }
