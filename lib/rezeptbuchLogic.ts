@@ -19,15 +19,16 @@ function rowToEntry(row: Record<string, unknown>): RezeptbuchEntry {
   }
 }
 
-export async function loadRezeptbuch(): Promise<RezeptbuchEntry[]> {
+export async function loadRezeptbuch(): Promise<RezeptbuchEntry[] | null> {
   const familyId = getFamilyId()
-  if (!familyId) return []
+  if (!familyId) return null
   const { data, error } = await supabase
     .from('recipe_book')
     .select('*')
     .eq('family_id', familyId)
     .order('erstellt_am', { ascending: false })
-  if (error || !data) return []
+  if (error) { console.error('[loadRezeptbuch]', error); return null }
+  if (!data) return []
   return (data as Record<string, unknown>[]).map(rowToEntry)
 }
 
@@ -51,7 +52,7 @@ export async function saveRezeptToBook(rezept: Rezept, erstelltVon: Chef): Promi
     .insert({ family_id: familyId, rezept, kategorie, erstellt_von: erstelltVon, manuell_gespeichert: true })
     .select('*')
     .single()
-  if (error || !data) return null
+  if (error || !data) { console.error('[saveRezeptToBook]', error); return null }
   return rowToEntry(data as Record<string, unknown>)
 }
 

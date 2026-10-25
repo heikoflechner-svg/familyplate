@@ -167,9 +167,11 @@ const KEYWORDS: Record<CanonicalAllergen, string[]> = {
 const EXCEPTIONS: Record<CanonicalAllergen, string[]> = {
   'Gluten': [
     'reisnudeln', 'glasnudeln',
-    'reismehl', 'maismehl', 'kichererbsenmehl',
+    'reismehl', 'maismehl', 'kichererbsenmehl', 'kartoffelmehl', 'lupinenmehl',
     'buchweizenmehl', 'buchweizennudeln', 'buchweizen',
     'hirse', 'quinoa',
+    // Compound potato adjectives: 'mehl' in 'mehligkochend'/'festkochend' is not flour
+    'mehligkochend', 'festkochend', 'vorwiegend festkochend',
     // Hafer-products with explicit glutenfrei label are handled via SUBSTITUTES['Gluten']
     // ('glutenfrei' marker), not via exceptions.
   ],
@@ -483,8 +485,16 @@ export function formatAllergenWarnings(issues: AllergenIssue[]): string[] {
 }
 
 // Display format for meal cards and recipe modal: "Zutat enthält Allergen – Person"
+// Hafer-products get a nuanced Gluten hint: oats are naturally gluten-free but nearly
+// always cross-contaminated; only certified gluten-free varieties are safe.
+const HAFER_GLUTEN_PATTERNS = ['hafer']
 export function formatAllergenWarningsCard(issues: AllergenIssue[]): string[] {
-  return issues.map(i => `${i.zutat} enthält ${i.allergen} – ${i.person}`)
+  return issues.map(i => {
+    if (i.allergen === 'Gluten' && HAFER_GLUTEN_PATTERNS.some(k => i.zutat.toLowerCase().includes(k))) {
+      return `${i.zutat} – für ${i.person}: nur als glutenfrei gekennzeichnete Sorte verwenden`
+    }
+    return `${i.zutat} enthält ${i.allergen} – ${i.person}`
+  })
 }
 
 export function buildAllergenRetryHint(issues: AllergenIssue[]): string {

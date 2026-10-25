@@ -202,7 +202,7 @@ export default function FamilyPlateApp() {
       setMemberStatuses(memberSts)
       setDataLoading(false)
       loadLastDishes().then(setLastDishes).catch(() => {})
-      loadRezeptbuch().then(setRezeptbuchEntries).catch(() => {})
+      loadRezeptbuch().then(entries => { if (entries !== null) setRezeptbuchEntries(entries) }).catch(() => {})
       loadDishRatings().then(setDishRatings).catch(() => {})
       // Recovery: if plan is confirmed but shopping list was lost (e.g. app closed during recipe load)
       if (pc && sl.length === 0 && plan.length > 0 && latestProfile) {

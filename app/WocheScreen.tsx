@@ -518,6 +518,8 @@ export default function WocheScreen({
 
   // ── Hintergrund-Migration: ältere Haiku-Rezepte (ohne rezeptVersion) neu erstellen ─
   const migrationRunRef = useRef(false)
+  const weekPlanRef = useRef(weekPlan)
+  useEffect(() => { weekPlanRef.current = weekPlan }, [weekPlan])
   useEffect(() => {
     if (migrationRunRef.current) return
     if (weekPlan.length === 0) return
@@ -578,7 +580,7 @@ export default function WocheScreen({
           }
           if (!isNextWeek) {
             accMeals = { ...accMeals, [entry.gericht]: merged }
-            await onWeekPlanChange(weekPlan, accMeals)
+            await onWeekPlanChange(weekPlanRef.current, accMeals)
             if (planConfirmed) {
               accShoppingList = rewriteShoppingItemsForDish(accShoppingList, entry, merged, false)
               await onShoppingListChange(accShoppingList)
@@ -882,10 +884,19 @@ export default function WocheScreen({
 
   function applyActiveManualDish(tag: string, slot: WochenSlot, name: string, typ?: 'leicht' | 'normal') {
     if (!name.trim()) return
+    const oldEntry = weekPlan.find(e => e.tag === tag && e.slot === slot)
     const newPlan = weekPlan.map(e =>
       e.tag === tag && e.slot === slot ? { ...e, gericht: name.trim(), emoji: '🍽️', quelle: 'manuell', ...(typ ? { mahlzeitTyp: typ } : {}) } : e
     )
-    void onWeekPlanChange(newPlan, mealsData)
+    let newMeals = mealsData
+    if (oldEntry && oldEntry.gericht !== name.trim() && !weekPlan.some(e => !(e.tag === tag && e.slot === slot) && e.gericht === oldEntry.gericht)) {
+      const { [oldEntry.gericht]: _dropped, ...rest } = mealsData
+      newMeals = rest
+    }
+    onWeekPlanChange(newPlan, newMeals).catch(() => {
+      setSaveFeedback('Speichern fehlgeschlagen – bitte Seite neu laden.')
+      setTimeout(() => setSaveFeedback(null), 5000)
+    })
     closeMealPanel()
   }
 
@@ -893,7 +904,10 @@ export default function WocheScreen({
     const newPlan = weekPlan.map(e =>
       e.tag === tag && e.slot === slot ? { ...e, gericht: name, emoji, quelle: 'vorrat' } : e
     )
-    void onWeekPlanChange(newPlan, mealsData)
+    onWeekPlanChange(newPlan, mealsData).catch(() => {
+      setSaveFeedback('Speichern fehlgeschlagen – bitte Seite neu laden.')
+      setTimeout(() => setSaveFeedback(null), 5000)
+    })
     closeMealPanel()
   }
 
@@ -1024,6 +1038,8 @@ export default function WocheScreen({
     setMealSubMode(null)
     setManualDishInput('')
     setManualDishTyp(null)
+    setPendingDay(null)
+    setPendingDayMeals({})
   }
 
   function toggleEditMeal(key: string) {
@@ -1305,6 +1321,7 @@ export default function WocheScreen({
   const [dayLoading, setDayLoading] = useState<string | null>(null)
   const [slotLoading, setSlotLoading] = useState<string | null>(null)
   const [pendingDay, setPendingDay] = useState<{ tag: string; entries: WeekPlanEntry[] } | null>(null)
+  const [saveFeedback, setSaveFeedback] = useState<string | null>(null)
 
   function changePendingDayChef(slot: WochenSlot, chef: Chef) {
     setPendingDay(prev => prev ? { ...prev, entries: prev.entries.map(e => e.slot === slot ? { ...e, chef } : e) } : null)
@@ -2502,6 +2519,24 @@ export default function WocheScreen({
   if (view === 'plan') {
     return (
       <div className="screen active" style={{ position: 'relative' }}>
+        {rezeptbuchSelect && (
+          <div style={{ position: 'absolute', inset: 0, zIndex: 150, background: 'white', display: 'flex', flexDirection: 'column' }}>
+            <RezeptbuchScreen
+              entries={rezeptbuchEntries}
+              currentUser={currentUser}
+              canEditSettings={canEditSettings}
+              members={members}
+              mealsData={mealsData}
+              weekPlan={weekPlan}
+              weekStart={weekStart ?? null}
+              attendance={attendance}
+              onBack={() => setRezeptbuchSelect(null)}
+              onMarkGekocht={onMarkGekocht ?? (() => {})}
+              selectionSlot={rezeptbuchSelect}
+              onSelect={(sel) => { rezeptbuchSelect.applyFn(sel); setRezeptbuchSelect(null) }}
+            />
+          </div>
+        )}
         {selectedMealName && (
           <RecipeModal name={selectedMealName} rezept={selectedRezept(selectedMealName)} loading={recipeLoading === selectedMealName} onClose={() => { setSelectedMealName(null); setRecipeContext(null); setAdjustAllergieHinweise([]) }} canRewrite={currentUser === wochenchef || canEditSettings} onRewrite={rewriteRecipe} onAdjust={handleAdjustRecipe} allergieHinweise={adjustAllergieHinweise} offeneAllergene={getRecipeAllergenWarnings(selectedRezept(selectedMealName) ?? undefined)} onSaveToBook={onSaveToBook ? (r) => { void handleSaveToBook(r) } : undefined} savedToBook={savedToBookName === selectedMealName} saveToBookLoading={saveToBookLoading} />
         )}
@@ -2719,6 +2754,29 @@ export default function WocheScreen({
   if (view === 'week') {
     return (
       <div className="screen active" style={{ position: 'relative' }}>
+        {rezeptbuchSelect && (
+          <div style={{ position: 'absolute', inset: 0, zIndex: 150, background: 'white', display: 'flex', flexDirection: 'column' }}>
+            <RezeptbuchScreen
+              entries={rezeptbuchEntries}
+              currentUser={currentUser}
+              canEditSettings={canEditSettings}
+              members={members}
+              mealsData={mealsData}
+              weekPlan={weekPlan}
+              weekStart={weekStart ?? null}
+              attendance={attendance}
+              onBack={() => setRezeptbuchSelect(null)}
+              onMarkGekocht={onMarkGekocht ?? (() => {})}
+              selectionSlot={rezeptbuchSelect}
+              onSelect={(sel) => { rezeptbuchSelect.applyFn(sel); setRezeptbuchSelect(null) }}
+            />
+          </div>
+        )}
+        {saveFeedback && (
+          <div style={{ position: 'fixed', bottom: 60, left: 0, right: 0, zIndex: 300, background: '#FEF2F2', padding: '8px 16px', textAlign: 'center', fontSize: 12, color: '#991B1B', borderTop: '1px solid #FECACA' }}>
+            ⚠️ {saveFeedback}
+          </div>
+        )}
         {selectedMealName && (
           <RecipeModal name={selectedMealName} rezept={selectedRezept(selectedMealName)} loading={recipeLoading === selectedMealName} onClose={() => { setSelectedMealName(null); setRecipeContext(null); setAdjustAllergieHinweise([]) }} canRewrite={currentUser === wochenchef || canEditSettings} onRewrite={rewriteRecipe} onAdjust={handleAdjustRecipe} allergieHinweise={adjustAllergieHinweise} offeneAllergene={getRecipeAllergenWarnings(selectedRezept(selectedMealName) ?? undefined)} onSaveToBook={onSaveToBook ? (r) => { void handleSaveToBook(r) } : undefined} savedToBook={savedToBookName === selectedMealName} saveToBookLoading={saveToBookLoading} />
         )}
@@ -3715,7 +3773,7 @@ export default function WocheScreen({
                                     <ChefPicker current={e.chef} onSelect={chef => { changeNwChef(tag, slot, chef); setNwEditMealKey(null) }} personNames={personNames} members={members} />
                                   </div>
                                 )}
-                                {isNwChef && !nwIsSwapMode && (() => {
+                                {(isNwChef || canEditSettings) && !nwIsSwapMode && (() => {
                                   const gKey = nwKey
                                   const isNwGerichtOpen = nwGerichtEditKey === gKey
                                   const stockItems = [...freezerItems, ...pantryItems]
