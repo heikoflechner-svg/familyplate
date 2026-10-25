@@ -55,6 +55,12 @@ export default function RecipeModal({
           </button>
         )}
       </div>
+      {onUebernehmen && (
+        <div style={{ display: 'flex', gap: 8, padding: '8px 16px', borderBottom: '1px solid #e5e7eb', flexShrink: 0 }}>
+          <button onClick={onClose} style={{ flex: 1, padding: '8px 0', background: '#f0f0f0', color: '#555', border: 'none', borderRadius: 8, fontSize: 13, cursor: 'pointer' }}>✕ Abbrechen</button>
+          <button onClick={onUebernehmen} style={{ flex: 2, padding: '8px 0', background: '#1D9E75', color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>✓ Übernehmen</button>
+        </div>
+      )}
       <div className="content">
         {loading ? (
           <div style={{ textAlign: 'center', padding: '40px 0', color: '#888', fontSize: 13 }}>

@@ -635,8 +635,8 @@ export default function RezeptbuchScreen({
     <div className="screen active" style={{ overflowY: 'auto' }}>
       <div className="topbar">
         <button className="back" onClick={onBack}>‹</button>
-        <h1 style={{ fontSize: isSelectionMode ? 14 : 17 }}>
-          {isSelectionMode ? `Rezept wählen – ${slotLabel}` : '📖 Rezepte'}
+        <h1 style={{ fontSize: isSelectionMode ? 15 : 17, fontWeight: isSelectionMode ? 700 : undefined }}>
+          {isSelectionMode ? `Rezept wählen für ${slotLabel}` : '📖 Rezepte'}
         </h1>
         {isSelectionMode && entries.length > 0 && (
           <span style={{ fontSize: 11, color: '#bbb', marginLeft: 'auto', whiteSpace: 'nowrap' }}>{entries.length} Einträge</span>
@@ -689,23 +689,31 @@ export default function RezeptbuchScreen({
                 {favEntries.map(entry => {
                   const warns = getSlotAllergenWarnings(entry.rezept)
                   return (
-                    <button key={entry.id} onClick={() => setModal({ kind: 'bookEntry', entry })}
-                      style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 12, padding: '12px 14px', marginBottom: 8, cursor: 'pointer', textAlign: 'left' }}>
-                      <span style={{ fontSize: 22 }}>{entry.rezept.emoji}</span>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: 14, fontWeight: 700, color: '#111', display: 'flex', alignItems: 'center', gap: 6 }}>
-                          {entry.rezept.name}
-                          {warns.length > 0 && <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 14, height: 14, borderRadius: '50%', background: '#EF4444', color: 'white', fontSize: 9, fontWeight: 700, flexShrink: 0 }}>!</span>}
+                    <div key={entry.id} style={{ display: 'flex', alignItems: 'stretch', width: '100%', background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 12, marginBottom: 8, overflow: 'hidden' }}>
+                      <div onClick={() => setModal({ kind: 'bookEntry', entry })}
+                        style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, padding: '12px 14px', cursor: 'pointer', textAlign: 'left' }}>
+                        <span style={{ fontSize: 22 }}>{entry.rezept.emoji}</span>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: 14, fontWeight: 700, color: '#111', display: 'flex', alignItems: 'center', gap: 6 }}>
+                            {entry.rezept.name}
+                            {warns.length > 0 && <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 14, height: 14, borderRadius: '50%', background: '#EF4444', color: 'white', fontSize: 9, fontWeight: 700, flexShrink: 0 }}>!</span>}
+                          </div>
+                          <div style={{ fontSize: 11, color: '#888', marginTop: 2 }}>
+                            ⏱ {fmtZeit(entry.rezept.minuten, entry.rezept.arbeitszeitMinuten, entry.rezept.zeitGeschaetzt)}
+                            {entry.kategorie && <> · {entry.kategorie}</>}
+                            {entry.malGekocht > 0 && <> · {entry.malGekocht}× gekocht</>}
+                            {(() => { const avg = computeRatingAvg(dishRatings, entry.rezept.name); return avg ? <> · {fmtAvg(avg.avg, avg.count)}</> : null })()}
+                          </div>
                         </div>
-                        <div style={{ fontSize: 11, color: '#888', marginTop: 2 }}>
-                          ⏱ {fmtZeit(entry.rezept.minuten, entry.rezept.arbeitszeitMinuten, entry.rezept.zeitGeschaetzt)}
-                          {entry.kategorie && <> · {entry.kategorie}</>}
-                          {entry.malGekocht > 0 && <> · {entry.malGekocht}× gekocht</>}
-                          {(() => { const avg = computeRatingAvg(dishRatings, entry.rezept.name); return avg ? <> · {fmtAvg(avg.avg, avg.count)}</> : null })()}
-                        </div>
+                        <span style={{ color: '#bbb', fontSize: 16 }}>›</span>
                       </div>
-                      <span style={{ color: '#bbb', fontSize: 16 }}>›</span>
-                    </button>
+                      {isSelectionMode && onSelect && (
+                        <button onClick={() => onSelect({ gericht: entry.rezept.name, emoji: entry.rezept.emoji, minuten: entry.rezept.minuten, rezept: entry.rezept, bookEntryId: entry.id })}
+                          style={{ padding: '0 14px', background: '#1D9E75', color: 'white', border: 'none', borderLeft: '1px solid #FDE68A', cursor: 'pointer', fontSize: 11, fontWeight: 700, flexShrink: 0 }}>
+                          ✓ Übernehmen
+                        </button>
+                      )}
+                    </div>
                   )
                 })}
               </>
@@ -721,24 +729,32 @@ export default function RezeptbuchScreen({
                 {filteredEntries.map(entry => {
                   const warns = getSlotAllergenWarnings(entry.rezept)
                   return (
-                    <button key={entry.id} onClick={() => setModal({ kind: 'bookEntry', entry })}
-                      style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', background: 'white', border: '1px solid #E5E7EB', borderRadius: 12, padding: '12px 14px', marginBottom: 8, cursor: 'pointer', textAlign: 'left' }}>
-                      <span style={{ fontSize: 22 }}>{entry.rezept.emoji}</span>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: 14, fontWeight: 600, color: '#111', display: 'flex', alignItems: 'center', gap: 6 }}>
-                          {entry.rezept.name}
-                          {warns.length > 0 && <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 14, height: 14, borderRadius: '50%', background: '#EF4444', color: 'white', fontSize: 9, fontWeight: 700, flexShrink: 0 }}>!</span>}
+                    <div key={entry.id} style={{ display: 'flex', alignItems: 'stretch', width: '100%', background: 'white', border: '1px solid #E5E7EB', borderRadius: 12, marginBottom: 8, overflow: 'hidden' }}>
+                      <div onClick={() => setModal({ kind: 'bookEntry', entry })}
+                        style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, padding: '12px 14px', cursor: 'pointer', textAlign: 'left' }}>
+                        <span style={{ fontSize: 22 }}>{entry.rezept.emoji}</span>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: 14, fontWeight: 600, color: '#111', display: 'flex', alignItems: 'center', gap: 6 }}>
+                            {entry.rezept.name}
+                            {warns.length > 0 && <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 14, height: 14, borderRadius: '50%', background: '#EF4444', color: 'white', fontSize: 9, fontWeight: 700, flexShrink: 0 }}>!</span>}
+                          </div>
+                          <div style={{ fontSize: 11, color: '#888', marginTop: 2 }}>
+                            ⏱ {fmtZeit(entry.rezept.minuten, entry.rezept.arbeitszeitMinuten, entry.rezept.zeitGeschaetzt)}
+                            {entry.kategorie && <> · {entry.kategorie}</>}
+                            {entry.malGekocht > 0 && <> · {entry.malGekocht}× gekocht</>}
+                            {(() => { const avg = computeRatingAvg(dishRatings, entry.rezept.name); return avg ? <> · {fmtAvg(avg.avg, avg.count)}</> : null })()}
+                          </div>
                         </div>
-                        <div style={{ fontSize: 11, color: '#888', marginTop: 2 }}>
-                          ⏱ {fmtZeit(entry.rezept.minuten, entry.rezept.arbeitszeitMinuten, entry.rezept.zeitGeschaetzt)}
-                          {entry.kategorie && <> · {entry.kategorie}</>}
-                          {entry.malGekocht > 0 && <> · {entry.malGekocht}× gekocht</>}
-                          {(() => { const avg = computeRatingAvg(dishRatings, entry.rezept.name); return avg ? <> · {fmtAvg(avg.avg, avg.count)}</> : null })()}
-                        </div>
+                        {entry.isFavorit && <span style={{ fontSize: 14 }}>⭐</span>}
+                        <span style={{ color: '#bbb', fontSize: 16 }}>›</span>
                       </div>
-                      {entry.isFavorit && <span style={{ fontSize: 14 }}>⭐</span>}
-                      <span style={{ color: '#bbb', fontSize: 16 }}>›</span>
-                    </button>
+                      {isSelectionMode && onSelect && (
+                        <button onClick={() => onSelect({ gericht: entry.rezept.name, emoji: entry.rezept.emoji, minuten: entry.rezept.minuten, rezept: entry.rezept, bookEntryId: entry.id })}
+                          style={{ padding: '0 14px', background: '#1D9E75', color: 'white', border: 'none', borderLeft: '1px solid #E5E7EB', cursor: 'pointer', fontSize: 11, fontWeight: 700, flexShrink: 0 }}>
+                          ✓ Übernehmen
+                        </button>
+                      )}
+                    </div>
                   )
                 })}
               </>
@@ -779,6 +795,14 @@ export default function RezeptbuchScreen({
                         setSavedInlineNames(prev => new Set(prev).add(dish.gericht))
                       }} style={{ fontSize: 11, color: '#1D9E75', background: 'none', border: '1px solid #B2DFCC', borderRadius: 6, padding: '2px 7px', cursor: 'pointer', flexShrink: 0, fontWeight: 600 }}>
                         + Rezeptbuch
+                      </button>
+                    )}
+                    {isSelectionMode && onSelect && dish.rezept && (
+                      <button onClick={(ev) => {
+                        ev.stopPropagation()
+                        onSelect({ gericht: dish.gericht, emoji: dish.emoji, minuten: dish.rezept!.minuten, rezept: dish.rezept!, bookEntryId: undefined })
+                      }} style={{ fontSize: 11, color: 'white', background: '#1D9E75', border: 'none', borderRadius: 6, padding: '3px 8px', cursor: 'pointer', flexShrink: 0, fontWeight: 700 }}>
+                        ✓ Übernehmen
                       </button>
                     )}
                     <span style={{ color: '#bbb', fontSize: 16 }}>›</span>
