@@ -645,15 +645,6 @@ export default function RezeptbuchScreen({
         )}
       </div>
 
-      {isSelectionMode && (
-        <div style={{ padding: '8px 16px', background: 'white' }}>
-          <button
-            onClick={() => { if (selectedCardData && onSelect) { onSelect(selectedCardData) } }}
-            style={{ width: '100%', padding: '10px 16px', borderRadius: 10, border: 'none', cursor: selectedCardData ? 'pointer' : 'default', background: selectedCardData ? '#1D9E75' : '#e0e0e0', color: selectedCardData ? 'white' : '#aaa', fontSize: 14, fontWeight: 700 }}>
-            {selectedCardData ? `✓ ${selectedCardData.gericht} übernehmen` : '✓ Übernehmen'}
-          </button>
-        </div>
-      )}
       <div style={{ display: 'flex', borderBottom: '1px solid #f0f0f0', background: 'white', flexShrink: 0 }}>
         <button onClick={() => setActiveTab('book')}
           style={{ flex: 1, padding: '10px 0', fontSize: 13, fontWeight: activeTab === 'book' ? 700 : 400, color: activeTab === 'book' ? '#1D9E75' : '#888', background: 'none', border: 'none', borderBottom: activeTab === 'book' ? '2px solid #1D9E75' : '2px solid transparent', cursor: 'pointer' }}>
@@ -684,6 +675,13 @@ export default function RezeptbuchScreen({
               <button onClick={() => { setAddError(null); setAddScreen('options') }}
                 style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, width: '100%', padding: '10px', fontSize: 13, fontWeight: 600, color: '#1D9E75', background: '#F0FDF8', border: '1px dashed #6EE7B7', borderRadius: 10, cursor: 'pointer', marginTop: 4, marginBottom: 4 }}>
                 + Rezept hinzufügen
+              </button>
+            )}
+            {isSelectionMode && (
+              <button
+                onClick={selectedCardData && onSelect ? () => onSelect(selectedCardData) : undefined}
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, width: '100%', padding: '10px', fontSize: 13, fontWeight: selectedCardData ? 700 : 600, color: selectedCardData ? 'white' : '#1D9E75', background: selectedCardData ? '#1D9E75' : '#F0FDF8', border: selectedCardData ? '1px solid #1D9E75' : '1px dashed #6EE7B7', borderRadius: 10, cursor: selectedCardData ? 'pointer' : 'default', marginTop: 4, marginBottom: 4 }}>
+                {selectedCardData ? `✓ ${selectedCardData.gericht} übernehmen` : 'Rezept antippen zum Auswählen'}
               </button>
             )}
 
