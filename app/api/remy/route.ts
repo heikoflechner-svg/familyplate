@@ -27,7 +27,7 @@ export async function POST(req: NextRequest) {
     : ''
 
   const familienProfil = familyPrompt || 'Familienmitglieder mit individuellen Vorlieben und Unverträglichkeiten'
-  const prompt = `Du bist Rémy, ein freundlicher KI-Kochassistent für Familien. Familie plant ${choSlot || 'Abend'} am ${choDay || 'heute'}. Wünsche: ${wishText}. ${zustText} Familienprofil: ${familienProfil}. Speisekammer: ${pantryList || 'Spaghetti, Reis, Tomatensoße'}. Gefriertruhe: ${freezerList || 'Hühnerfilets, Lachs'}. Schlage 3 Kompromiss-Gerichte vor. Antworte NUR als JSON ohne Markdown: {"vorschlaege":[{"emoji":"...","name":"...","info":"...","minuten":25},{"emoji":"...","name":"...","info":"...","minuten":30},{"emoji":"...","name":"...","info":"...","minuten":40}]}`
+  const prompt = `Du bist Rémy, ein freundlicher KI-Kochassistent für Familien. Familie plant ${choSlot || 'Abend'} am ${choDay || 'heute'}. Wünsche: ${wishText}. ${zustText} Familienprofil: ${familienProfil}. Speisekammer: ${pantryList || 'Spaghetti, Reis, Tomatensoße'}. Gefriertruhe: ${freezerList || 'Hühnerfilets, Lachs'}. Schlage 3 Kompromiss-Gerichte vor. Gerichtsnamen müssen die wichtigste Zutat nennen (v.a. Fleisch/Fisch/Hülsenfrüchte): "Salat mit Hähnchenbrust" statt "Bunter Salat", "Pasta mit Lachs" statt "Nudelgericht" – generische Namen sind nicht erlaubt. Antworte NUR als JSON ohne Markdown: {"vorschlaege":[{"emoji":"...","name":"...","info":"...","minuten":25},{"emoji":"...","name":"...","info":"...","minuten":30},{"emoji":"...","name":"...","info":"...","minuten":40}]}`
 
   try {
     const resp = await fetch('https://api.anthropic.com/v1/messages', {

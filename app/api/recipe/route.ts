@@ -89,8 +89,8 @@ Bestehendes Rezept: ${JSON.stringify(existingRezept)}
 Regeln:
 1. Ändere NUR was explizit gewünscht ist – alles andere bleibt identisch.
 2. Allergie-Schutz: Zutaten mit "fuer"-Feld sind allergiegerecht angepasst. Widerspricht ein Wunsch einer solchen Anpassung (z.B. "normale Nudeln" bei bestehender glutenfreier Variante), behalte die allergiegerechte Version und schreibe einen deutschen Hinweis in allergieHinweise, z.B. "Für Heiko bleibt die glutenfreie Variante erhalten."
-3. Neue Zutaten, die gegen eine Familienunverträglichkeit verstoßen (eine Person kann MEHRERE Unverträglichkeiten haben – alle einzeln prüfen): Behalte die Original-Zutat mit reduzierter Menge für die nicht-betroffenen Personen (Menge × nicht-Betroffene/${anzahl}); füge die allergiegerechte Ersatz-Zutat mit anteiliger Menge für die betroffene Person hinzu (Menge × Betroffene/${anzahl}), setze "fuer":"Name" – PFLICHTFELD. Verwende nur real erhältliche Handelsnamen (z.B. "Mozzarella (laktosefrei)"). Im Zutatennamen nur sachliche Anpassung in Klammern, keinen Personennamen einbauen.
-4. Grundvorrat: nur kleine Mengen allgegenwärtiger Vorratsartikel. Hauptzutaten in größerer Menge: "frisch" oder "speisekammer".
+3. Neue Zutaten, die gegen eine Familienunverträglichkeit verstoßen (alle Unverträglichkeiten jeder Person einzeln prüfen): Ist die Ersatzzutat für ALLE anwesenden Personen geeignet – geprüft gegen ALLE Allergien und Abneigungen aller Anwesenden – verwende sie als gemeinsame Zutat ohne fuer-Feld (in schritte kurz erwähnen, z.B. "Hirse statt Couscous – für alle verträglich"). Sonst: Behalte Original mit reduzierter Menge (× nicht-Betroffene/${anzahl}); füge Ersatz mit anteiliger Menge (× Betroffene/${anzahl}) und "fuer":"Name" hinzu. Sonderfall: Besteht die Hauptzutat selbst aus einem Allergen der betroffenen Person, wähle vollwertige Alternative, die zu ALLEN Allergien und Abneigungen dieser Person passt. Verwende nur real erhältliche Handelsnamen.
+4. Zutatentypen: Fleisch und Fisch immer "frisch", nie standardmäßig "tiefkühl". Mehl stets als "Weizenmehl Type 405" oder "Type 550", nie "Typ 00" (Ausnahme Pizza: "Pizzamehl (Type 00, alternativ Type 405/550)"). Grundvorrat: nur kleine Mengen allgegenwärtiger Vorratsartikel. Hauptzutaten in größerer Menge: "frisch" oder "speisekammer".
 5. ${anzahl} Person${anzahl === 1 ? '' : 'en'} – Mengen bei neuen Zutaten passend skalieren.
 6. Kein "Schritt N:" am Anfang der Schritte.
 7. allergieHinweise: [] wenn kein Konflikt.
@@ -153,14 +153,14 @@ Antworte NUR als reines JSON ohne Markdown im Format: {"rezept":{...},"allergieH
   const familienProfil = familyPrompt || 'Sabine (keine Nüsse), Heiko (laktosefrei), Tim (kein Fisch)'
   const anzahl: number = typeof personCount === 'number' && personCount > 0 ? personCount : 4
   const leichtHinweis = (mahlzeitTyp as string | undefined) === 'leicht'
-    ? '\n\nDieses Gericht ist eine leichte Mahlzeit (z.B. Suppe, Salat, Omelett, Ofengemüse, Brotzeit). Wenige Zutaten, max. ca. 20 Minuten, keine aufwändige Vorbereitung. Allergie-Anpassungen (fuer-Felder) vollständig beibehalten.'
+    ? '\n\nDieses Gericht ist eine leichte Mahlzeit (z.B. Suppe, Omelett, Ofengemüse, Bowl, Wrap, Brotzeit, Pfannkuchen, Quiche oder Salat). Wenige Zutaten, max. ca. 20 Minuten, keine aufwändige Vorbereitung. Allergie-Anpassungen (fuer-Felder) vollständig beibehalten.'
     : ''
   const prompt = `Du bist Rémy. Erstelle ein vollständiges Familienrezept für "${gericht}" für ${anzahl} Person${anzahl === 1 ? '' : 'en'}. Verfügbar: Gefriertruhe: ${freezerList || 'variiert'}. Speisekammer: ${pantryList || 'variiert'}. Familie: ${familienProfil}.${leichtHinweis}
 
 WICHTIG: Ändere den Namen des Gerichts NIE. Liste ALLE Zutaten mit genauen Mengen für ${anzahl} Person${anzahl === 1 ? '' : 'en'} auf – inklusive Gewürze, Kräuter, Öl und Aromaten. Unterscheide dabei:
-- "frisch": frische Zutaten (Gemüse, Fleisch, Fisch, Milchprodukte, frische Kräuter)
-- "tiefkühl": Tiefkühlprodukte
-- "speisekammer": Haltbare Zutaten (Nudeln, Reis, Dosentomaten, Mehl, Zucker …)
+- "frisch": frische Zutaten (Gemüse, Fleisch, Fisch, Milchprodukte, frische Kräuter) – Fleisch und Fisch immer "frisch", außer das Gericht wurde explizit aus der Gefriertruhe eingeplant. Niemals standardmäßig "tiefkühl".
+- "tiefkühl": Nur wenn das Gericht explizit aus der Gefriertruhe stammt.
+- "speisekammer": Haltbare Zutaten (Nudeln, Reis, Dosentomaten, Zucker …). Mehl stets als "Weizenmehl Type 405" oder "Type 550", nie "Typ 00". Ausnahme Pizzateig: "Pizzamehl (Type 00, alternativ Type 405/550)".
 - "grundvorrat": NUR kleine Mengen allgegenwärtiger Vorratsartikel, die NICHT auf die Einkaufsliste kommen (z.B. 1–2 TL Salz, ½ TL Pfeffer, 1–2 EL Öl/Butter, 1–2 Zehen Knoblauch als Würze, 1 TL getrocknete Gewürze wie Paprika/Oregano/Kreuzkümmel, 1 EL Essig). WICHTIG: Ist eine solche Zutat Hauptbestandteil des Gerichts oder wird sie in größerer Menge benötigt (z.B. 8 Zehen Knoblauch bei Aglio e Olio, viele Zwiebeln für Suppe, viel Butter in einem Buttergebäck), dann "frisch" oder "speisekammer" verwenden – NICHT grundvorrat.
 Zubereitung in 5–8 konkreten Schritten mit Zeiten und Temperaturen. Kein "Schritt N:" am Anfang – die Nummerierung erfolgt automatisch in der App.
 
@@ -170,6 +170,8 @@ Abneigungen-Regel: Im Profil steht "mag nicht X" für manche Personen. Gehe prag
 3. Würde die Anpassung einen zweiten Topf oder aufwändige Parallelzubereitung erfordern: Koche das Gericht normal – kein fuer-Eintrag. Füge stattdessen am Anfang von schritte einen kurzen Hinweis ein, z.B. "Hinweis: Tim mag keine Aubergine – beim Servieren aussortieren."
 
 Allergie-Regel: Prüfe jede Zutat gegen JEDE Unverträglichkeit JEDER anwesenden Person EINZELN – bei MEHREREN Unverträglichkeiten (z.B. Gluten UND Milch) müssen ALLE einzeln geprüft und ALLE nicht verträglichen Zutaten adaptiert werden!
+Gemeinsames-Gericht-Regel: Ist eine Ersatzzutat für ALLE anwesenden Personen gleich gut geeignet – geprüft gegen ALLE Allergien UND Abneigungen aller Anwesenden – koche ein einziges gemeinsames Gericht mit der Ersatzzutat (z.B. Hirse statt Couscous, wenn alle Hirse vertragen und mögen). Kein fuer-Feld, keine zweite Portion. Kurze Erläuterung in schritte ("Hirse statt Couscous – für alle verträglich").
+Sonderfall Hauptzutat = Allergen: Besteht das Gericht hauptsächlich aus der Allergen-Zutat (z.B. Rührei bei Ei-Unverträglichkeit, Milchreis bei Laktose): Keinen unsinnigen Ersatz einsetzen (nicht "Mais für Tim"). Stattdessen vollwertige Alternative vorschlagen (z.B. Tofu-Rührei), die selbst zu ALLEN Allergien und Abneigungen der betroffenen Person passt. In schritte kurz erklären. Trage die Variante in ersetzteZutaten ein.
 Wenn eine Zutat für eine Person X nicht verträglich ist (X ist eine von ${anzahl} Personen):
 a) Behalte die Original-Zutat MIT REDUZIERTER MENGE für die nicht-betroffenen Personen: OriginalMenge × (nicht-betroffene Personen / ${anzahl}). Kein fuer-Feld.
 b) Füge die allergiegerechte Ersatz-Zutat als SEPARATEN Eintrag hinzu mit anteiliger Menge: OriginalMenge × (betroffene Personen / ${anzahl}). Setze "fuer":"Name" – PFLICHTFELD, darf niemals fehlen! Verwende ausschließlich real erhältliche Produkte mit gängigen Handelsnamen (z.B. "Mozzarella (laktosefrei)", "Mehl (glutenfrei)", "veganer Käseersatz") – keine erfundenen Bezeichnungen. Im Zutatennamen NUR die sachliche Anpassung in Klammern, NICHT den Personennamen einbauen.
