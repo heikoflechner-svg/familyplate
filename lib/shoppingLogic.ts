@@ -261,29 +261,55 @@ export interface ConsolidatedItem {
   }>
 }
 
-function mergeMenge(mengen: string[]): string {
-  if (mengen.length === 0) return ''
-  if (mengen.length === 1) return mengen[0]
+interface MengeParsed { amount: number; baseUnit: string; baseAmount: number }
 
-  type Parsed = { amount: number; unit: string }
-  const parsed: (Parsed | null)[] = mengen.map(m => {
-    const match = m.trim().match(/^(\d+(?:[.,]\d+)?)\s*(.*)$/)
-    if (!match) return null
-    return { amount: parseFloat(match[1].replace(',', '.')), unit: match[2].trim() }
-  })
+function parseMengeInternal(menge: string): MengeParsed | null {
+  const m = menge.trim()
+  if (!m) return null
+  const match = m.match(/^(\d+(?:[.,]\d+)?)\s*(.*)$/)
+  if (!match) return null
+  const amount = parseFloat(match[1].replace(',', '.'))
+  const rawUnit = match[2].trim()
+  const ul = rawUnit.toLowerCase()
 
-  const allParsed = parsed.every(Boolean) as boolean
-  if (allParsed) {
-    const units = new Set((parsed as Parsed[]).map(p => p.unit))
-    if (units.size === 1) {
-      const total = (parsed as Parsed[]).reduce((s, p) => s + p.amount, 0)
-      const unit = [...units][0]
-      const totalStr = Number.isInteger(total) ? String(total) : total.toFixed(1).replace('.', ',')
-      return unit ? `${totalStr} ${unit}` : totalStr
-    }
+  // Empty unit or size qualifiers → Stück
+  if (!ul || ul === 'stück' || ul === 'stk' || ul === 'stk.' ||
+      /^(klein|mittelgroß|mittelgrob|groß|grosse|große|großer|großes|kleiner|kleines|mittelgrosse|mittelgroße|mittelgroßer)/i.test(rawUnit)) {
+    return { amount, baseUnit: 'Stück', baseAmount: amount }
   }
+  if (ul === 'g' || ul === 'gr') return { amount, baseUnit: 'g', baseAmount: amount }
+  if (ul === 'kg') return { amount, baseUnit: 'g', baseAmount: amount * 1000 }
+  if (ul === 'ml') return { amount, baseUnit: 'ml', baseAmount: amount }
+  if (ul === 'l' || ul === 'liter') return { amount, baseUnit: 'ml', baseAmount: amount * 1000 }
+  return { amount, baseUnit: ul, baseAmount: amount }
+}
 
-  return mengen.join(' + ')
+function formatMengeOutput(totalBase: number, baseUnit: string): string {
+  let amount = totalBase
+  let unit = baseUnit
+  if (baseUnit === 'g' && totalBase >= 1000) { amount = totalBase / 1000; unit = 'kg' }
+  else if (baseUnit === 'ml' && totalBase >= 1000) { amount = totalBase / 1000; unit = 'l' }
+  const amountStr = Number.isInteger(amount)
+    ? String(amount)
+    : (amount % 1 === 0.5 ? `${Math.floor(amount)},5` : amount.toFixed(1).replace('.', ','))
+  return unit === 'Stück' ? `${amountStr} Stück` : unit ? `${amountStr} ${unit}` : amountStr
+}
+
+function mergeMenge(mengen: string[]): string {
+  const valid = mengen.filter(Boolean)
+  if (valid.length === 0) return ''
+  if (valid.length === 1) return valid[0]
+  const parsed = valid.map(parseMengeInternal)
+  if (!parsed.every(Boolean)) return valid.join(' + ')
+  const ps = parsed as MengeParsed[]
+  const byUnit = new Map<string, number>()
+  for (const p of ps) byUnit.set(p.baseUnit, (byUnit.get(p.baseUnit) ?? 0) + p.baseAmount)
+  return [...byUnit.entries()].map(([unit, total]) => formatMengeOutput(total, unit)).join(' + ')
+}
+
+export function parseMengeStück(menge: string): number {
+  const p = parseMengeInternal(menge)
+  return (p?.baseUnit === 'Stück') ? p.baseAmount : 1
 }
 
 export function consolidateShoppingList(

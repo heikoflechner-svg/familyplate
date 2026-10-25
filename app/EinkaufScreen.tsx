@@ -14,6 +14,7 @@ import {
   normalizeName,
   WARENGRUPPEN,
   NO_MERGE,
+  parseMengeStück,
 } from '../lib/shoppingLogic'
 import type { ConsolidatedItem } from '../lib/shoppingLogic'
 import { generateRecipe, isFullRecipe, getPersonCountForSlot, getMondayIso, getNextMondayIso } from '../lib/mealLogic'
@@ -667,15 +668,6 @@ export default function EinkaufScreen({
                       onEdit={() => setEditingItem(editingItem === item.name ? null : item.name)}
                       editing={editingItem === item.name}
                     />
-                    {item.variants && item.variants.length > 1 && (
-                      <div style={{ paddingLeft: 42, marginTop: -6, marginBottom: 4, display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                        {item.variants.map((v, i) => (
-                          <span key={i} style={{ fontSize: 10, color: '#aaa', background: '#f5f5f5', borderRadius: 8, padding: '1px 6px' }}>
-                            {v.name}{v.menge ? ` · ${v.menge}` : ''}
-                          </span>
-                        ))}
-                      </div>
-                    )}
                     {editingItem === item.name && (
                       <WarengruppePanel
                         item={item}
@@ -713,15 +705,6 @@ export default function EinkaufScreen({
                               onEdit={() => setEditingItem(editingItem === item.name ? null : item.name)}
                               editing={editingItem === item.name}
                             />
-                            {item.variants && item.variants.length > 1 && (
-                              <div style={{ paddingLeft: 42, marginTop: -6, marginBottom: 4, display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                                {item.variants.map((v, i) => (
-                                  <span key={i} style={{ fontSize: 10, color: '#aaa', background: '#f5f5f5', borderRadius: 8, padding: '1px 6px' }}>
-                                    {v.name}{v.menge ? ` · ${v.menge}` : ''}
-                                  </span>
-                                ))}
-                              </div>
-                            )}
                             {editingItem === item.name && (
                               <WarengruppePanel
                                 item={item}
@@ -905,41 +888,111 @@ function ItemRow({ item, onToggle, onRemove }: { item: ShoppingItem; onToggle: (
   )
 }
 
+const COLOR_QUALIFIERS: Record<string, string> = {
+  rot: 'rot', rote: 'rot', roter: 'rot', rotes: 'rot', roten: 'rot',
+  grün: 'grün', grüne: 'grün', grüner: 'grün', grünes: 'grün', grünen: 'grün',
+  gelb: 'gelb', gelbe: 'gelb', gelber: 'gelb', gelbes: 'gelb', gelben: 'gelb',
+  orange: 'orange', orangene: 'orange', orangenen: 'orange',
+  lila: 'lila',
+  braun: 'braun', braune: 'braun', brauner: 'braun',
+  weiß: 'weiß', weiße: 'weiß', weißer: 'weiß',
+  bunt: 'bunt', bunte: 'bunt', bunter: 'bunt',
+}
+
+function extractQualifier(variantName: string, canonicalName: string): string {
+  const vn = variantName.toLowerCase().trim()
+  const cn = canonicalName.toLowerCase().trim()
+  let qual = vn.replace(cn, '').replace(/[(),]/g, '').trim()
+  if (!qual) qual = vn.replace(normalizeName(cn), '').replace(/[(),]/g, '').trim()
+  if (!qual) return 'beliebig'
+  if (/\boder\b|\bund\b|gemischt|verschiedene?|beliebig/.test(qual)) return 'beliebig'
+  if (qual.includes(',') || qual.includes('/')) return 'beliebig'
+  const words = qual.split(/\s+/)
+  if (words.length === 1) return COLOR_QUALIFIERS[words[0]] ?? 'beliebig'
+  if (words.every(w => COLOR_QUALIFIERS[w])) return 'beliebig'
+  return 'beliebig'
+}
+
+function buildVariantBracket(variants: ConsolidatedItem['variants'], canonicalName: string): string | null {
+  if (!variants || variants.length <= 1) return null
+  const grouped = new Map<string, number>()
+  for (const v of variants) {
+    const label = extractQualifier(v.name, canonicalName)
+    const count = parseMengeStück(v.menge)
+    grouped.set(label, (grouped.get(label) ?? 0) + count)
+  }
+  if (![...grouped.keys()].some(k => k !== 'beliebig')) return null
+  const parts = [...grouped.entries()].map(([label, count]) =>
+    `${label} ${Number.isInteger(count) ? count : count.toFixed(1)}`
+  )
+  return `(${parts.join(', ')})`
+}
+
 function ConsolidatedRow({ item, onToggle, onEdit, editing }: {
   item: ConsolidatedItem
   onToggle: () => void
   onEdit?: () => void
   editing?: boolean
 }) {
+  const [showDetails, setShowDetails] = useState(false)
   const isErsatz = item.kategorie === 'Ersatz-Zutat'
   const textColor = item.erledigt ? '#bbb' : isErsatz ? '#2563EB' : '#111'
+  const hasSources = item.sources.length > 0
+  const hasVariants = (item.variants?.length ?? 0) > 1
+  const variantBracket = hasVariants ? buildVariantBracket(item.variants, item.name) : null
+  const hasDetails = hasSources || hasVariants
+
   return (
-    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '9px 0 9px 12px', borderBottom: '1px solid #f5f5f5' }}>
-      <Checkbox checked={item.erledigt} onToggle={onToggle} />
-      <div style={{ flex: 1 }}>
-        <div style={{ textDecoration: item.erledigt ? 'line-through' : 'none', color: textColor, fontSize: 13 }}>
-          {item.name}
-          {item.menge && <span style={{ fontSize: 11, color: '#aaa', marginLeft: 5 }}>({item.menge})</span>}
-        </div>
-        {item.sources.length > 0 && (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 4 }}>
-            {item.sources.map((s, i) => (
-              <span key={i} style={{ fontSize: 10, background: '#f3f4f6', color: '#6b7280', borderRadius: 5, padding: '1px 6px', whiteSpace: 'nowrap' }}>
-                {s.tag.slice(0, 2)} {s.slot === 'Mittag' ? '🌞' : '🌙'} · {s.gericht}
-              </span>
-            ))}
+    <div style={{ borderBottom: '1px solid #f5f5f5' }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '9px 0 9px 12px' }}>
+        <Checkbox checked={item.erledigt} onToggle={onToggle} />
+        <div style={{ flex: 1 }}>
+          <div style={{ textDecoration: item.erledigt ? 'line-through' : 'none', color: textColor, fontSize: 13 }}>
+            {item.name}
+            {item.menge && <span style={{ fontSize: 11, color: '#aaa', marginLeft: 5 }}>({item.menge})</span>}
+            {variantBracket && <span style={{ fontSize: 11, color: '#888', marginLeft: 4 }}>{variantBracket}</span>}
           </div>
+          {hasDetails && (
+            <button
+              onClick={() => setShowDetails(s => !s)}
+              style={{ fontSize: 10, color: '#bbb', background: 'none', border: 'none', cursor: 'pointer', padding: '1px 0', marginTop: 1 }}
+            >
+              {showDetails ? '▾ Details' : '▸ Details'}
+            </button>
+          )}
+          {showDetails && (
+            <>
+              {hasVariants && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 3 }}>
+                  {item.variants!.map((v, i) => (
+                    <span key={i} style={{ fontSize: 10, color: '#aaa', background: '#f5f5f5', borderRadius: 8, padding: '1px 6px' }}>
+                      {v.name}{v.menge ? ` · ${v.menge}` : ''}
+                    </span>
+                  ))}
+                </div>
+              )}
+              {hasSources && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 3 }}>
+                  {item.sources.map((s, i) => (
+                    <span key={i} style={{ fontSize: 10, background: '#f3f4f6', color: '#6b7280', borderRadius: 5, padding: '1px 6px', whiteSpace: 'nowrap' }}>
+                      {s.tag.slice(0, 2)} {s.slot === 'Mittag' ? '🌞' : '🌙'} · {s.gericht}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+        {onEdit && (
+          <button
+            onClick={onEdit}
+            style={{
+              border: 'none', background: 'none', fontSize: 14, cursor: 'pointer', lineHeight: 1,
+              color: editing ? '#1D9E75' : '#ccc', padding: '0 8px 0 0', flexShrink: 0,
+            }}
+          >⋯</button>
         )}
       </div>
-      {onEdit && (
-        <button
-          onClick={onEdit}
-          style={{
-            border: 'none', background: 'none', fontSize: 14, cursor: 'pointer', lineHeight: 1,
-            color: editing ? '#1D9E75' : '#ccc', padding: '0 8px 0 0', flexShrink: 0,
-          }}
-        >⋯</button>
-      )}
     </div>
   )
 }
