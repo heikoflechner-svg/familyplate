@@ -3140,6 +3140,56 @@ export default function WocheScreen({
                             <ChefPicker current={e.chef} onSelect={chef => changeActiveChef(tag, slot, chef)} personNames={personNames} members={members} />
                           </div>
                         )}
+                        {planConfirmed && (currentUser === wochenchef || canEditSettings) && !shopDone && !wvIsSwapMode && (() => {
+                          const isGerichtOpen = gerichtEditKey === key
+                          const stockItems = [...freezerItems, ...pantryItems]
+                          return (
+                            <div style={{ borderTop: '1px solid #f5f5f5' }}>
+                              <button
+                                onClick={() => { if (isGerichtOpen) { setGerichtEditKey(null); setMealSubMode(null); setManualDishTyp(null) } else { setGerichtEditKey(key); setEditMealKey(null); setMealSubMode(null); setManualDishTyp(null) } }}
+                                style={{ width: '100%', padding: '6px 12px', background: 'none', border: 'none', textAlign: 'left', fontSize: 11, color: isGerichtOpen ? '#1D9E75' : '#bbb', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}
+                              >✏️ Gericht ändern</button>
+                              {isGerichtOpen && (
+                                <div style={{ padding: '4px 12px 8px', background: '#f9f9f9' }}>
+                                  {gerichtAendernPanel({
+                                    subMode: mealSubMode,
+                                    setSubMode: setMealSubMode,
+                                    textInput: manualDishInput,
+                                    setTextInput: setManualDishInput,
+                                    manualTyp: manualDishTyp,
+                                    setManualTyp: setManualDishTyp,
+                                    stockItems,
+                                    remyBusy: slotLoading === key,
+                                    anyBusy: (slotLoading !== null && slotLoading !== key) || dayLoading !== null,
+                                    currentTyp: e.mahlzeitTyp as 'leicht' | 'normal' | undefined,
+                                    onRemy: () => replanSlot(tag, slot),
+                                    onTypToggle: () => replanSlot(tag, slot, e.mahlzeitTyp === 'leicht' ? 'normal' : 'leicht'),
+                                    onApplyManual: (name, typ?) => applyActiveManualDish(tag, slot, name, typ),
+                                    onApplyStock: (name, emoji) => applyActiveStockItem(tag, slot, name, emoji),
+                                    onApplyErgaenzung: (text) => {
+                                      void handleWishSubmit({ id: crypto.randomUUID(), person: currentUser!, tag, slot, type: 'ergaenzung', text, postConfirm: false })
+                                      setMealSubMode(null); setManualDishInput('')
+                                      setMealErgSaved(true); setTimeout(() => setMealErgSaved(false), 2500)
+                                    },
+                                    flash: mealErgSaved,
+                                    onOpenRezeptbuch: () => setRezeptbuchSelect({
+                                      tag, slot: slot as 'Mittag' | 'Abend',
+                                      applyFn: (sel) => {
+                                        const newPlan = weekPlan.map(p => p.tag === tag && p.slot === slot ? { ...p, gericht: sel.gericht, emoji: sel.emoji, minuten: sel.minuten, quelle: 'rezeptbuch' } : p)
+                                        void onWeekPlanChange(newPlan, { ...mealsData, [sel.gericht]: sel.rezept })
+                                        closeMealPanel()
+                                      },
+                                    }),
+                                  })}
+                                  <button onClick={() => replanDay(tag)} disabled={dayLoading === tag || slotLoading !== null}
+                                    style={{ padding: '6px 12px', border: '1px solid #ddd', borderRadius: 8, background: 'white', cursor: 'pointer', fontSize: 11, color: '#888', textAlign: 'left', width: '100%', marginTop: 4 }}>
+                                    ↺ ganzer Tag neu planen
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          )
+                        })()}
                         {isAttendanceEdit && !wvIsSwapMode && (
                           <div style={{ padding: '6px 12px 8px', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6, background: '#f9f9f9', borderTop: '1px solid #f0f0f0' }}>
                             <span style={{ fontSize: 11, color: '#888', width: '100%' }}>Wer isst mit?</span>
@@ -3210,7 +3260,8 @@ export default function WocheScreen({
                         <WishesSection
                           tag={tag} wishes={wishes} freezerItems={freezerItems} pantryItems={pantryItems}
                           personNames={personNames} members={activeMembers} mittagsloseTage={mittagsloseTage} lockedSlot={slot} showExisting={false}
-                          canAdd={!shopDone && !wishDeadlinePassed} deadlineHint={wishDeadlineHint} wishHint={wishHint}
+                          canAdd={!shopDone && !wishDeadlinePassed && !(planConfirmed && (currentUser === wochenchef || canEditSettings))}
+                          deadlineHint={wishDeadlineHint} wishHint={currentUser === wochenchef || canEditSettings ? undefined : wishHint}
                           isOpen={wishFormKey === `${tag}-${slot}`} initialPerson={currentUser} familyPrompt={familyPrompt}
                           onOpen={() => openWishForm(tag, slot)} onClose={closeWishForm} onSubmitWish={handleWishSubmit} onRemove={removeWish}
                           fullWidth
@@ -4107,7 +4158,8 @@ export default function WocheScreen({
         <WishesSection
           tag={tag} wishes={wishes} freezerItems={freezerItems} pantryItems={pantryItems}
           personNames={personNames} members={activeMembers} mittagsloseTage={mittagsloseTage} lockedSlot={slot}
-          canAdd={!shopDone && !wishDeadlinePassed} deadlineHint={wishDeadlineHint} wishHint={wishHint}
+          canAdd={!shopDone && !wishDeadlinePassed && !(planConfirmed && (currentUser === wochenchef || canEditSettings))}
+          deadlineHint={wishDeadlineHint} wishHint={currentUser === wochenchef || canEditSettings ? undefined : wishHint}
           isOpen={wishFormKey === `${tag}-${slot}`} initialPerson={currentUser} familyPrompt={familyPrompt}
           onOpen={() => openWishForm(tag, slot)} onClose={closeWishForm} onSubmitWish={handleWishSubmit} onRemove={removeWish}
         />

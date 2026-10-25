@@ -36,7 +36,7 @@ export default function RecipeModal({
   useEffect(() => {
     if (loading) { setConfirmRewrite(false); setAdjustMode(false); setAdjustText('') }
   }, [loading])
-  const hatRezept = !!rezept && rezept.schritte.length > 0
+  const hatRezept = !!rezept && (rezept.schritte.length > 0 || rezept.zutaten.length > 0)
   return (
     <div style={{ position: 'absolute', inset: 0, zIndex: 100, background: 'white', display: 'flex', flexDirection: 'column' }}>
       <div className="topbar">
@@ -101,14 +101,20 @@ export default function RecipeModal({
             </div>
 
             <div className="lbl">Zubereitung</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {rezept.schritte.map((s, i) => (
-                <div key={i} style={{ display: 'flex', gap: 10 }}>
-                  <span style={{ fontSize: 12, fontWeight: 700, color: '#1D9E75', minWidth: 20 }}>{i + 1}.</span>
-                  <span style={{ fontSize: 13, color: '#333', lineHeight: 1.5 }}>{s}</span>
-                </div>
-              ))}
-            </div>
+            {rezept.schritte.length === 0 ? (
+              <div style={{ fontSize: 12, color: '#aaa', fontStyle: 'italic', marginBottom: 16 }}>
+                Zubereitungsschritte nicht gespeichert – ✏️ antippen zum Ergänzen.
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {rezept.schritte.map((s, i) => (
+                  <div key={i} style={{ display: 'flex', gap: 10 }}>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: '#1D9E75', minWidth: 20 }}>{i + 1}.</span>
+                    <span style={{ fontSize: 13, color: '#333', lineHeight: 1.5 }}>{s}</span>
+                  </div>
+                ))}
+              </div>
+            )}
 
             {(allergieHinweise?.length ?? 0) > 0 && (
               <div style={{ marginTop: 16, padding: '10px 12px', background: '#FFFBEB', borderRadius: 8, border: '1px solid #FDE68A' }}>

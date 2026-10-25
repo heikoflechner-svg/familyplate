@@ -47,6 +47,26 @@ function extractAuthorName(auth: unknown): string {
   return ''
 }
 
+function flattenInstructions(items: Array<string | Record<string, unknown>>): string[] {
+  const result: string[] = []
+  for (const item of items) {
+    if (typeof item === 'string') {
+      if (item.trim()) result.push(item.trim())
+    } else if (item && typeof item === 'object') {
+      const type = item['@type'] as string | undefined
+      const isSectionType = type === 'HowToSection' || (Array.isArray(type) && (type as string[]).includes('HowToSection'))
+      if (isSectionType) {
+        const nested = item.itemListElement as Array<string | Record<string, unknown>> | undefined
+        if (Array.isArray(nested)) result.push(...flattenInstructions(nested))
+      } else {
+        const text = String(item.text ?? item.name ?? '')
+        if (text.trim()) result.push(text.trim())
+      }
+    }
+  }
+  return result
+}
+
 function jsonLdToRezept(data: Record<string, unknown>, sourceUrl?: string): RezeptResult {
   const name = String(data.name ?? 'Unbekanntes Rezept')
 
@@ -60,9 +80,7 @@ function jsonLdToRezept(data: Record<string, unknown>, sourceUrl?: string): Reze
   })
 
   const rawInstructions = (data.recipeInstructions as Array<string | Record<string, unknown>> | undefined) ?? []
-  const schritte: string[] = rawInstructions
-    .map(s => typeof s === 'string' ? s : String((s as Record<string, unknown>).text ?? ''))
-    .filter(s => s.trim().length > 0)
+  const schritte: string[] = flattenInstructions(rawInstructions)
 
   const totalDur = parseIsoDuration(String(data.totalTime ?? ''))
   const cookDur = parseIsoDuration(String(data.cookTime ?? ''))

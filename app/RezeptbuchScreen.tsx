@@ -637,6 +637,9 @@ export default function RezeptbuchScreen({
         <h1 style={{ fontSize: isSelectionMode ? 14 : 17 }}>
           {isSelectionMode ? `Rezept wählen – ${slotLabel}` : '📖 Rezepte'}
         </h1>
+        {isSelectionMode && entries.length > 0 && (
+          <span style={{ fontSize: 11, color: '#bbb', marginLeft: 'auto', whiteSpace: 'nowrap' }}>{entries.length} Einträge</span>
+        )}
       </div>
 
       <div style={{ display: 'flex', borderBottom: '1px solid #f0f0f0', background: 'white', flexShrink: 0 }}>
