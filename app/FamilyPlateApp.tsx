@@ -65,6 +65,7 @@ export default function FamilyPlateApp() {
   const [offlineCachedAt, setOfflineCachedAt] = useState<string | null>(null)
   const [syncDone, setSyncDone] = useState(false)
   const [pendingCount, setPendingCount] = useState(0)
+  const [swUpdateWaiting, setSwUpdateWaiting] = useState(false)
   const lastDbShoppingListRef = useRef<ShoppingItem[]>([])
   const lastFocusReloadRef = useRef<number>(0)
   const latestRef = useRef({ currentUser, shoppingList, weekPlan, mealsData, wishes, familyProfile })
@@ -349,6 +350,32 @@ export default function FamilyPlateApp() {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Service Worker registration + update detection
+  useEffect(() => {
+    if (process.env.NODE_ENV !== 'production') return
+    if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return
+    navigator.serviceWorker.register('/sw.js').then(reg => {
+      // A waiting SW means a new version was installed while this page was open
+      if (reg.waiting) setSwUpdateWaiting(true)
+      reg.addEventListener('updatefound', () => {
+        const nw = reg.installing
+        if (!nw) return
+        nw.addEventListener('statechange', () => {
+          // Show banner only for updates (not first install), i.e. a previous SW exists
+          if (nw.state === 'installed' && navigator.serviceWorker.controller) {
+            setSwUpdateWaiting(true)
+          }
+        })
+      })
+    }).catch(() => { /* SW registration is a progressive enhancement – ignore failures */ })
+    // When the new SW takes control (after SKIP_WAITING), reload to load new assets
+    navigator.serviceWorker.addEventListener('controllerchange', () => window.location.reload())
+  }, [])
+
+  function handleSwUpdate() {
+    navigator.serviceWorker.ready.then(reg => reg.waiting?.postMessage({ type: 'SKIP_WAITING' }))
+  }
 
   async function handlePlanSettingsChange(settings: PlanSettings, weekType: 'current' | 'next') {
     try {
@@ -762,6 +789,24 @@ export default function FamilyPlateApp() {
               ? `Keine Verbindung · ${pendingCount} Änderung${pendingCount !== 1 ? 'en' : ''} werden übertragen, sobald Netz vorhanden`
               : `Keine Internetverbindung – Stand: ${offlineCachedAt ? new Date(offlineCachedAt).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '…'}`
           }
+        </div>
+      )}
+      {swUpdateWaiting && !isOffline && (
+        <div
+          role="button"
+          onClick={handleSwUpdate}
+          style={{
+            background: '#EFF6FF',
+            borderBottom: '1px solid #BFDBFE',
+            padding: '7px 14px',
+            fontSize: 12,
+            color: '#1E40AF',
+            fontWeight: 500,
+            lineHeight: 1.4,
+            cursor: 'pointer',
+          }}
+        >
+          Neue Version verfügbar – antippen zum Laden ↺
         </div>
       )}
       <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
