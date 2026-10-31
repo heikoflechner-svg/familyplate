@@ -1,4 +1,4 @@
-import type { ShoppingItem, WeekPlanEntry, Rezept, FamilyProfile } from './state'
+import type { ShoppingItem, WeekPlanEntry, Rezept, FamilyProfile, DayAttendance, Wish, ChangeProposal, PlanSettings, NextWeekData, MemberRole, Chef } from './state'
 
 const KEY_IDENTITY = 'fp_identity'
 const KEY_CACHE    = 'fp_offline_cache'
@@ -15,7 +15,25 @@ export interface OfflineDataCache {
   weekPlan: WeekPlanEntry[]
   mealsData: Record<string, Rezept>
   familyProfile: FamilyProfile | null
-  savedAt: string   // ISO timestamp
+  savedAt: string
+  // Wochenansicht (v2 – optional für Rückwärtskompatibilität mit altem Cache)
+  activeWochenchef?: Chef
+  planConfirmed?: boolean
+  shopDone?: boolean
+  weekStart?: string | null
+  attendance?: DayAttendance[]
+  attendanceConfirmed?: Chef[]
+  wishes?: Wish[]
+  proposals?: ChangeProposal[]
+  planSettings?: PlanSettings | null
+  mittagsloseTage?: string[]
+  planWE?: boolean
+  nextWeekStart?: string | null
+  nextWeekData?: NextWeekData | null
+  memberStatuses?: { kuerzel: string; role: string; isLinked: boolean }[]
+  currentMemberRole?: MemberRole
+  shoppingDays?: string[]
+  shoppingPersons?: Record<string, Chef>
 }
 
 // ── Pending ops (recorded while offline) ─────────────────────────────────────

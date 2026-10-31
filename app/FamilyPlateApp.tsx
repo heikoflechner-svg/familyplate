@@ -68,6 +68,7 @@ export default function FamilyPlateApp() {
   const [swUpdateWaiting, setSwUpdateWaiting] = useState(false)
   const lastDbShoppingListRef = useRef<ShoppingItem[]>([])
   const lastFocusReloadRef = useRef<number>(0)
+  const pendingRealtimeRef = useRef(false)
   const latestRef = useRef({ currentUser, shoppingList, weekPlan, mealsData, wishes, familyProfile })
   latestRef.current = { currentUser, shoppingList, weekPlan, mealsData, wishes, familyProfile }
 
@@ -118,6 +119,23 @@ export default function FamilyPlateApp() {
           setWeekPlan(cache.weekPlan)
           setMealsData(cache.mealsData)
           if (cache.familyProfile) setFamilyProfile(cache.familyProfile)
+          if (cache.activeWochenchef !== undefined) setActiveWochenchef(cache.activeWochenchef as Chef)
+          if (cache.planConfirmed !== undefined) setPlanConfirmed(cache.planConfirmed)
+          if (cache.shopDone !== undefined) setShopDone(cache.shopDone)
+          if (cache.weekStart !== undefined) setWeekStart(cache.weekStart ?? null)
+          if (cache.attendance?.length) setAttendance(cache.attendance)
+          if (cache.attendanceConfirmed?.length) setAttendanceConfirmed(cache.attendanceConfirmed as Chef[])
+          if (cache.wishes?.length) setWishes(cache.wishes)
+          if (cache.proposals?.length) setProposals(cache.proposals)
+          if (cache.planSettings !== undefined) setPlanSettings(cache.planSettings ?? null)
+          if (cache.mittagsloseTage?.length) setMittagsloseTage(cache.mittagsloseTage)
+          if (cache.planWE !== undefined) setPlanWE(cache.planWE)
+          if (cache.nextWeekStart !== undefined) setNextWeekStart(cache.nextWeekStart ?? null)
+          if (cache.nextWeekData !== undefined) setNextWeekData(cache.nextWeekData ?? null)
+          if (cache.memberStatuses?.length) setMemberStatuses(cache.memberStatuses)
+          if (cache.currentMemberRole) setCurrentMemberRole(cache.currentMemberRole)
+          if (cache.shoppingDays?.length) setShoppingDays(cache.shoppingDays)
+          if (cache.shoppingPersons) setShoppingPersons(cache.shoppingPersons)
           setOfflineCachedAt(cache.savedAt)
           setIsOffline(true)
           setPendingCount(loadPendingOps().length)
@@ -243,11 +261,12 @@ export default function FamilyPlateApp() {
       setShoppingPersons(sp)
       setWeekStart(ws)
       setNextWeekStart(nws)
+      let effectiveNwd = nwd
       if (nwd?.plan && nwd?.mealsData && needsMigration(nwd.plan, nwd.mealsData)) {
         const migratedNwMeals = migrateMealsDataAddSlotKeys(nwd.plan, nwd.mealsData)
-        const migratedNwd = { ...nwd, mealsData: migratedNwMeals }
-        setNextWeekData(migratedNwd)
-        void saveNextWeekData(nws ?? getNextMondayIso(), migratedNwd)
+        effectiveNwd = { ...nwd, mealsData: migratedNwMeals }
+        setNextWeekData(effectiveNwd)
+        void saveNextWeekData(nws ?? getNextMondayIso(), effectiveNwd)
       } else {
         setNextWeekData(nwd)
       }
@@ -261,9 +280,30 @@ export default function FamilyPlateApp() {
       setMemberStatuses(memberSts)
       setIsOffline(false)
       lastDbShoppingListRef.current = sl
-      saveDataCache({ shoppingList: sl, weekPlan: plan, mealsData: migratedMd, familyProfile: latestProfile, savedAt: new Date().toISOString() })
-      // fp_identity nach jedem erfolgreichen Online-Laden aktualisieren, damit der
-      // Offline-Kaltstart auch ohne vorherigen neuen Login funktioniert.
+      saveDataCache({
+        shoppingList: sl,
+        weekPlan: plan,
+        mealsData: migratedMd,
+        familyProfile: latestProfile,
+        savedAt: new Date().toISOString(),
+        activeWochenchef: wc,
+        planConfirmed: pc,
+        shopDone: sd,
+        weekStart: ws ?? null,
+        attendance: resolvedAtt,
+        attendanceConfirmed: ac,
+        wishes: w,
+        proposals: pr,
+        planSettings: resolvedPs,
+        mittagsloseTage: resolvedPs?.mittagsloseTage ?? effectiveMtl,
+        planWE: resolvedPs?.planWE ?? effectivePlanWE,
+        nextWeekStart: nws ?? null,
+        nextWeekData: effectiveNwd ?? null,
+        memberStatuses: memberSts,
+        currentMemberRole: (roleData.data?.role as MemberRole | null) ?? 'member',
+        shoppingDays: sd2,
+        shoppingPersons: sp,
+      })
       saveIdentity({ familyId: getFamilyId(), kuerzel: currentUser! })
       setDataLoading(false)
       loadLastDishes().then(setLastDishes).catch(() => {})
@@ -331,11 +371,22 @@ export default function FamilyPlateApp() {
           clearPendingOps()
           clearDeletedIds()
           setPendingCount(0)
-          saveDataCache({ shoppingList: applied, weekPlan: loaded.plan, mealsData: loaded.mealsData, familyProfile: fp, savedAt: new Date().toISOString() })
+          // Alle gecachten Felder erhalten; nur Einkauf+Plan aktualisieren
+          const prevCache = loadDataCache()
+          saveDataCache({
+            ...(prevCache ?? {}),
+            shoppingList: applied,
+            weekPlan: loaded.plan,
+            mealsData: loaded.mealsData,
+            familyProfile: fp ?? prevCache?.familyProfile ?? null,
+            savedAt: new Date().toISOString(),
+          })
         } catch { /* Silent – nächste Verbindung versucht es erneut */ }
       }
       setSyncDone(true)
       setTimeout(() => setSyncDone(false), 2500)
+      // Vollständigen Reload anstoßen: frischer Wochenchef, planConfirmed, Rollen etc.
+      setLoadTrigger(t => t + 1)
     }
     const handleOffline = () => setIsOffline(true)
     const handleVisibility = async () => {
@@ -390,6 +441,65 @@ export default function FamilyPlateApp() {
     // When the new SW takes control (after SKIP_WAITING), reload to load new assets
     navigator.serviceWorker.addEventListener('controllerchange', () => window.location.reload())
   }, [])
+
+  // Supabase Realtime: week_plans-Änderungen anderer Geräte live empfangen.
+  // Während der Nutzer tippt (offenes Input-Feld) wird die Aktualisierung zurückgestellt
+  // und nach dem Verlassen des Feldes angewendet (nicht verworfen).
+  useEffect(() => {
+    if (!currentUser || currentUser === SETUP_NEEDED) return
+    const familyId = getFamilyId()
+    if (!familyId) return
+
+    const applyUpdate = async () => {
+      try {
+        const loaded = await loadWeekPlan()
+        const { shoppingList: currentSl } = latestRef.current
+        const deletedIds = loadDeletedIds()
+        const merged = mergeShoppingLists(loaded.shoppingList, currentSl, deletedIds)
+        lastDbShoppingListRef.current = loaded.shoppingList
+        setShoppingList(merged)
+        setWeekPlan(loaded.plan)
+        setMealsData(loaded.mealsData)
+        setWishes(loaded.wishes)
+        setActiveWochenchef(loaded.wochenchef)
+        setPlanConfirmed(loaded.planConfirmed)
+        setShopDone(loaded.shopDone)
+        setProposals(loaded.proposals)
+      } catch { /* silent */ }
+    }
+
+    const handleFocusOut = (e: FocusEvent) => {
+      const el = e.target as HTMLElement
+      if ((el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable) && pendingRealtimeRef.current) {
+        pendingRealtimeRef.current = false
+        void applyUpdate()
+      }
+    }
+
+    const channel = supabase
+      .channel(`fp-week-plan-${familyId}`)
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'week_plans', filter: `family_id=eq.${familyId}` },
+        () => {
+          if (typeof navigator !== 'undefined' && !navigator.onLine) return
+          const el = document.activeElement as HTMLElement | null
+          if (el?.tagName === 'INPUT' || el?.tagName === 'TEXTAREA' || el?.isContentEditable) {
+            pendingRealtimeRef.current = true
+            return
+          }
+          void applyUpdate()
+        }
+      )
+      .subscribe()
+
+    document.addEventListener('focusout', handleFocusOut)
+    return () => {
+      void supabase.removeChannel(channel)
+      document.removeEventListener('focusout', handleFocusOut)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser])
 
   function handleSwUpdate() {
     navigator.serviceWorker.ready.then(reg => reg.waiting?.postMessage({ type: 'SKIP_WAITING' }))
