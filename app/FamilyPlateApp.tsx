@@ -995,7 +995,7 @@ export default function FamilyPlateApp() {
             onActivateNextWeek={handleActivateNextWeek}
             planSettings={planSettings}
             onPlanSettingsChange={handlePlanSettingsChange}
-            canEditSettings={currentMemberRole !== 'member'}
+            canEditSettings={currentMemberRole === 'owner' || currentMemberRole === 'admin'}
             defaultMealConfig={familyProfile?.defaultMealConfig}
             defaultPlanWE={familyProfile?.defaultPlanWE}
             memberStatuses={memberStatuses}
@@ -1033,7 +1033,7 @@ export default function FamilyPlateApp() {
             zutatenAliase={familyProfile.zutatenAliase}
             onZutatenWarengruppeChange={handleZutatenWarengruppeChange}
             onZutatenAliasChange={handleZutatenAliasChange}
-            canEditSettings={currentMemberRole !== 'member'}
+            canEditSettings={currentMemberRole === 'owner' || currentMemberRole === 'admin'}
             planConfirmed={planConfirmed}
             attendance={attendance}
             shoppingDays={shoppingDays}
@@ -1073,7 +1073,7 @@ export default function FamilyPlateApp() {
             onNextWeekDataChange={handleNextWeekDataChange}
             laeden={familyProfile.laeden}
             onLaedenChange={handleLaedenChange}
-            canEditSettings={currentMemberRole !== 'member'}
+            canEditSettings={currentMemberRole === 'owner' || currentMemberRole === 'admin'}
             memberStatuses={memberStatuses}
             defaultMealConfig={familyProfile.defaultMealConfig}
             defaultPlanWE={familyProfile.defaultPlanWE ?? false}

@@ -998,6 +998,8 @@ export default function WocheScreen({
   const [pendingSwapSource, setPendingSwapSource] = useState<{ tag: string; slot: WochenSlot; entry: WeekPlanEntry } | null>(null)
   const [nwPendingSwapSource, setNwPendingSwapSource] = useState<{ tag: string; slot: WochenSlot; entry: WeekPlanEntry } | null>(null)
   const [nwManualDishTyp, setNwManualDishTyp] = useState<'leicht' | 'normal' | null>(null)
+  const [schnellaktionKey, setSchnellaktionKey] = useState<string | null>(null)
+  const [schnellSub, setSchnellSub] = useState<'falltAus' | 'koch' | 'schnell' | 'reste' | 'eigen' | null>(null)
 
   function getSlotAnwesend(tag: string, slot: WochenSlot): Chef[] {
     const allChefs = (members.length ? members : DEFAULT_MEMBERS).map(m => m.id as Chef)
@@ -1072,6 +1074,8 @@ export default function WocheScreen({
     setManualDishTyp(null)
     setPendingDay(null)
     setPendingDayMeals({})
+    setSchnellaktionKey(null)
+    setSchnellSub(null)
   }
 
   function toggleEditMeal(key: string) {
@@ -1091,7 +1095,7 @@ export default function WocheScreen({
     const currentEntry = weekPlan.find(e => e.tag === tag && e.slot === slot)
     if (currentEntry?.chef === chef) { closeMealPanel(); return }
     closeMealPanel()
-    if (currentUser === wochenchef) {
+    if (currentUser === wochenchef || canEditSettings) {
       const newPlan = weekPlan.map(e => e.tag === tag && e.slot === slot ? { ...e, chef } : e)
       await onWeekPlanChange(newPlan, mealsData)
     } else {
@@ -1106,6 +1110,78 @@ export default function WocheScreen({
         createdAt: new Date().toISOString(),
       }])
     }
+  }
+
+  function schnellBtn(active: boolean) {
+    return {
+      flex: 1,
+      minWidth: 46,
+      padding: '7px 4px',
+      border: `1px solid ${active ? '#D97706' : '#e5e7eb'}`,
+      borderRadius: 8,
+      background: active ? '#FEF3C7' : 'white',
+      color: active ? '#92400E' : '#555',
+      fontSize: 11,
+      fontWeight: active ? 700 : 400,
+      cursor: 'pointer' as const,
+    }
+  }
+
+  function renderSchnellaktion(tag: string, slot: WochenSlot, entry: WeekPlanEntry) {
+    if (!planConfirmed) return null
+    if (tag !== today && tag !== tomorrow) return null
+    if (swapSource) return null
+    const key = `${tag}-${slot}`
+    const isOpen = schnellaktionKey === key
+    const slotAnwesend = getSlotAnwesend(tag, slot)
+    const canDirectEdit = currentUser === wochenchef || canEditSettings
+    return (
+      <div style={{ borderTop: '1px solid #f5f5f5' }}>
+        <button
+          onClick={() => {
+            if (isOpen) { setSchnellaktionKey(null); setSchnellSub(null) }
+            else { setSchnellaktionKey(key); setSchnellSub(null); setGerichtEditKey(null); setEditMealKey(null) }
+          }}
+          style={{ width: '100%', padding: '6px 12px', background: 'none', border: 'none', textAlign: 'left', fontSize: 11, color: isOpen ? '#D97706' : '#bbb', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}
+        >
+          <span>⚡</span><span>Heute anders?</span>
+          {tag === tomorrow && <span style={{ fontSize: 9, color: '#ccc' }}>&nbsp;(morgen)</span>}
+        </button>
+        {isOpen && (
+          <div style={{ padding: '0 12px 10px' }}>
+            <div style={{ display: 'flex', gap: 4, marginBottom: 6 }}>
+              <button onClick={() => setSchnellSub(schnellSub === 'falltAus' ? null : 'falltAus')} style={schnellBtn(schnellSub === 'falltAus')}>✗ Fällt aus</button>
+              <button onClick={() => setSchnellSub(schnellSub === 'koch' ? null : 'koch')} style={schnellBtn(schnellSub === 'koch')}>👤 Koch</button>
+              {canDirectEdit && <button onClick={() => setSchnellSub(schnellSub === 'schnell' ? null : 'schnell')} style={schnellBtn(schnellSub === 'schnell')}>⚡ Schnell</button>}
+              <button onClick={() => setSchnellSub(schnellSub === 'reste' ? null : 'reste')} style={schnellBtn(schnellSub === 'reste')}>🍲 Reste</button>
+              <button onClick={() => setSchnellSub(schnellSub === 'eigen' ? null : 'eigen')} style={schnellBtn(schnellSub === 'eigen')}>🙋 Ich</button>
+            </div>
+            {schnellSub === 'koch' && (
+              <div>
+                {!canDirectEdit && <div style={{ fontSize: 10, color: '#92400E', marginBottom: 4 }}>⏳ Vorschlag an {personNames[wochenchef]}</div>}
+                <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+                  {(members.length ? members : DEFAULT_MEMBERS).map(m => {
+                    const isPresent = slotAnwesend.includes(m.id as Chef)
+                    const isCurrent = entry.chef === m.id
+                    return (
+                      <button
+                        key={m.id}
+                        disabled={isCurrent}
+                        onClick={() => void changeActiveChef(tag, slot, m.id as Chef)}
+                        style={{ padding: '6px 10px', borderRadius: 8, border: `1px solid ${isCurrent ? '#e5e7eb' : isPresent ? '#1D9E75' : '#e5e7eb'}`, background: isCurrent ? '#f5f5f5' : isPresent ? '#E1F5EE' : 'white', color: isCurrent ? '#bbb' : isPresent ? '#0F6E56' : '#444', fontSize: 12, fontWeight: isPresent ? 600 : 400, cursor: isCurrent ? 'default' as const : 'pointer' as const }}
+                      >{m.name || m.id}</button>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+            {(schnellSub === 'falltAus' || schnellSub === 'schnell' || schnellSub === 'reste' || schnellSub === 'eigen') && (
+              <div style={{ fontSize: 11, color: '#888', fontStyle: 'italic' }}>kommt in Schritt {schnellSub === 'falltAus' ? '2' : schnellSub === 'schnell' ? '3' : '4'}</div>
+            )}
+          </div>
+        )}
+      </div>
+    )
   }
 
   async function acceptProposal(proposal: ChangeProposal) {
@@ -1592,6 +1668,7 @@ export default function WocheScreen({
   const activeDays = effectivePlanWE ? WOCHENTAGE : WOCHENTAGE.slice(0, 5)
   const plannedDays = WOCHENTAGE.filter(t => weekPlan.some(e => e.tag === t))
   const todayWocheIdx = WOCHENTAGE.indexOf(today)
+  const tomorrow: string | null = todayWocheIdx + 1 < WOCHENTAGE.length ? WOCHENTAGE[todayWocheIdx + 1] : null
   const pastPlannedDays = plannedDays.filter(t => WOCHENTAGE.indexOf(t) < todayWocheIdx)
   const futureActiveDays = activeDays.filter(t => WOCHENTAGE.indexOf(t) >= todayWocheIdx)
   const todayIdx = activeDays.indexOf(today)
@@ -3856,6 +3933,7 @@ export default function WocheScreen({
                             </div>
                           )
                         })()}
+                        {renderSchnellaktion(tag, slot, e)}
                       </div>
                     )
                   })}
@@ -4740,6 +4818,7 @@ export default function WocheScreen({
             })}
           </div>
         )}
+        {renderSchnellaktion(tag, slot, entry)}
       </div>
     )
   }
