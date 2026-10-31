@@ -1000,6 +1000,7 @@ export default function WocheScreen({
   const [nwManualDishTyp, setNwManualDishTyp] = useState<'leicht' | 'normal' | null>(null)
   const [schnellaktionKey, setSchnellaktionKey] = useState<string | null>(null)
   const [schnellSub, setSchnellSub] = useState<'falltAus' | 'koch' | 'schnell' | 'reste' | 'eigen' | null>(null)
+  const [schnellStreichenConfirm, setSchnellStreichenConfirm] = useState<string | null>(null)
 
   function getSlotAnwesend(tag: string, slot: WochenSlot): Chef[] {
     const allChefs = (members.length ? members : DEFAULT_MEMBERS).map(m => m.id as Chef)
@@ -1076,6 +1077,7 @@ export default function WocheScreen({
     setPendingDayMeals({})
     setSchnellaktionKey(null)
     setSchnellSub(null)
+    setSchnellStreichenConfirm(null)
   }
 
   function toggleEditMeal(key: string) {
@@ -1130,7 +1132,7 @@ export default function WocheScreen({
   function renderSchnellaktion(tag: string, slot: WochenSlot, entry: WeekPlanEntry) {
     if (!planConfirmed) return null
     if (tag !== today && tag !== tomorrow) return null
-    if (swapSource) return null
+    if (swapSource || moveSource) return null
     const key = `${tag}-${slot}`
     const isOpen = schnellaktionKey === key
     const slotAnwesend = getSlotAnwesend(tag, slot)
@@ -1139,8 +1141,8 @@ export default function WocheScreen({
       <div style={{ borderTop: '1px solid #f5f5f5' }}>
         <button
           onClick={() => {
-            if (isOpen) { setSchnellaktionKey(null); setSchnellSub(null) }
-            else { setSchnellaktionKey(key); setSchnellSub(null); setGerichtEditKey(null); setEditMealKey(null) }
+            if (isOpen) { setSchnellaktionKey(null); setSchnellSub(null); setSchnellStreichenConfirm(null) }
+            else { setSchnellaktionKey(key); setSchnellSub(null); setSchnellStreichenConfirm(null); setGerichtEditKey(null); setEditMealKey(null) }
           }}
           style={{ width: '100%', padding: '6px 12px', background: 'none', border: 'none', textAlign: 'left', fontSize: 11, color: isOpen ? '#D97706' : '#bbb', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}
         >
@@ -1149,13 +1151,45 @@ export default function WocheScreen({
         </button>
         {isOpen && (
           <div style={{ padding: '0 12px 10px' }}>
-            <div style={{ display: 'flex', gap: 4, marginBottom: 6 }}>
-              <button onClick={() => setSchnellSub(schnellSub === 'falltAus' ? null : 'falltAus')} style={schnellBtn(schnellSub === 'falltAus')}>✗ Fällt aus</button>
-              <button onClick={() => setSchnellSub(schnellSub === 'koch' ? null : 'koch')} style={schnellBtn(schnellSub === 'koch')}>👤 Koch</button>
-              {canDirectEdit && <button onClick={() => setSchnellSub(schnellSub === 'schnell' ? null : 'schnell')} style={schnellBtn(schnellSub === 'schnell')}>⚡ Schnell</button>}
-              <button onClick={() => setSchnellSub(schnellSub === 'reste' ? null : 'reste')} style={schnellBtn(schnellSub === 'reste')}>🍲 Reste</button>
-              <button onClick={() => setSchnellSub(schnellSub === 'eigen' ? null : 'eigen')} style={schnellBtn(schnellSub === 'eigen')}>🙋 Ich</button>
+            <div style={{ display: 'flex', gap: 4, marginBottom: schnellSub ? 8 : 0 }}>
+              <button onClick={() => { setSchnellSub(schnellSub === 'falltAus' ? null : 'falltAus'); setSchnellStreichenConfirm(null) }} style={schnellBtn(schnellSub === 'falltAus')}>✗ Fällt aus</button>
+              <button onClick={() => { setSchnellSub(schnellSub === 'koch' ? null : 'koch'); setSchnellStreichenConfirm(null) }} style={schnellBtn(schnellSub === 'koch')}>👤 Koch</button>
+              {canDirectEdit && <button onClick={() => { setSchnellSub(schnellSub === 'schnell' ? null : 'schnell'); setSchnellStreichenConfirm(null) }} style={schnellBtn(schnellSub === 'schnell')}>⚡ Schnell</button>}
+              <button onClick={() => { setSchnellSub(schnellSub === 'reste' ? null : 'reste'); setSchnellStreichenConfirm(null) }} style={schnellBtn(schnellSub === 'reste')}>🍲 Reste</button>
+              <button onClick={() => { setSchnellSub(schnellSub === 'eigen' ? null : 'eigen'); setSchnellStreichenConfirm(null) }} style={schnellBtn(schnellSub === 'eigen')}>🙋 Ich</button>
             </div>
+            {schnellSub === 'falltAus' && (
+              <div>
+                {schnellStreichenConfirm === key ? (
+                  <div>
+                    <div style={{ fontSize: 11, color: '#B91C1C', marginBottom: 6 }}>
+                      {canDirectEdit ? 'Gericht wirklich entfernen?' : 'Entfernen beim Wochenchef vorschlagen?'}
+                    </div>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <button
+                        onClick={() => { void handleRemoveRequest(tag, slot, entry); setSchnellaktionKey(null); setSchnellSub(null); setSchnellStreichenConfirm(null) }}
+                        style={{ flex: 2, padding: '7px', background: '#DC2626', color: 'white', border: 'none', borderRadius: 7, fontSize: 11, fontWeight: 600, cursor: 'pointer' as const }}
+                      >{canDirectEdit ? '🗑 Ja, entfernen' : '📤 Ja, vorschlagen'}</button>
+                      <button
+                        onClick={() => setSchnellStreichenConfirm(null)}
+                        style={{ flex: 1, padding: '7px', border: '1px solid #ddd', borderRadius: 7, background: 'white', fontSize: 11, color: '#888', cursor: 'pointer' as const }}
+                      >Nein</button>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button
+                      onClick={() => { setMoveSource({ tag, slot, entry }); setRemoveConfirmKey(null); setSchnellaktionKey(null); setSchnellSub(null); setSchnellStreichenConfirm(null) }}
+                      style={{ flex: 1, padding: '7px 6px', border: '1px solid #ddd', borderRadius: 8, background: 'white', color: '#444', fontSize: 11, cursor: 'pointer' as const }}
+                    >→ Verschieben</button>
+                    <button
+                      onClick={() => setSchnellStreichenConfirm(key)}
+                      style={{ flex: 1, padding: '7px 6px', border: '1px solid #FECACA', borderRadius: 8, background: '#FEF2F2', color: '#DC2626', fontSize: 11, cursor: 'pointer' as const }}
+                    >🗑 Streichen</button>
+                  </div>
+                )}
+              </div>
+            )}
             {schnellSub === 'koch' && (
               <div>
                 {!canDirectEdit && <div style={{ fontSize: 10, color: '#92400E', marginBottom: 4 }}>⏳ Vorschlag an {personNames[wochenchef]}</div>}
@@ -1175,8 +1209,8 @@ export default function WocheScreen({
                 </div>
               </div>
             )}
-            {(schnellSub === 'falltAus' || schnellSub === 'schnell' || schnellSub === 'reste' || schnellSub === 'eigen') && (
-              <div style={{ fontSize: 11, color: '#888', fontStyle: 'italic' }}>kommt in Schritt {schnellSub === 'falltAus' ? '2' : schnellSub === 'schnell' ? '3' : '4'}</div>
+            {(schnellSub === 'schnell' || schnellSub === 'reste' || schnellSub === 'eigen') && (
+              <div style={{ fontSize: 11, color: '#888', fontStyle: 'italic' }}>kommt in Schritt {schnellSub === 'schnell' ? '3' : '4'}</div>
             )}
           </div>
         )}
