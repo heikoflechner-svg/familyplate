@@ -43,7 +43,7 @@ export async function loadWeekPlan(): Promise<{ plan: WeekPlanEntry[]; mealsData
 
   return {
     plan: Array.isArray(data.plan_data) ? (data.plan_data as WeekPlanEntry[]) : [],
-    mealsData: (data.meals_data as Record<string, Rezept>) ?? {},
+    mealsData: filterLockKeys((data.meals_data as Record<string, Rezept>) ?? {}),
     wishes: Array.isArray(data.wishes) ? (data.wishes as Wish[]) : [],
     attendance,
     attendanceConfirmed,
@@ -480,6 +480,56 @@ export async function generateWeekPlan(params: {
 export function isFullRecipe(r?: Rezept | null): boolean {
   if (!r || r.schritte.length === 0) return false
   return r.zutaten.length > 4 || r.zutaten.some(z => z.typ === 'grundvorrat')
+}
+
+function filterLockKeys(meals: Record<string, Rezept>): Record<string, Rezept> {
+  return Object.fromEntries(Object.entries(meals).filter(([k]) => !k.startsWith('__gen:')))
+}
+
+export async function fetchFreshMealsData(): Promise<Record<string, Rezept>> {
+  const { data } = await supabase
+    .from('week_plans')
+    .select('meals_data')
+    .eq('family_id', getFamilyId())
+    .order('updated_at', { ascending: false })
+    .limit(1)
+    .single()
+  return (data?.meals_data as Record<string, Rezept>) ?? {}
+}
+
+export async function saveMealsDataOnly(mealsData: Record<string, Rezept>): Promise<void> {
+  const { data: existing } = await supabase
+    .from('week_plans')
+    .select('id')
+    .eq('family_id', getFamilyId())
+    .limit(1)
+    .single()
+  if (existing?.id) {
+    await supabase
+      .from('week_plans')
+      .update({ meals_data: mealsData, updated_at: new Date().toISOString() })
+      .eq('id', existing.id)
+  }
+}
+
+// Reads fresh DB state, writes recipe only if not already present, clears lock, returns cleaned mealsData.
+export async function mergeRecipeToDb(
+  gericht: string,
+  slotKey: string,
+  rezept: Rezept,
+): Promise<Record<string, Rezept>> {
+  const fresh = await fetchFreshMealsData()
+  const lockKey = `__gen:${gericht}`
+  const freshClean = filterLockKeys(fresh)
+  // Only write recipe if not already present in DB
+  const existingInDb = freshClean[gericht] ?? freshClean[slotKey]
+  const merged = isFullRecipe(existingInDb as Rezept | undefined)
+    ? freshClean  // DB already has a recipe (another device saved it) — use theirs
+    : { ...freshClean, [gericht]: rezept, [slotKey]: rezept }
+  const toSave = { ...fresh, ...merged }
+  delete toSave[lockKey]
+  await saveMealsDataOnly(toSave)
+  return merged
 }
 
 export async function getRemySuggestions(params: {

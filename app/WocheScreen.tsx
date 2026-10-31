@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, useRef, useMemo } from 'react'
-import { generateWeekPlan, getRemySuggestions, generateRecipe, rescaleRecipe, adjustRecipe, loadMissingRecipes, getPersonCountForSlot, saveLastDishes, isFullRecipe, getMondayIso, getNextMondayIso, applySwap, checkAllergiesForSwap, checkFreshnessWarning, loadHistoryDishes } from '../lib/mealLogic'
+import { generateWeekPlan, getRemySuggestions, generateRecipe, rescaleRecipe, adjustRecipe, loadMissingRecipes, getPersonCountForSlot, saveLastDishes, isFullRecipe, getMondayIso, getNextMondayIso, applySwap, checkAllergiesForSwap, checkFreshnessWarning, loadHistoryDishes, fetchFreshMealsData, saveMealsDataOnly, mergeRecipeToDb } from '../lib/mealLogic'
 import { checkAllergens, formatAllergenWarningsCard } from '../lib/allergenCheck'
 import { rescaleShoppingListMengen, rewriteShoppingItemsForDish, swapShoppingItemsTags, generateShoppingList, removeShoppingItemsForDish, moveShoppingItemsForDish } from '../lib/shoppingLogic'
 import { getFreezerListString, getPantryListString, addFreezerItem, deleteFreezerItem } from '../lib/freezerLogic'
@@ -76,6 +76,10 @@ type GAPCfg = {
   onApplyErgaenzung: (text: string) => void
   flash?: boolean
   onOpenRezeptbuch?: () => void
+  // Move & Remove (optional – only shown when provided)
+  onMoveClick?: () => void
+  onRemoveClick?: () => void
+  removeConfirmNode?: React.ReactNode
 }
 function gerichtAendernPanel(c: GAPCfg) {
   function toggle(mode: SubMode) {
@@ -163,6 +167,21 @@ function gerichtAendernPanel(c: GAPCfg) {
           ✓ Gespeichert – Rezept wird angepasst
         </div>
       )}
+      {(c.onMoveClick || c.onRemoveClick) && (
+        <div style={{ borderTop: '1px solid #f0f0f0', marginTop: 4, paddingTop: 4, display: 'flex', gap: 4 }}>
+          {c.onMoveClick && (
+            <button onClick={c.onMoveClick}
+              style={{ flex: 1, padding: '5px 4px', border: '1px solid #ddd', borderRadius: 7, background: 'white', cursor: 'pointer', fontSize: 11, color: '#555' }}>
+              → Verschieben</button>
+          )}
+          {c.onRemoveClick && (
+            <button onClick={c.onRemoveClick}
+              style={{ flex: 1, padding: '5px 4px', border: '1px solid #ddd', borderRadius: 7, background: 'white', cursor: 'pointer', fontSize: 11, color: '#555' }}>
+              🗑 Entfernen</button>
+          )}
+        </div>
+      )}
+      {c.removeConfirmNode}
     </div>
   )
 }
@@ -482,6 +501,12 @@ export default function WocheScreen({
   const [nwSwapSaving, setNwSwapSaving] = useState(false)
   const [nwSwapChef1, setNwSwapChef1] = useState<Chef | null>(null)
   const [nwSwapChef2, setNwSwapChef2] = useState<Chef | null>(null)
+
+  const [nwRemoveConfirmKey, setNwRemoveConfirmKey] = useState<string | null>(null)
+  const [nwMoveSource, setNwMoveSource] = useState<{ tag: string; slot: WochenSlot; entry: WeekPlanEntry } | null>(null)
+  const [nwMovePendingTarget, setNwMovePendingTarget] = useState<{ tag: string; slot: WochenSlot } | null>(null)
+
+  const [ratingEditKey, setRatingEditKey] = useState<string | null>(null)
 
   const [wishFormKey, setWishFormKey] = useState<string | null>(null)
   const [nextWeekWishInput, setNextWeekWishInput] = useState('')
@@ -1947,6 +1972,52 @@ export default function WocheScreen({
     await executeMove(srcTag, srcSlot, srcEntry, dstTag, dstSlot, dstNextWeek)
   }
 
+  async function handleNwRemoveRequest(tag: string, slot: WochenSlot, entry: WeekPlanEntry) {
+    if (!onNextWeekDataChange || !nextWeekData?.plan) { setNwRemoveConfirmKey(null); return }
+    const nwChef = nextWeekData?.wochenchef
+    const isNwChefNow = !!nwChef && currentUser === nwChef
+    if (isNwChefNow || canEditSettings) {
+      const newPlan = nextWeekData.plan.filter(e => !(e.tag === tag && e.slot === slot))
+      const newMealsData = { ...(nextWeekData.mealsData ?? {}) }
+      delete newMealsData[mealsKey(tag, slot)]
+      const nextMonday = nextWeekStart ?? getNextMondayIso()
+      await onNextWeekDataChange({ plan: newPlan, mealsData: newMealsData }, nextMonday)
+    } else {
+      await onProposalsChange([...proposals, {
+        id: crypto.randomUUID(),
+        type: 'entfernen' as const,
+        tag, slot,
+        vonChef: currentUser,
+        fuerChef: nwChef ?? wochenchef,
+        createdAt: new Date().toISOString(),
+      }])
+    }
+    setNwRemoveConfirmKey(null)
+    void entry  // suppress unused warning
+  }
+
+  async function executeNwToNwMove(srcTag: string, srcSlot: WochenSlot, srcEntry: WeekPlanEntry, dstTag: string, dstSlot: WochenSlot) {
+    if (!onNextWeekDataChange || !nextWeekData?.plan) return
+    const nwPlan = nextWeekData.plan
+    const nwMealsData = { ...(nextWeekData.mealsData ?? {}) }
+    const existingDst = nwPlan.find(e => e.tag === dstTag && e.slot === dstSlot)
+    const newEntry: WeekPlanEntry = { ...srcEntry, tag: dstTag, slot: dstSlot }
+    let newNwPlan = nwPlan.filter(e => !(e.tag === srcTag && e.slot === srcSlot) && !(e.tag === dstTag && e.slot === dstSlot))
+    newNwPlan = [...newNwPlan, ...(existingDst ? [{ ...existingDst, tag: srcTag, slot: srcSlot }] : []), newEntry]
+    delete nwMealsData[mealsKey(srcTag, srcSlot)]
+    delete nwMealsData[mealsKey(dstTag, dstSlot)]
+    const srcRezept = getMeal(nextWeekData.mealsData ?? {}, srcTag, srcSlot, srcEntry.gericht)
+    if (srcRezept) nwMealsData[mealsKey(dstTag, dstSlot)] = srcRezept
+    if (existingDst) {
+      const dstRezept = getMeal(nextWeekData.mealsData ?? {}, dstTag, dstSlot, existingDst.gericht)
+      if (dstRezept) nwMealsData[mealsKey(srcTag, srcSlot)] = dstRezept
+    }
+    const nextMonday = nextWeekStart ?? getNextMondayIso()
+    await onNextWeekDataChange({ plan: newNwPlan, mealsData: nwMealsData }, nextMonday)
+    setNwMoveSource(null)
+    setNwMovePendingTarget(null)
+  }
+
   function slotEssenLabel(tag: string, slot: WochenSlot): string {
     const anw = getSlotAnwesend(tag, slot)
     const day = attendance.find(a => a.tag === tag) as unknown as Record<string, unknown> | undefined
@@ -1957,32 +2028,90 @@ export default function WocheScreen({
     return `${total}${gaeste > 0 ? ` (${gaeste} Gast${gaeste > 1 ? 'e' : ''})` : ''}`
   }
 
-  // Rezept-Detail öffnen: liegt nur ein Stub vor oder Personenzahl hat sich geändert →
-  // volles Rezept lazy nachladen und persistieren.
+  // Rezept-Detail öffnen: immer zuerst frisch aus DB laden, dann ggf. generieren.
+  // Lock-Mechanismus verhindert, dass zwei Geräte gleichzeitig dasselbe Rezept erstellen.
   async function openRecipe(gericht: string, emoji: string, tag: string, slot: WochenSlot) {
     setSelectedMealName(gericht)
     setRecipeContext({ tag, slot, source: 'current', emoji })
-    const existing = getMeal(mealsData, tag, slot, gericht)
     const personCount = getPersonCountForSlot(tag, slot, attendance, members.length ? members : DEFAULT_MEMBERS)
-    if (isFullRecipe(existing) && existing?.personenAnzahl === personCount) return
+
+    // Lokaler Cache-Treffer: kein DB-Call nötig
+    const localExisting = getMeal(mealsData, tag, slot, gericht)
+    if (isFullRecipe(localExisting) && localExisting?.personenAnzahl === personCount) return
+
     setRecipeLoading(gericht)
     try {
-      if (isFullRecipe(existing) && existing!.personenAnzahl !== undefined && existing!.personenAnzahl !== personCount) {
-        const rescaled = await rescaleRecipe(existing!, personCount)
+      const slotKey = mealsKey(tag, slot)
+      const lockKey = `__gen:${gericht}`
+
+      // 1. Frisch aus DB laden
+      const freshRaw = await fetchFreshMealsData()
+      const fresh = Object.fromEntries(Object.entries(freshRaw).filter(([k]) => !k.startsWith('__gen:')))
+      const freshRecipe = getMeal(fresh, tag, slot, gericht)
+
+      if (isFullRecipe(freshRecipe)) {
+        if (freshRecipe!.personenAnzahl === personCount) {
+          await onWeekPlanChange(weekPlan, { ...mealsData, ...fresh })
+          return
+        }
+        const rescaled = await rescaleRecipe(freshRecipe!, personCount)
         if (rescaled) {
-          await onWeekPlanChange(weekPlan, { ...mealsData, [gericht]: rescaled, [mealsKey(tag, slot)]: rescaled })
+          const withRescaled = { ...fresh, [gericht]: { ...rescaled, personenAnzahl: personCount }, [slotKey]: { ...rescaled, personenAnzahl: personCount } }
+          await onWeekPlanChange(weekPlan, withRescaled)
           await onShoppingListChange(rescaleShoppingListMengen(shoppingList, gericht, rescaled.zutaten, false))
         }
-      } else {
+        return
+      }
+
+      // 2. Lock prüfen: läuft bereits eine Erstellung auf einem anderen Gerät?
+      const lockEntry = freshRaw[lockKey] as (Rezept & { generatedAt?: string }) | undefined
+      if (lockEntry?.name === '__generating' && lockEntry.generatedAt) {
+        const lockAge = Date.now() - new Date(lockEntry.generatedAt).getTime()
+        if (lockAge < 2 * 60 * 1000) {
+          // Warten bis fertiges Rezept da ist (max 2 Minuten)
+          for (let i = 0; i < 40; i++) {
+            await new Promise<void>(resolve => setTimeout(resolve, 3000))
+            const polledRaw = await fetchFreshMealsData()
+            const polled = Object.fromEntries(Object.entries(polledRaw).filter(([k]) => !k.startsWith('__gen:')))
+            const polledRecipe = getMeal(polled, tag, slot, gericht)
+            if (isFullRecipe(polledRecipe)) {
+              await onWeekPlanChange(weekPlan, { ...mealsData, ...polled })
+              return
+            }
+            const pl = polledRaw[lockKey] as (Rezept & { generatedAt?: string }) | undefined
+            if (!pl || pl.name !== '__generating') break
+          }
+          // Timeout oder Lock abgelaufen → selbst generieren
+        }
+      }
+
+      // 3. Lock setzen
+      const lockSentinel = { name: '__generating', emoji: '', zutaten: [], schritte: [], minuten: 0, schwierigkeit: '', generatedAt: new Date().toISOString() } as unknown as Rezept
+      await saveMealsDataOnly({ ...freshRaw, [lockKey]: lockSentinel })
+
+      try {
+        // 4. Rezept generieren
         const rezept = await generateRecipe(gericht, emoji, getFreezerListString(freezerItems), getPantryListString(pantryItems), familyPrompt, personCount)
         if (rezept) {
-          const merged: Rezept = {
+          const toSave: Rezept = {
             ...rezept,
             personenAnzahl: personCount,
-            ersetzteZutaten: rezept.ersetzteZutaten?.length ? rezept.ersetzteZutaten : (existing?.ersetzteZutaten ?? []),
+            ersetzteZutaten: rezept.ersetzteZutaten?.length ? rezept.ersetzteZutaten : (freshRecipe?.ersetzteZutaten ?? []),
           }
-          await onWeekPlanChange(weekPlan, { ...mealsData, [gericht]: merged, [mealsKey(tag, slot)]: merged })
+          // 5. Nur in DB schreiben wenn noch kein Rezept vorhanden (kein Überschreiben)
+          const savedMeals = await mergeRecipeToDb(gericht, slotKey, toSave)
+          await onWeekPlanChange(weekPlan, { ...mealsData, ...savedMeals })
+        } else {
+          const cleaned = { ...freshRaw }
+          delete cleaned[lockKey]
+          await saveMealsDataOnly(cleaned)
         }
+      } catch {
+        try {
+          const cur = await fetchFreshMealsData()
+          delete cur[lockKey]
+          await saveMealsDataOnly(cur)
+        } catch { /* ignorieren */ }
       }
     } finally {
       setRecipeLoading(null)
@@ -3398,6 +3527,26 @@ export default function WocheScreen({
                                         closeMealPanel()
                                       },
                                     }),
+                                    onMoveClick: !wvIsSwapMode && !moveSource ? () => { setMoveSource({ tag, slot, entry: e }); setRemoveConfirmKey(null); setGerichtEditKey(null) } : undefined,
+                                    onRemoveClick: !wvIsSwapMode && !moveSource ? () => setRemoveConfirmKey(removeConfirmKey === key ? null : key) : undefined,
+                                    removeConfirmNode: removeConfirmKey === key && !wvIsSwapMode && !moveSource ? (
+                                      <div style={{ padding: '8px 4px 0', background: '#FEF2F2', borderRadius: 6, marginTop: 4 }}>
+                                        <div style={{ fontSize: 12, color: '#B91C1C', fontWeight: 600, marginBottom: 6 }}>
+                                          {e.emoji} {e.gericht} wirklich entfernen?
+                                        </div>
+                                        {shopDone && (
+                                          <div style={{ fontSize: 11, color: '#92400E', background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 6, padding: '4px 8px', marginBottom: 6 }}>
+                                            Einkauf ist abgeschlossen – trotzdem entfernen?
+                                          </div>
+                                        )}
+                                        <div style={{ display: 'flex', gap: 6 }}>
+                                          <button onClick={() => void handleRemoveRequest(tag, slot, e)} style={{ flex: 2, padding: '7px', background: '#DC2626', color: 'white', border: 'none', borderRadius: 7, fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
+                                            {currentUser === wochenchef || canEditSettings ? '🗑 Ja, entfernen' : '📤 Entfernen vorschlagen'}
+                                          </button>
+                                          <button onClick={() => setRemoveConfirmKey(null)} style={{ flex: 1, padding: '7px', background: 'white', border: '1px solid #ddd', borderRadius: 7, fontSize: 11, cursor: 'pointer', color: '#555' }}>Abbrechen</button>
+                                        </div>
+                                      </div>
+                                    ) : undefined,
                                   })}
                                   <button onClick={() => replanDay(tag)} disabled={dayLoading === tag || slotLoading !== null}
                                     style={{ padding: '6px 12px', border: '1px solid #ddd', borderRadius: 8, background: 'white', cursor: 'pointer', fontSize: 11, color: '#888', textAlign: 'left', width: '100%', marginTop: 4 }}>
@@ -3408,7 +3557,7 @@ export default function WocheScreen({
                             </div>
                           )
                         })()}
-                        {planConfirmed && !wvIsSwapMode && !moveSource && (
+                        {planConfirmed && !wvIsSwapMode && !moveSource && (currentUser !== wochenchef && !canEditSettings || shopDone) && (
                           <div style={{ borderTop: '1px solid #f5f5f5', display: 'flex', gap: 4, padding: '4px 12px 6px' }}>
                             <button
                               onClick={() => { setMoveSource({ tag, slot, entry: e }); setRemoveConfirmKey(null) }}
@@ -3420,7 +3569,7 @@ export default function WocheScreen({
                             >🗑 Entfernen</button>
                           </div>
                         )}
-                        {removeConfirmKey === key && planConfirmed && !wvIsSwapMode && !moveSource && (
+                        {removeConfirmKey === key && planConfirmed && !wvIsSwapMode && !moveSource && (currentUser !== wochenchef && !canEditSettings || shopDone) && (
                           <div style={{ padding: '8px 12px', background: '#FEF2F2', borderTop: '1px solid #FECACA' }}>
                             <div style={{ fontSize: 12, color: '#B91C1C', fontWeight: 600, marginBottom: 6 }}>
                               {e.emoji} {e.gericht} wirklich entfernen?
@@ -3628,16 +3777,30 @@ export default function WocheScreen({
                                       {(() => {
                                         const myRating = dishRatings.find(r => r.gerName.toLowerCase() === e.gericht.toLowerCase() && r.member === currentUser)?.sterne ?? 0
                                         const avg = computeRatingAvg(dishRatings, e.gericht)
+                                        const rKey = `${e.tag}-${e.slot}-${e.gericht}`
+                                        const isEditing = ratingEditKey === rKey
                                         return (
                                           <>
+                                            {myRating > 0 && !isEditing ? (
+                                              <div
+                                                onClick={() => setRatingEditKey(rKey)}
+                                                style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}
+                                              >
+                                                <span style={{ fontSize: 11, color: '#555' }}>Deine Bewertung:</span>
+                                                <span style={{ fontSize: 18, letterSpacing: -1 }}>{'★'.repeat(myRating)}</span>
+                                                {avg && <span style={{ fontSize: 10, color: '#888', marginLeft: 2 }}>{fmtAvg(avg.avg, avg.count)}</span>}
+                                                <span style={{ fontSize: 10, color: '#bbb', marginLeft: 2 }}>antippen zum Ändern</span>
+                                              </div>
+                                            ) : (
                                             <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                                               {[1,2,3,4,5].map(s => (
                                                 <button key={s}
-                                                  onClick={() => onRateGericht?.(e.gericht, s, currentUser, getMeal(mealsData, e.tag, e.slot, e.gericht))}
+                                                  onClick={() => { onRateGericht?.(e.gericht, s, currentUser, getMeal(mealsData, e.tag, e.slot, e.gericht)); setRatingEditKey(null) }}
                                                   style={{ fontSize: 20, background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px', lineHeight: 1, color: s <= myRating ? '#F59E0B' : '#d1d5db' }}>★</button>
                                               ))}
                                               {avg && <span style={{ fontSize: 10, color: '#888', marginLeft: 4 }}>{fmtAvg(avg.avg, avg.count)}</span>}
                                             </div>
+                                            )}
                                             {(canEditSettings || currentUser === wochenchef) && slotAnwesend
                                               .filter(m => m !== currentUser && !memberStatuses.find(s => s.kuerzel === m)?.isLinked)
                                               .map(m => {
@@ -4166,7 +4329,7 @@ export default function WocheScreen({
                                     <ChefPicker current={e.chef} onSelect={chef => { changeNwChef(tag, slot, chef); setNwEditMealKey(null) }} personNames={personNames} members={members} />
                                   </div>
                                 )}
-                                {(isNwChef || canEditSettings) && !nwIsSwapMode && (() => {
+                                {(isNwChef || canEditSettings) && !nwIsSwapMode && !nwMoveSource && (() => {
                                   const gKey = nwKey
                                   const isNwGerichtOpen = nwGerichtEditKey === gKey
                                   const stockItems = [...freezerItems, ...pantryItems]
@@ -4205,12 +4368,71 @@ export default function WocheScreen({
                                                 setNwEditMealKey(null); setNwMealSubMode(null); setNwManualDish('')
                                               },
                                             }),
+                                            onMoveClick: () => { setNwMoveSource({ tag, slot, entry: e }); setNwRemoveConfirmKey(null); setNwGerichtEditKey(null) },
+                                            onRemoveClick: () => setNwRemoveConfirmKey(nwRemoveConfirmKey === nwKey ? null : nwKey),
+                                            removeConfirmNode: nwRemoveConfirmKey === nwKey ? (
+                                              <div style={{ padding: '8px 4px 0', background: '#FEF2F2', borderRadius: 6, marginTop: 4 }}>
+                                                <div style={{ fontSize: 12, color: '#B91C1C', fontWeight: 600, marginBottom: 6 }}>{e.emoji} {e.gericht} wirklich entfernen?</div>
+                                                <div style={{ display: 'flex', gap: 6 }}>
+                                                  <button onClick={() => void handleNwRemoveRequest(tag, slot, e)} style={{ flex: 2, padding: '7px', background: '#DC2626', color: 'white', border: 'none', borderRadius: 7, fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
+                                                    {isNwChef || canEditSettings ? '🗑 Ja, entfernen' : '📤 Entfernen vorschlagen'}
+                                                  </button>
+                                                  <button onClick={() => setNwRemoveConfirmKey(null)} style={{ flex: 1, padding: '7px', background: 'white', border: '1px solid #ddd', borderRadius: 7, fontSize: 11, cursor: 'pointer', color: '#555' }}>Abbrechen</button>
+                                                </div>
+                                              </div>
+                                            ) : undefined,
                                           })}
                                         </div>
                                       )}
                                     </div>
                                   )
                                 })()}
+                                {!isNwChef && !canEditSettings && !nwIsSwapMode && !nwMoveSource && nwConfirmed && (
+                                  <div style={{ borderTop: '1px solid #f5f5f5', display: 'flex', gap: 4, padding: '4px 12px 6px' }}>
+                                    <button onClick={() => { setNwMoveSource({ tag, slot, entry: e }); setNwRemoveConfirmKey(null) }}
+                                      style={{ flex: 1, padding: '5px 4px', border: '1px solid #ddd', borderRadius: 7, background: 'white', cursor: 'pointer', fontSize: 11, color: '#555' }}>→ Verschieben</button>
+                                    <button onClick={() => setNwRemoveConfirmKey(nwRemoveConfirmKey === nwKey ? null : nwKey)}
+                                      style={{ flex: 1, padding: '5px 4px', border: `1px solid ${nwRemoveConfirmKey === nwKey ? '#DC2626' : '#ddd'}`, borderRadius: 7, background: nwRemoveConfirmKey === nwKey ? '#FEF2F2' : 'white', cursor: 'pointer', fontSize: 11, color: nwRemoveConfirmKey === nwKey ? '#DC2626' : '#555' }}>🗑 Entfernen</button>
+                                  </div>
+                                )}
+                                {nwRemoveConfirmKey === nwKey && !isNwChef && !canEditSettings && !nwIsSwapMode && (
+                                  <div style={{ padding: '8px 12px', background: '#FEF2F2', borderTop: '1px solid #FECACA' }}>
+                                    <div style={{ fontSize: 12, color: '#B91C1C', fontWeight: 600, marginBottom: 6 }}>{e.emoji} {e.gericht} wirklich entfernen?</div>
+                                    <div style={{ display: 'flex', gap: 6 }}>
+                                      <button onClick={() => void handleNwRemoveRequest(tag, slot, e)} style={{ flex: 2, padding: '7px', background: '#DC2626', color: 'white', border: 'none', borderRadius: 7, fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>📤 Entfernen vorschlagen</button>
+                                      <button onClick={() => setNwRemoveConfirmKey(null)} style={{ flex: 1, padding: '7px', background: 'white', border: '1px solid #ddd', borderRadius: 7, fontSize: 11, cursor: 'pointer', color: '#555' }}>Abbrechen</button>
+                                    </div>
+                                  </div>
+                                )}
+                                {nwMoveSource?.tag === tag && nwMoveSource.slot === slot && (
+                                  <div style={{ borderTop: '1px solid #B2DFCC', background: '#F0FAF5', padding: '8px 12px' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                                      <span style={{ fontSize: 11, fontWeight: 600, color: '#0F6E56' }}>→ Zielslot (nächste Woche)</span>
+                                      <button onClick={() => { setNwMoveSource(null); setNwMovePendingTarget(null) }} style={{ fontSize: 11, color: '#B91C1C', background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px' }}>✕ Abbrechen</button>
+                                    </div>
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
+                                      {WOCHENTAGE.flatMap(t =>
+                                        (['Mittag', 'Abend'] as const).map(s => {
+                                          if (s === 'Mittag' && !hasMittag(t)) return null
+                                          if (t === tag && s === slot) return null
+                                          const ex = (nextWeekData?.plan ?? []).find(p => p.tag === t && p.slot === s)
+                                          const isPending = nwMovePendingTarget?.tag === t && nwMovePendingTarget.slot === s
+                                          return (
+                                            <button key={`${t}-${s}`}
+                                              onClick={() => isPending ? void executeNwToNwMove(tag, slot, e, t, s) : setNwMovePendingTarget({ tag: t, slot: s })}
+                                              style={{ padding: '5px 6px', border: `1px solid ${isPending ? '#1D9E75' : '#ddd'}`, borderRadius: 7, background: isPending ? '#E1F5EE' : 'white', cursor: 'pointer', textAlign: 'left', fontSize: 10 }}>
+                                              <span style={{ color: '#888' }}>{TAG_SHORT[t]} {s === 'Mittag' ? '☀️' : '🌙'}</span>
+                                              <br />
+                                              <span style={{ fontWeight: ex ? 600 : 400, color: ex ? '#333' : '#bbb' }}>
+                                                {ex ? `${ex.emoji} ${ex.gericht.slice(0, 14)}${ex.gericht.length > 14 ? '…' : ''}` : '— leer'}
+                                              </span>
+                                            </button>
+                                          )
+                                        })
+                                      )}
+                                    </div>
+                                  </div>
+                                )}
                                 <div onClick={() => openNwSavedRecipe(e.gericht, e.emoji, e.tag, e.slot)} style={{ padding: '3px 12px 10px', display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
                                   <span style={{ fontSize: 18 }}>{e.emoji}</span>
                                   <div style={{ flex: 1 }}>
