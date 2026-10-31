@@ -14,11 +14,19 @@ export default function LoginScreen({ onRegister }: Props) {
 
   async function handleLogin() {
     if (!email || !password) return
+    if (!navigator.onLine) {
+      setError('Keine Internetverbindung – bitte später erneut versuchen.')
+      return
+    }
     setLoading(true)
     setError('')
     const { error } = await signIn(email.trim(), password)
     if (error) {
-      setError('E-Mail oder Passwort falsch.')
+      if (!navigator.onLine) {
+        setError('Keine Internetverbindung – bitte später erneut versuchen.')
+      } else {
+        setError('E-Mail oder Passwort falsch.')
+      }
       setLoading(false)
     }
   }

@@ -6,6 +6,8 @@ import { loadFreezerItems, loadPantryItems, getFreezerListString, getPantryListS
 import { loadFamilyProfile, saveFamilyProfile, saveShoppingConfig, applyChefStats, incrementWochenchefStat, DEFAULT_MEMBERS, buildFamilyPrompt } from '../lib/familyLogic'
 import { generateShoppingList } from '../lib/shoppingLogic'
 import { signOut, onAuthChange, SETUP_NEEDED } from '../lib/auth'
+import { saveDataCache, loadDataCache, appendPendingOps, loadPendingOps, clearPendingOps, addDeletedIds, loadDeletedIds, clearDeletedIds, type PendingOp } from '../lib/offlineCache'
+import { mergeShoppingLists, applyPendingOps } from '../lib/shoppingMerge'
 import { supabase, getFamilyId } from '../lib/supabase'
 import { loadRezeptbuch, saveRezeptToBook, updateRezeptInBook, deleteRezeptFromBook, toggleFavoritInBook, markGekochtInBook, autoSaveRezeptToBook, setVermeidenByName } from '../lib/rezeptbuchLogic'
 import { loadDishRatings, saveDishRating, computeRatingAvg, type DishRating } from '../lib/dishRatingsLogic'
@@ -59,6 +61,14 @@ export default function FamilyPlateApp() {
   const [profileSaveError, setProfileSaveError] = useState<string | null>(null)
   const [profileLoadError, setProfileLoadError] = useState(false)
   const [loadTrigger, setLoadTrigger] = useState(0)
+  const [isOffline, setIsOffline] = useState(false)
+  const [offlineCachedAt, setOfflineCachedAt] = useState<string | null>(null)
+  const [syncDone, setSyncDone] = useState(false)
+  const [pendingCount, setPendingCount] = useState(0)
+  const lastDbShoppingListRef = useRef<ShoppingItem[]>([])
+  const lastFocusReloadRef = useRef<number>(0)
+  const latestRef = useRef({ currentUser, shoppingList, weekPlan, mealsData, wishes, familyProfile })
+  latestRef.current = { currentUser, shoppingList, weekPlan, mealsData, wishes, familyProfile }
 
   useEffect(() => {
     return onAuthChange(chef => {
@@ -87,6 +97,8 @@ export default function FamilyPlateApp() {
         setPlanConfirmed(false)
         setShopDone(false)
         setMemberStatuses([])
+        setIsOffline(false)
+        setPendingCount(0)
       }
     })
   }, [])
@@ -95,6 +107,27 @@ export default function FamilyPlateApp() {
     if (!currentUser || currentUser === SETUP_NEEDED) return
     const doLoad = async () => {
       setProfileLoadError(false)
+
+      // Offline-Fallback: Lade aus dem Cache, wenn kein Netz vorhanden ist
+      if (typeof navigator !== 'undefined' && !navigator.onLine) {
+        const cache = loadDataCache()
+        if (cache) {
+          setShoppingList(cache.shoppingList)
+          lastDbShoppingListRef.current = cache.shoppingList
+          setWeekPlan(cache.weekPlan)
+          setMealsData(cache.mealsData)
+          if (cache.familyProfile) setFamilyProfile(cache.familyProfile)
+          setOfflineCachedAt(cache.savedAt)
+          setIsOffline(true)
+          setPendingCount(loadPendingOps().length)
+          setDataLoading(false)
+          return
+        }
+        setProfileLoadError(true)
+        setDataLoading(false)
+        return
+      }
+
       const [loaded, freezer, pantry, profile, nwLoaded, roleData, memberSts] = await Promise.all([
         loadWeekPlan(), loadFreezerItems(), loadPantryItems(), loadFamilyProfile(), loadNextWeekData(),
         supabase.from('family_members').select('role').eq('family_id', getFamilyId()).eq('kuerzel', currentUser!).maybeSingle(),
@@ -210,6 +243,9 @@ export default function FamilyPlateApp() {
       setFamilyProfile(latestProfile)
       setCurrentMemberRole((roleData.data?.role as MemberRole | null) ?? 'member')
       setMemberStatuses(memberSts)
+      setIsOffline(false)
+      lastDbShoppingListRef.current = sl
+      saveDataCache({ shoppingList: sl, weekPlan: plan, mealsData: migratedMd, familyProfile: latestProfile, savedAt: new Date().toISOString() })
       setDataLoading(false)
       loadLastDishes().then(setLastDishes).catch(() => {})
       loadRezeptbuch().then(entries => { if (entries !== null) setRezeptbuchEntries(entries) }).catch(() => {})
@@ -241,6 +277,60 @@ export default function FamilyPlateApp() {
   // loadTrigger: incremented by retry button to re-run this effect without user change
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUser, loadTrigger])
+
+  // Online / offline / visibility change handlers (registered once, use latestRef for fresh state)
+  useEffect(() => {
+    const handleOnline = async () => {
+      setIsOffline(false)
+      const ops = loadPendingOps()
+      const { currentUser: cu, weekPlan: wp, mealsData: md, familyProfile: fp } = latestRef.current
+      if (ops.length > 0 && cu && cu !== SETUP_NEEDED) {
+        try {
+          const loaded = await loadWeekPlan()
+          const applied = applyPendingOps(loaded.shoppingList, ops)
+          lastDbShoppingListRef.current = applied
+          setShoppingList(applied)
+          await saveShoppingList(applied)
+          clearPendingOps()
+          clearDeletedIds()
+          setPendingCount(0)
+          saveDataCache({ shoppingList: applied, weekPlan: loaded.plan, mealsData: loaded.mealsData, familyProfile: fp, savedAt: new Date().toISOString() })
+        } catch { /* Silent – nächste Verbindung versucht es erneut */ }
+      }
+      setSyncDone(true)
+      setTimeout(() => setSyncDone(false), 2500)
+    }
+    const handleOffline = () => setIsOffline(true)
+    const handleVisibility = async () => {
+      if (document.visibilityState !== 'visible') return
+      const { currentUser: cu, shoppingList: sl } = latestRef.current
+      if (!navigator.onLine || !cu || cu === SETUP_NEEDED) return
+      const el = document.activeElement as HTMLElement | null
+      if (el?.tagName === 'INPUT' || el?.tagName === 'TEXTAREA' || el?.isContentEditable) return
+      const now = Date.now()
+      if (now - lastFocusReloadRef.current < 30_000) return
+      lastFocusReloadRef.current = now
+      try {
+        const loaded = await loadWeekPlan()
+        const deletedIds = loadDeletedIds()
+        const merged = mergeShoppingLists(loaded.shoppingList, sl, deletedIds)
+        lastDbShoppingListRef.current = loaded.shoppingList
+        setShoppingList(merged)
+        setWeekPlan(loaded.plan)
+        setMealsData(loaded.mealsData)
+        setWishes(loaded.wishes)
+      } catch { /* Silent */ }
+    }
+    window.addEventListener('online', handleOnline)
+    window.addEventListener('offline', handleOffline)
+    document.addEventListener('visibilitychange', handleVisibility)
+    return () => {
+      window.removeEventListener('online', handleOnline)
+      window.removeEventListener('offline', handleOffline)
+      document.removeEventListener('visibilitychange', handleVisibility)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   async function handlePlanSettingsChange(settings: PlanSettings, weekType: 'current' | 'next') {
     try {
@@ -333,8 +423,35 @@ export default function FamilyPlateApp() {
   }
 
   async function handleShoppingListChange(list: ShoppingItem[]) {
-    setShoppingList(list)
-    await saveShoppingList(list)
+    const newIds = new Set(list.map(i => i.id))
+    const removedIds = shoppingList.filter(i => !newIds.has(i.id)).map(i => i.id)
+    if (removedIds.length > 0) addDeletedIds(removedIds)
+
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      // Offline: Änderungen als Pending-Ops speichern und lokal anwenden
+      const ops: PendingOp[] = []
+      for (const item of list) {
+        const prev = shoppingList.find(i => i.id === item.id)
+        if (!prev || prev.erledigt !== item.erledigt || prev.name !== item.name || prev.menge !== item.menge)
+          ops.push({ type: 'update', item })
+      }
+      for (const id of removedIds) ops.push({ type: 'delete', id, deletedAt: new Date().toISOString() })
+      if (ops.length > 0) {
+        appendPendingOps(ops)
+        setPendingCount(loadPendingOps().length)
+      }
+      setShoppingList(list)
+      saveDataCache({ shoppingList: list, weekPlan, mealsData, familyProfile, savedAt: new Date().toISOString() })
+      return
+    }
+
+    // Online: gegen letzten bekannten DB-Stand mergen und speichern
+    const deletedIds = loadDeletedIds()
+    const merged = mergeShoppingLists(lastDbShoppingListRef.current, list, deletedIds)
+    lastDbShoppingListRef.current = merged
+    setShoppingList(merged)
+    await saveShoppingList(merged)
+    saveDataCache({ shoppingList: merged, weekPlan, mealsData, familyProfile, savedAt: new Date().toISOString() })
   }
 
   async function handleZutatenLadenChange(mapping: Record<string, string>) {
@@ -611,6 +728,24 @@ export default function FamilyPlateApp() {
         <span>🍽 MenuFamPlan</span>
         <span style={{ fontSize: 10, color: '#aaa' }}>{currentName}</span>
       </div>
+      {(isOffline || syncDone) && (
+        <div style={{
+          background: syncDone ? '#D1FAE5' : '#FEF9C3',
+          borderBottom: `1px solid ${syncDone ? '#A7F3D0' : '#FDE68A'}`,
+          padding: '7px 14px',
+          fontSize: 12,
+          color: syncDone ? '#065F46' : '#78350F',
+          fontWeight: 500,
+          lineHeight: 1.4,
+        }}>
+          {syncDone
+            ? '✓ Wieder verbunden – alles abgeglichen'
+            : pendingCount > 0
+              ? `Keine Verbindung · ${pendingCount} Änderung${pendingCount !== 1 ? 'en' : ''} werden übertragen, sobald Netz vorhanden`
+              : `Keine Internetverbindung – Stand: ${offlineCachedAt ? new Date(offlineCachedAt).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '…'}`
+          }
+        </div>
+      )}
       <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
         <div style={{ display: activeTab === 'woche' ? 'flex' : 'none', flex: 1, flexDirection: 'column', overflow: 'hidden', minHeight: 0 }}>
           <WocheScreen

@@ -220,12 +220,12 @@ export function addShoppingItem(
   menge: string,
   kategorie = 'Sonstiges',
 ): ShoppingItem[] {
-  const item: ShoppingItem = { id: randomId(), name, menge, kategorie, erledigt: false }
+  const item: ShoppingItem = { id: randomId(), name, menge, kategorie, erledigt: false, updatedAt: new Date().toISOString() }
   return [...list, item]
 }
 
 export function toggleShoppingItem(list: ShoppingItem[], id: string): ShoppingItem[] {
-  return list.map((item) => (item.id === id ? { ...item, erledigt: !item.erledigt } : item))
+  return list.map((item) => (item.id === id ? { ...item, erledigt: !item.erledigt, updatedAt: new Date().toISOString() } : item))
 }
 
 export function removeShoppingItem(list: ShoppingItem[], id: string): ShoppingItem[] {

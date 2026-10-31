@@ -138,6 +138,7 @@ export interface ShoppingItem {
   nextWeek?: boolean
   fromLastWeek?: boolean
   fuer?: string
+  updatedAt?: string
 }
 
 export interface DayAttendance {

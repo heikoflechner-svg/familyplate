@@ -1,4 +1,5 @@
 import { supabase, setFamilyId } from './supabase'
+import { saveIdentity, loadIdentity, clearAllOfflineData } from './offlineCache'
 
 // Sondermarker: Nutzer ist eingeloggt, hat aber noch keine Familie.
 // Wird in Etappe 2 (Registrierung) von FamilyPlateApp ausgewertet.
@@ -10,6 +11,7 @@ export async function signIn(email: string, password: string): Promise<{ error: 
 }
 
 export async function signOut(): Promise<void> {
+  clearAllOfflineData()
   setFamilyId('')
   await supabase.auth.signOut()
 }
@@ -36,6 +38,7 @@ export function onAuthChange(callback: (chef: string | null) => void): () => voi
       const meta = session.user.app_metadata as { family_id?: string; slot?: string }
       if (meta?.family_id && meta?.slot) {
         setFamilyId(meta.family_id)
+        saveIdentity({ familyId: meta.family_id, kuerzel: meta.slot })
         callback(meta.slot)
         return
       }
@@ -49,6 +52,7 @@ export function onAuthChange(callback: (chef: string | null) => void): () => voi
 
       if (member?.family_id && member?.kuerzel) {
         setFamilyId(member.family_id)
+        saveIdentity({ familyId: member.family_id, kuerzel: member.kuerzel })
         callback(member.kuerzel)
         return
       }
@@ -56,6 +60,15 @@ export function onAuthChange(callback: (chef: string | null) => void): () => voi
       // Eingeloggt, aber noch keine Familie → Registrierungs-Setup nötig
       callback(SETUP_NEEDED)
     } catch {
+      // Offline-Fallback: Supabase-Session + gespeicherte Identität vorhanden
+      if (typeof navigator !== 'undefined' && !navigator.onLine && session) {
+        const cached = loadIdentity()
+        if (cached) {
+          setFamilyId(cached.familyId)
+          callback(cached.kuerzel)
+          return
+        }
+      }
       callback(null)
     }
   })
