@@ -6,7 +6,7 @@ import { loadFreezerItems, loadPantryItems, getFreezerListString, getPantryListS
 import { loadFamilyProfile, saveFamilyProfile, saveShoppingConfig, applyChefStats, incrementWochenchefStat, DEFAULT_MEMBERS, buildFamilyPrompt } from '../lib/familyLogic'
 import { generateShoppingList } from '../lib/shoppingLogic'
 import { signOut, onAuthChange, SETUP_NEEDED } from '../lib/auth'
-import { saveDataCache, loadDataCache, appendPendingOps, loadPendingOps, clearPendingOps, addDeletedIds, loadDeletedIds, clearDeletedIds, type PendingOp } from '../lib/offlineCache'
+import { saveDataCache, loadDataCache, appendPendingOps, loadPendingOps, clearPendingOps, addDeletedIds, loadDeletedIds, clearDeletedIds, clearAllOfflineData, type PendingOp } from '../lib/offlineCache'
 import { mergeShoppingLists, applyPendingOps } from '../lib/shoppingMerge'
 import { supabase, getFamilyId } from '../lib/supabase'
 import { loadRezeptbuch, saveRezeptToBook, updateRezeptInBook, deleteRezeptFromBook, toggleFavoritInBook, markGekochtInBook, autoSaveRezeptToBook, setVermeidenByName } from '../lib/rezeptbuchLogic'
@@ -282,8 +282,26 @@ export default function FamilyPlateApp() {
   useEffect(() => {
     const handleOnline = async () => {
       setIsOffline(false)
+      const { currentUser: cu, familyProfile: fp } = latestRef.current
+
+      // Verify the Supabase session survived the offline period.
+      // Some Supabase versions clear the session from localStorage when a token
+      // refresh fails – in that case the user must re-authenticate.
+      if (cu && cu !== SETUP_NEEDED) {
+        try {
+          const { data: { session } } = await supabase.auth.getSession()
+          if (!session) {
+            // Session was lost while offline → clear cached data and show login
+            clearAllOfflineData()
+            setCurrentUser(null)
+            return
+          }
+        } catch {
+          // Cannot verify right now – proceed and let the next DB call handle auth errors
+        }
+      }
+
       const ops = loadPendingOps()
-      const { currentUser: cu, weekPlan: wp, mealsData: md, familyProfile: fp } = latestRef.current
       if (ops.length > 0 && cu && cu !== SETUP_NEEDED) {
         try {
           const loaded = await loadWeekPlan()

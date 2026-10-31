@@ -1,9 +1,12 @@
 import { supabase, setFamilyId } from './supabase'
 import { saveIdentity, loadIdentity, clearAllOfflineData } from './offlineCache'
 
-// Sondermarker: Nutzer ist eingeloggt, hat aber noch keine Familie.
-// Wird in Etappe 2 (Registrierung) von FamilyPlateApp ausgewertet.
 export const SETUP_NEEDED = '__setup_needed__'
+
+// Tracks whether the current user explicitly clicked "Abmelden".
+// Without this flag we can't distinguish an intentional sign-out from a
+// failed token refresh caused by the device being offline.
+let explicitSignOut = false
 
 export async function signIn(email: string, password: string): Promise<{ error: string | null }> {
   const { error } = await supabase.auth.signInWithPassword({ email, password })
@@ -11,6 +14,7 @@ export async function signIn(email: string, password: string): Promise<{ error: 
 }
 
 export async function signOut(): Promise<void> {
+  explicitSignOut = true
   clearAllOfflineData()
   setFamilyId('')
   await supabase.auth.signOut()
@@ -29,10 +33,32 @@ export async function changePassword(currentPw: string, newPw: string): Promise<
 export function onAuthChange(callback: (chef: string | null) => void): () => void {
   const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
     if (!session?.user) {
+      // Consume the flag immediately so the next event is unaffected.
+      const wasExplicit = explicitSignOut
+      explicitSignOut = false
+
+      // A failed token refresh while offline must NEVER log the user out.
+      // Only treat a null session as a real sign-out when:
+      //   a) the user explicitly clicked "Abmelden", OR
+      //   b) the device is online (server genuinely rejected the session)
+      const isOnline = typeof navigator === 'undefined' || navigator.onLine
+      if (!wasExplicit && !isOnline) {
+        const cached = loadIdentity()
+        if (cached) {
+          setFamilyId(cached.familyId)
+          callback(cached.kuerzel)
+          return
+        }
+      }
+
       setFamilyId('')
       callback(null)
       return
     }
+
+    // Valid session – reset flag in case a previous sign-out was interrupted.
+    explicitSignOut = false
+
     try {
       // Pfad 1: Legacy – app_metadata (manuell gesetzte Nutzer: PA/MA/TI)
       const meta = session.user.app_metadata as { family_id?: string; slot?: string }
@@ -60,8 +86,8 @@ export function onAuthChange(callback: (chef: string | null) => void): () => voi
       // Eingeloggt, aber noch keine Familie → Registrierungs-Setup nötig
       callback(SETUP_NEEDED)
     } catch {
-      // Offline-Fallback: Supabase-Session + gespeicherte Identität vorhanden
-      if (typeof navigator !== 'undefined' && !navigator.onLine && session) {
+      // Offline-Fallback: DB-Abfrage (family_members) schlug fehl, aber Session ist gültig.
+      if (typeof navigator !== 'undefined' && !navigator.onLine) {
         const cached = loadIdentity()
         if (cached) {
           setFamilyId(cached.familyId)
