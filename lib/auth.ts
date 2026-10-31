@@ -70,11 +70,26 @@ export function onAuthChange(callback: (chef: string | null) => void): () => voi
       }
 
       // Pfad 2: Neues System – family_members-Tabelle
-      const { data: member } = await supabase
+      const { data: member, error: memberError } = await supabase
         .from('family_members')
         .select('family_id, kuerzel')
         .eq('user_id', session.user.id)
         .maybeSingle()
+
+      if (memberError) {
+        // Supabase gibt Netzwerk-/Auth-Fehler als Objekte zurück, wirft nicht.
+        // Wenn wir eine gecachte Identität haben, nutzen wir sie (Offline-Kaltstart,
+        // WiFi ohne Internet, temporärer DB-Fehler). Schlägt doLoad danach fehl,
+        // bekommt der Nutzer den Ladefehler-Screen mit "Erneut versuchen".
+        const cached = loadIdentity()
+        if (cached) {
+          setFamilyId(cached.familyId)
+          callback(cached.kuerzel)
+          return
+        }
+        callback(null)
+        return
+      }
 
       if (member?.family_id && member?.kuerzel) {
         setFamilyId(member.family_id)
@@ -86,14 +101,12 @@ export function onAuthChange(callback: (chef: string | null) => void): () => voi
       // Eingeloggt, aber noch keine Familie → Registrierungs-Setup nötig
       callback(SETUP_NEEDED)
     } catch {
-      // Offline-Fallback: DB-Abfrage (family_members) schlug fehl, aber Session ist gültig.
-      if (typeof navigator !== 'undefined' && !navigator.onLine) {
-        const cached = loadIdentity()
-        if (cached) {
-          setFamilyId(cached.familyId)
-          callback(cached.kuerzel)
-          return
-        }
+      // Unerwartete Exception (nicht Supabase-Fehler-Objekte, die oben abgefangen werden).
+      const cached = loadIdentity()
+      if (cached) {
+        setFamilyId(cached.familyId)
+        callback(cached.kuerzel)
+        return
       }
       callback(null)
     }

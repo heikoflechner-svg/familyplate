@@ -6,7 +6,7 @@ import { loadFreezerItems, loadPantryItems, getFreezerListString, getPantryListS
 import { loadFamilyProfile, saveFamilyProfile, saveShoppingConfig, applyChefStats, incrementWochenchefStat, DEFAULT_MEMBERS, buildFamilyPrompt } from '../lib/familyLogic'
 import { generateShoppingList } from '../lib/shoppingLogic'
 import { signOut, onAuthChange, SETUP_NEEDED } from '../lib/auth'
-import { saveDataCache, loadDataCache, appendPendingOps, loadPendingOps, clearPendingOps, addDeletedIds, loadDeletedIds, clearDeletedIds, clearAllOfflineData, type PendingOp } from '../lib/offlineCache'
+import { saveIdentity, saveDataCache, loadDataCache, appendPendingOps, loadPendingOps, clearPendingOps, addDeletedIds, loadDeletedIds, clearDeletedIds, clearAllOfflineData, type PendingOp } from '../lib/offlineCache'
 import { mergeShoppingLists, applyPendingOps } from '../lib/shoppingMerge'
 import { supabase, getFamilyId } from '../lib/supabase'
 import { loadRezeptbuch, saveRezeptToBook, updateRezeptInBook, deleteRezeptFromBook, toggleFavoritInBook, markGekochtInBook, autoSaveRezeptToBook, setVermeidenByName } from '../lib/rezeptbuchLogic'
@@ -146,6 +146,21 @@ export default function FamilyPlateApp() {
       let planData = loaded
       let nwData = nwLoaded
       let latestProfile = profile
+
+      // Guard: loadFamilyProfile() gibt bei Netzwerk-/Auth-Fehler null zurück (wirft nicht).
+      // Null-Profil für einen angemeldeten Nutzer bedeutet immer einen Ladefehler –
+      // nie Onboarding zeigen. Cache als Fallback, sonst Fehlermeldung.
+      if (!latestProfile) {
+        const cachedFp = loadDataCache()?.familyProfile
+        if (cachedFp) {
+          latestProfile = cachedFp
+        } else {
+          setProfileLoadError(true)
+          setDataLoading(false)
+          return
+        }
+      }
+
       // Auto-activate next week when the stored weekStart is from a past week
       if (loaded.weekStart && loaded.weekStart < getMondayIso()) {
         await activateNextWeek()
@@ -247,6 +262,9 @@ export default function FamilyPlateApp() {
       setIsOffline(false)
       lastDbShoppingListRef.current = sl
       saveDataCache({ shoppingList: sl, weekPlan: plan, mealsData: migratedMd, familyProfile: latestProfile, savedAt: new Date().toISOString() })
+      // fp_identity nach jedem erfolgreichen Online-Laden aktualisieren, damit der
+      // Offline-Kaltstart auch ohne vorherigen neuen Login funktioniert.
+      saveIdentity({ familyId: getFamilyId(), kuerzel: currentUser! })
       setDataLoading(false)
       loadLastDishes().then(setLastDishes).catch(() => {})
       loadRezeptbuch().then(entries => { if (entries !== null) setRezeptbuchEntries(entries) }).catch(() => {})
@@ -732,6 +750,20 @@ export default function FamilyPlateApp() {
   }
 
   if (!familyProfile) {
+    // SICHERHEIT: Onboarding ("Familie erstellen") NIEMALS offline zeigen.
+    // Ein fehlgeschlagenes Laden wegen fehlender Verbindung darf nicht als
+    // "keine Familie vorhanden" interpretiert werden.
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      return (
+        <div className="phone" style={{ alignItems: 'center', justifyContent: 'center', gap: 14, padding: '0 28px', textAlign: 'center' }}>
+          <div style={{ fontSize: 44 }}>📵</div>
+          <div style={{ fontSize: 16, fontWeight: 700, color: '#374151' }}>Keine Verbindung</div>
+          <div style={{ fontSize: 13, color: '#666', lineHeight: 1.5 }}>
+            Familienprofil kann offline nicht geladen werden. Bitte Internetverbindung herstellen.
+          </div>
+        </div>
+      )
+    }
     return (
       <OnboardingWizard
         key="onboarding"
