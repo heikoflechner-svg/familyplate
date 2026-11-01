@@ -337,12 +337,21 @@ export default function WocheScreen({
 
   function getRecipeAllergenWarningsForEntry(rezept: Rezept | undefined, e: WeekPlanEntry): string[] {
     if (!isFullRecipe(rezept) || allergenCheckMembers.length === 0) return []
-    const excludedIds = new Set([...Object.keys(e.eigenesEssen ?? {}), ...Object.keys(e.resteEsser ?? {})])
+    const excludedIds = new Set([...Object.keys(normalizeEigenesEssen(e.eigenesEssen)), ...Object.keys(e.resteEsser ?? {})])
     if (excludedIds.size === 0) return formatAllergenWarningsCard(checkAllergens(rezept!, allergenCheckMembers))
     const excludedNames = new Set(activeMembers.filter(m => excludedIds.has(m.id)).map(m => m.name))
     const filtered = allergenCheckMembers.filter(m => !excludedNames.has(m.name))
     if (filtered.length === 0) return []
     return formatAllergenWarningsCard(checkAllergens(rezept!, filtered))
+  }
+
+  function normalizeEigenesEssen(raw: WeekPlanEntry['eigenesEssen']): Record<string, string> {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {}
+    const result: Record<string, string> = {}
+    for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+      result[k] = typeof v === 'string' ? v : ''
+    }
+    return result
   }
   const memberIds = activeMembers.map(m => m.id)
   const suggestedNextChef: Chef = ([...activeMembers].sort((a, b) => {
@@ -1315,10 +1324,11 @@ export default function WocheScreen({
               )
             })()}
             {schnellSub === 'eigen' && (() => {
-              const allExcluded = new Set([...Object.keys(entry.eigenesEssen ?? {}), ...Object.keys(entry.resteEsser ?? {})])
+              const eigenesEssenNorm = normalizeEigenesEssen(entry.eigenesEssen)
+              const allExcluded = new Set([...Object.keys(eigenesEssenNorm), ...Object.keys(entry.resteEsser ?? {})])
               const niemandIsstMit = slotAnwesend.length > 0 && slotAnwesend.every(p => allExcluded.has(p))
               const saveEigen = (personId: string, text: string, addToList: boolean) => {
-                void updateEntryWithShoppingRescale(tag, slot, { eigenesEssen: { ...entry.eigenesEssen, [personId]: text } })
+                void updateEntryWithShoppingRescale(tag, slot, { eigenesEssen: { ...eigenesEssenNorm, [personId]: text } })
                 if (addToList && text) {
                   const newItem: import('../lib/state').ShoppingItem = {
                     id: Math.random().toString(36).slice(2, 9),
@@ -1343,9 +1353,9 @@ export default function WocheScreen({
                       >Ja</button>
                     </div>
                   )}
-                  {Object.keys(entry.eigenesEssen ?? {}).length > 0 && (
+                  {Object.keys(eigenesEssenNorm).length > 0 && (
                     <div style={{ marginBottom: 6 }}>
-                      {Object.entries(entry.eigenesEssen!).map(([p, t]) => {
+                      {Object.entries(eigenesEssenNorm).map(([p, t]) => {
                         const m = activeMembers.find(m => m.id === p)
                         const allergien = m?.allergien ?? []
                         return (
@@ -1355,7 +1365,7 @@ export default function WocheScreen({
                               {allergien.length > 0 && <span style={{ color: '#D97706' }}> · beachten: {allergien.join(', ')}</span>}
                             </div>
                             <button
-                              onClick={() => { const next = { ...entry.eigenesEssen }; delete next[p]; void updateEntryWithShoppingRescale(tag, slot, { eigenesEssen: Object.keys(next).length ? next : undefined }) }}
+                              onClick={() => { const next = { ...eigenesEssenNorm }; delete next[p]; void updateEntryWithShoppingRescale(tag, slot, { eigenesEssen: Object.keys(next).length ? next : undefined }) }}
                               style={{ flexShrink: 0, padding: '2px 6px', border: '1px solid #FECACA', borderRadius: 6, background: '#FEF2F2', color: '#DC2626', fontSize: 11, fontWeight: 700, cursor: 'pointer' as const, lineHeight: 1.2 }}
                             >✕</button>
                           </div>
@@ -1367,7 +1377,7 @@ export default function WocheScreen({
                     <div>
                       <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' as const, marginBottom: 6 }}>
                         {(members.length ? members : DEFAULT_MEMBERS).map(m => {
-                          const hasOwn = !!entry.eigenesEssen?.[m.id]
+                          const hasOwn = !!eigenesEssenNorm[m.id]
                           return (
                             <button
                               key={m.id}
@@ -1409,7 +1419,7 @@ export default function WocheScreen({
                     </div>
                   ) : (
                     <div>
-                      {entry.eigenesEssen?.[currentUser!] === undefined && (() => {
+                      {eigenesEssenNorm[currentUser!] === undefined && (() => {
                         const selMember = activeMembers.find(m => m.id === currentUser)
                         const allergien = selMember?.allergien ?? []
                         return (
@@ -1481,9 +1491,9 @@ export default function WocheScreen({
     if (!entry) { await updateWeekEntry(tag, slot, updates); return }
     const mbs = members.length ? members : DEFAULT_MEMBERS
     const totalPersonCount = Math.max(1, getPersonCountForSlot(tag, slot, attendance, mbs))
-    const oldExcluded = Object.keys({ ...(entry.eigenesEssen ?? {}), ...(entry.resteEsser ?? {}) }).length
+    const oldExcluded = Object.keys({ ...normalizeEigenesEssen(entry.eigenesEssen), ...(entry.resteEsser ?? {}) }).length
     const merged = { ...entry, ...updates }
-    const newExcluded = Object.keys({ ...(merged.eigenesEssen ?? {}), ...(merged.resteEsser ?? {}) }).length
+    const newExcluded = Object.keys({ ...normalizeEigenesEssen(merged.eigenesEssen), ...(merged.resteEsser ?? {}) }).length
     await updateWeekEntry(tag, slot, updates)
     if (oldExcluded === newExcluded) return
     const oldEff = Math.max(1, totalPersonCount - oldExcluded)
@@ -4122,18 +4132,26 @@ export default function WocheScreen({
                             {e.resteEsser && Object.entries(e.resteEsser).map(([p, t]) => (
                               <div key={p} style={{ fontSize: 10, color: '#92400E', marginTop: 1 }}>🍲 {personNames[p] ?? p}: {t}</div>
                             ))}
-                            {e.eigenesEssen && Object.entries(e.eigenesEssen).map(([p, t]) => {
+                            {Object.entries(normalizeEigenesEssen(e.eigenesEssen)).map(([p, t]) => {
                               const pm = activeMembers.find(m => m.id === p)
                               const allergien = pm?.allergien ?? []
+                              const canRemove = canEditSettings || currentUser === wochenchef || p === currentUser
                               return (
-                                <div key={p} style={{ fontSize: 10, color: '#555', marginTop: 1 }}>
-                                  🙋 {personNames[p] ?? p}{t ? `: ${t}` : ': eigenes Essen'}
-                                  {allergien.length > 0 && <span style={{ color: '#D97706' }}> · beachten: {allergien.join(', ')}</span>}
+                                <div key={p} style={{ fontSize: 10, color: '#555', marginTop: 1, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 4 }}>
+                                  <span>
+                                    🙋 {personNames[p] ?? p}{t ? `: ${t}` : ': eigenes Essen'}
+                                    {allergien.length > 0 && <span style={{ color: '#D97706' }}> · beachten: {allergien.join(', ')}</span>}
+                                  </span>
+                                  {canRemove && (
+                                    <button onClick={() => { const next = { ...normalizeEigenesEssen(e.eigenesEssen) }; delete next[p]; void updateEntryWithShoppingRescale(e.tag, e.slot, { eigenesEssen: Object.keys(next).length ? next : undefined }) }}
+                                      style={{ flexShrink: 0, padding: '0px 5px', border: '1px solid #FECACA', borderRadius: 5, background: '#FEF2F2', color: '#DC2626', fontSize: 10, fontWeight: 700, cursor: 'pointer' as const, lineHeight: '16px' }}
+                                    >✕</button>
+                                  )}
                                 </div>
                               )
                             })}
-                            {(Object.keys(e.eigenesEssen ?? {}).length + Object.keys(e.resteEsser ?? {}).length) > 0 && (() => {
-                              const excludedNames = [...Object.keys(e.eigenesEssen ?? {}), ...Object.keys(e.resteEsser ?? {})].map(p => personNames[p] ?? p)
+                            {(Object.keys(normalizeEigenesEssen(e.eigenesEssen)).length + Object.keys(e.resteEsser ?? {}).length) > 0 && (() => {
+                              const excludedNames = [...Object.keys(normalizeEigenesEssen(e.eigenesEssen)), ...Object.keys(e.resteEsser ?? {})].map(p => personNames[p] ?? p)
                               return shopDone
                                 ? <div style={{ fontSize: 10, color: '#92400E', marginTop: 1 }}>🛒 Es wird jetzt weniger gebraucht</div>
                                 : <div style={{ fontSize: 10, color: '#6366F1', marginTop: 1 }}>ℹ️ {excludedNames.join(', ')} {excludedNames.length === 1 ? 'isst' : 'essen'} heute selbst – Rezept manuell anpassen falls nötig</div>
@@ -5121,18 +5139,26 @@ export default function WocheScreen({
             {entry.resteEsser && Object.entries(entry.resteEsser).map(([p, t]) => (
               <div key={p} style={{ fontSize: 10, color: '#92400E', marginTop: 1 }}>🍲 {personNames[p] ?? p}: {t}</div>
             ))}
-            {entry.eigenesEssen && Object.entries(entry.eigenesEssen).map(([p, t]) => {
+            {Object.entries(normalizeEigenesEssen(entry.eigenesEssen)).map(([p, t]) => {
               const pm = activeMembers.find(m => m.id === p)
               const allergien = pm?.allergien ?? []
+              const canRemove = canEditSettings || currentUser === wochenchef || p === currentUser
               return (
-                <div key={p} style={{ fontSize: 10, color: '#555', marginTop: 1 }}>
-                  🙋 {personNames[p] ?? p}{t ? `: ${t}` : ': eigenes Essen'}
-                  {allergien.length > 0 && <span style={{ color: '#D97706' }}> · beachten: {allergien.join(', ')}</span>}
+                <div key={p} style={{ fontSize: 10, color: '#555', marginTop: 1, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 4 }}>
+                  <span>
+                    🙋 {personNames[p] ?? p}{t ? `: ${t}` : ': eigenes Essen'}
+                    {allergien.length > 0 && <span style={{ color: '#D97706' }}> · beachten: {allergien.join(', ')}</span>}
+                  </span>
+                  {canRemove && (
+                    <button onClick={() => { const next = { ...normalizeEigenesEssen(entry.eigenesEssen) }; delete next[p]; void updateEntryWithShoppingRescale(entry.tag, entry.slot, { eigenesEssen: Object.keys(next).length ? next : undefined }) }}
+                      style={{ flexShrink: 0, padding: '0px 5px', border: '1px solid #FECACA', borderRadius: 5, background: '#FEF2F2', color: '#DC2626', fontSize: 10, fontWeight: 700, cursor: 'pointer' as const, lineHeight: '16px' }}
+                    >✕</button>
+                  )}
                 </div>
               )
             })}
-            {(Object.keys(entry.eigenesEssen ?? {}).length + Object.keys(entry.resteEsser ?? {}).length) > 0 && (() => {
-              const excludedNames = [...Object.keys(entry.eigenesEssen ?? {}), ...Object.keys(entry.resteEsser ?? {})].map(p => personNames[p] ?? p)
+            {(Object.keys(normalizeEigenesEssen(entry.eigenesEssen)).length + Object.keys(entry.resteEsser ?? {}).length) > 0 && (() => {
+              const excludedNames = [...Object.keys(normalizeEigenesEssen(entry.eigenesEssen)), ...Object.keys(entry.resteEsser ?? {})].map(p => personNames[p] ?? p)
               return shopDone
                 ? <div style={{ fontSize: 10, color: '#92400E', marginTop: 1 }}>🛒 Es wird jetzt weniger gebraucht</div>
                 : <div style={{ fontSize: 10, color: '#6366F1', marginTop: 1 }}>ℹ️ {excludedNames.join(', ')} {excludedNames.length === 1 ? 'isst' : 'essen'} heute selbst – Rezept manuell anpassen falls nötig</div>
