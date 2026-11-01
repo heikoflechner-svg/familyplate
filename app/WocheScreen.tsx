@@ -334,6 +334,16 @@ export default function WocheScreen({
     if (!isFullRecipe(rezept) || allergenCheckMembers.length === 0) return []
     return formatAllergenWarningsCard(checkAllergens(rezept!, allergenCheckMembers))
   }
+
+  function getRecipeAllergenWarningsForEntry(rezept: Rezept | undefined, e: WeekPlanEntry): string[] {
+    if (!isFullRecipe(rezept) || allergenCheckMembers.length === 0) return []
+    const excludedIds = new Set([...Object.keys(e.eigenesEssen ?? {}), ...Object.keys(e.resteEsser ?? {})])
+    if (excludedIds.size === 0) return formatAllergenWarningsCard(checkAllergens(rezept!, allergenCheckMembers))
+    const excludedNames = new Set(activeMembers.filter(m => excludedIds.has(m.id)).map(m => m.name))
+    const filtered = allergenCheckMembers.filter(m => !excludedNames.has(m.name))
+    if (filtered.length === 0) return []
+    return formatAllergenWarningsCard(checkAllergens(rezept!, filtered))
+  }
   const memberIds = activeMembers.map(m => m.id)
   const suggestedNextChef: Chef = ([...activeMembers].sort((a, b) => {
     const aCount = a.wochenchefStat?.count ?? 0
@@ -1002,7 +1012,8 @@ export default function WocheScreen({
   const [schnellaktionKey, setSchnellaktionKey] = useState<string | null>(null)
   const [schnellSub, setSchnellSub] = useState<'falltAus' | 'koch' | 'schnell' | 'reste' | 'eigen' | null>(null)
   const [schnellStreichenConfirm, setSchnellStreichenConfirm] = useState<string | null>(null)
-  const [schnellResteText, setSchnellResteText] = useState('')
+  const [schnellRestePersonen, setSchnellRestePersonen] = useState<string[]>([])
+  const [schnellResteZiel, setSchnellResteZiel] = useState<{ tag: string; slot: WochenSlot } | null>(null)
   const [schnellEigenPerson, setSchnellEigenPerson] = useState<string | null>(null)
   const [schnellEigenText, setSchnellEigenText] = useState('')
 
@@ -1082,7 +1093,8 @@ export default function WocheScreen({
     setSchnellaktionKey(null)
     setSchnellSub(null)
     setSchnellStreichenConfirm(null)
-    setSchnellResteText('')
+    setSchnellRestePersonen([])
+    setSchnellResteZiel(null)
     setSchnellEigenPerson(null)
     setSchnellEigenText('')
   }
@@ -1162,7 +1174,20 @@ export default function WocheScreen({
               <button onClick={() => { setSchnellSub(schnellSub === 'falltAus' ? null : 'falltAus'); setSchnellStreichenConfirm(null) }} style={schnellBtn(schnellSub === 'falltAus')}>✗ Fällt aus</button>
               <button onClick={() => { setSchnellSub(schnellSub === 'koch' ? null : 'koch'); setSchnellStreichenConfirm(null) }} style={schnellBtn(schnellSub === 'koch')}>👤 Koch</button>
               {canDirectEdit && <button onClick={() => { setSchnellSub(schnellSub === 'schnell' ? null : 'schnell'); setSchnellStreichenConfirm(null) }} style={schnellBtn(schnellSub === 'schnell')}>⚡ Schnell</button>}
-              <button onClick={() => { setSchnellSub(schnellSub === 'reste' ? null : 'reste'); setSchnellStreichenConfirm(null) }} style={schnellBtn(schnellSub === 'reste')}>🍲 Reste</button>
+              <button onClick={() => {
+                if (schnellSub === 'reste') { setSchnellSub(null) } else {
+                  setSchnellSub('reste'); setSchnellStreichenConfirm(null); setSchnellRestePersonen([])
+                  const curIdx = WOCHENTAGE.indexOf(tag)
+                  const first = weekPlan.filter(e => {
+                    const ei = WOCHENTAGE.indexOf(e.tag)
+                    return ei > curIdx || (ei === curIdx && e.slot === 'Abend' && slot === 'Mittag')
+                  }).sort((a, b) => {
+                    const ai = WOCHENTAGE.indexOf(a.tag); const bi = WOCHENTAGE.indexOf(b.tag)
+                    return ai !== bi ? ai - bi : (a.slot === 'Mittag' ? -1 : 1)
+                  })[0]
+                  setSchnellResteZiel(first ? { tag: first.tag, slot: first.slot as WochenSlot } : null)
+                }
+              }} style={schnellBtn(schnellSub === 'reste')}>🍲 Reste</button>
               <button onClick={() => { setSchnellSub(schnellSub === 'eigen' ? null : 'eigen'); setSchnellStreichenConfirm(null) }} style={schnellBtn(schnellSub === 'eigen')}>🙋 Ich</button>
             </div>
             {schnellSub === 'falltAus' && (
@@ -1229,97 +1254,139 @@ export default function WocheScreen({
                 >→ Original verschieben</button>
               </div>
             )}
-            {schnellSub === 'reste' && (
-              <div>
-                {entry.reste ? (
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <span style={{ fontSize: 11, color: '#555' }}>🍲 {entry.reste.beschreibung}</span>
-                    <button
-                      onClick={() => void updateWeekEntry(tag, slot, { reste: undefined, zutatenschonDa: undefined })}
-                      style={{ fontSize: 10, color: '#888', background: 'none', border: 'none', cursor: 'pointer' as const, padding: '2px 4px' }}
-                    >✕ entfernen</button>
+            {schnellSub === 'reste' && (() => {
+              const curIdx = WOCHENTAGE.indexOf(tag)
+              const futureMeals = weekPlan.filter(e => {
+                const ei = WOCHENTAGE.indexOf(e.tag)
+                return ei > curIdx || (ei === curIdx && e.slot === 'Abend' && slot === 'Mittag')
+              }).sort((a, b) => {
+                const ai = WOCHENTAGE.indexOf(a.tag); const bi = WOCHENTAGE.indexOf(b.tag)
+                return ai !== bi ? ai - bi : (a.slot === 'Mittag' ? -1 : 1)
+              })
+              const canSave = schnellRestePersonen.length > 0 && schnellResteZiel !== null
+              return (
+                <div>
+                  <div style={{ fontSize: 10, color: '#888', marginBottom: 4 }}>Für wen? (Reste von {entry.emoji} {entry.gericht})</div>
+                  <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' as const, marginBottom: 8 }}>
+                    {(members.length ? members : DEFAULT_MEMBERS).map(m => {
+                      const sel = schnellRestePersonen.includes(m.id)
+                      return (
+                        <button key={m.id}
+                          onClick={() => setSchnellRestePersonen(p => sel ? p.filter(x => x !== m.id) : [...p, m.id])}
+                          style={{ padding: '5px 10px', borderRadius: 8, border: `1px solid ${sel ? '#D97706' : '#e5e7eb'}`, background: sel ? '#FEF3C7' : 'white', color: sel ? '#92400E' : '#444', fontSize: 11, fontWeight: sel ? 700 : 400, cursor: 'pointer' as const }}
+                        >{m.name || m.id}</button>
+                      )
+                    })}
                   </div>
-                ) : (
-                  <div>
-                    <input
-                      value={schnellResteText}
-                      onChange={ev => setSchnellResteText(ev.target.value)}
-                      placeholder="z.B. Tomatensuppe von gestern"
-                      style={{ width: '100%', padding: '7px 10px', border: '1px solid #ddd', borderRadius: 8, fontSize: 11, boxSizing: 'border-box' as const, marginBottom: 6 }}
-                    />
-                    <button
-                      disabled={!schnellResteText.trim()}
-                      onClick={() => { void updateWeekEntry(tag, slot, { reste: { beschreibung: schnellResteText.trim() }, zutatenschonDa: true }); setSchnellResteText(''); setSchnellaktionKey(null); setSchnellSub(null) }}
-                      style={{ width: '100%', padding: '8px', background: schnellResteText.trim() ? '#FFFBEB' : '#f5f5f5', color: schnellResteText.trim() ? '#92400E' : '#bbb', border: `1px solid ${schnellResteText.trim() ? '#D97706' : '#e5e7eb'}`, borderRadius: 8, fontSize: 11, fontWeight: 600, cursor: schnellResteText.trim() ? 'pointer' as const : 'default' as const }}
-                    >🍲 Reste eintragen</button>
-                  </div>
-                )}
-              </div>
-            )}
-            {schnellSub === 'eigen' && (
-              <div>
-                {Object.keys(entry.eigenesEssen ?? {}).length > 0 && (
-                  <div style={{ marginBottom: 6 }}>
-                    {Object.entries(entry.eigenesEssen!).map(([p, t]) => (
-                      <div key={p} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 3 }}>
-                        <span style={{ fontSize: 11, color: '#555' }}>🙋 {personNames[p] ?? p}{t ? `: ${t}` : ''}</span>
-                        <button
-                          onClick={() => { const next = { ...entry.eigenesEssen }; delete next[p]; void updateWeekEntry(tag, slot, { eigenesEssen: Object.keys(next).length ? next : undefined }) }}
-                          style={{ fontSize: 10, color: '#888', background: 'none', border: 'none', cursor: 'pointer' as const, padding: '2px 4px' }}
-                        >✕</button>
+                  <div style={{ fontSize: 10, color: '#888', marginBottom: 4 }}>Wann essen?</div>
+                  {futureMeals.length === 0
+                    ? <div style={{ fontSize: 10, color: '#bbb', marginBottom: 6 }}>Keine weiteren Mahlzeiten diese Woche</div>
+                    : <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' as const, marginBottom: 8 }}>
+                        {futureMeals.map(fm => {
+                          const fmKey = `${fm.tag}-${fm.slot}`
+                          const isSel = schnellResteZiel?.tag === fm.tag && schnellResteZiel?.slot === fm.slot
+                          return (
+                            <button key={fmKey}
+                              onClick={() => setSchnellResteZiel({ tag: fm.tag, slot: fm.slot as WochenSlot })}
+                              style={{ padding: '5px 8px', borderRadius: 8, border: `1px solid ${isSel ? '#D97706' : '#e5e7eb'}`, background: isSel ? '#FEF3C7' : 'white', color: isSel ? '#92400E' : '#444', fontSize: 10, fontWeight: isSel ? 700 : 400, cursor: 'pointer' as const }}
+                            >{TAG_SHORT[fm.tag] ?? fm.tag} {fm.slot === 'Mittag' ? '☀️' : '🌙'}</button>
+                          )
+                        })}
                       </div>
-                    ))}
-                  </div>
-                )}
-                {canDirectEdit ? (
-                  <div>
-                    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' as const, marginBottom: 6 }}>
-                      {(members.length ? members : DEFAULT_MEMBERS).map(m => {
-                        const hasOwn = !!entry.eigenesEssen?.[m.id]
-                        return (
-                          <button
-                            key={m.id}
-                            onClick={() => setSchnellEigenPerson(schnellEigenPerson === m.id ? null : m.id)}
-                            style={{ padding: '5px 9px', border: `1px solid ${schnellEigenPerson === m.id ? '#D97706' : hasOwn ? '#1D9E75' : '#e5e7eb'}`, borderRadius: 8, background: schnellEigenPerson === m.id ? '#FEF3C7' : hasOwn ? '#E1F5EE' : 'white', color: schnellEigenPerson === m.id ? '#92400E' : hasOwn ? '#0F6E56' : '#444', fontSize: 11, cursor: 'pointer' as const, fontWeight: schnellEigenPerson === m.id ? 700 : 400 }}
-                          >{m.name || m.id}</button>
-                        )
-                      })}
+                  }
+                  <button
+                    disabled={!canSave}
+                    onClick={() => {
+                      if (!schnellResteZiel || schnellRestePersonen.length === 0) return
+                      const zielEntry = weekPlan.find(e => e.tag === schnellResteZiel.tag && e.slot === schnellResteZiel.slot)
+                      if (!zielEntry) return
+                      const beschreibung = `Reste ${entry.emoji} ${entry.gericht}`
+                      const newResteEsser = { ...(zielEntry.resteEsser ?? {}) }
+                      schnellRestePersonen.forEach(p => { newResteEsser[p] = beschreibung })
+                      void updateEntryWithShoppingRescale(schnellResteZiel.tag, schnellResteZiel.slot, { resteEsser: newResteEsser })
+                      setSchnellRestePersonen([]); setSchnellResteZiel(null); setSchnellaktionKey(null); setSchnellSub(null)
+                    }}
+                    style={{ width: '100%', padding: '8px', background: canSave ? '#FFFBEB' : '#f5f5f5', color: canSave ? '#92400E' : '#bbb', border: `1px solid ${canSave ? '#D97706' : '#e5e7eb'}`, borderRadius: 8, fontSize: 11, fontWeight: 600, cursor: canSave ? 'pointer' as const : 'default' as const }}
+                  >🍲 Reste eintragen</button>
+                </div>
+              )
+            })()}
+            {schnellSub === 'eigen' && (() => {
+              const allExcluded = new Set([...Object.keys(entry.eigenesEssen ?? {}), ...Object.keys(entry.resteEsser ?? {})])
+              const niemandIsstMit = slotAnwesend.length > 0 && slotAnwesend.every(p => allExcluded.has(p))
+              return (
+                <div>
+                  {niemandIsstMit && (
+                    <div style={{ fontSize: 11, color: '#B91C1C', marginBottom: 6 }}>
+                      ⚠️ Niemand isst mehr mit – Gericht entfernen?
+                      <button onClick={() => { void handleRemoveRequest(tag, slot, entry); setSchnellaktionKey(null); setSchnellSub(null) }}
+                        style={{ marginLeft: 8, padding: '2px 8px', border: '1px solid #DC2626', borderRadius: 6, background: '#FEF2F2', color: '#DC2626', fontSize: 10, fontWeight: 600, cursor: 'pointer' as const }}
+                      >Ja</button>
                     </div>
-                    {schnellEigenPerson && (
-                      <div style={{ display: 'flex', gap: 6 }}>
-                        <input
-                          value={schnellEigenText}
-                          onChange={ev => setSchnellEigenText(ev.target.value)}
-                          placeholder="Was isst du? (optional)"
-                          style={{ flex: 1, padding: '6px 10px', border: '1px solid #ddd', borderRadius: 8, fontSize: 11 }}
-                        />
-                        <button
-                          onClick={() => { void updateWeekEntry(tag, slot, { eigenesEssen: { ...entry.eigenesEssen, [schnellEigenPerson]: schnellEigenText.trim() } }); setSchnellEigenPerson(null); setSchnellEigenText('') }}
-                          style={{ padding: '6px 12px', border: '1px solid #D97706', borderRadius: 8, background: '#FFFBEB', color: '#92400E', fontSize: 11, fontWeight: 600, cursor: 'pointer' as const }}
-                        >🙋 OK</button>
+                  )}
+                  {Object.keys(entry.eigenesEssen ?? {}).length > 0 && (
+                    <div style={{ marginBottom: 6 }}>
+                      {Object.entries(entry.eigenesEssen!).map(([p, t]) => (
+                        <div key={p} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 3 }}>
+                          <span style={{ fontSize: 11, color: '#555' }}>🙋 {personNames[p] ?? p}{t ? `: ${t}` : ''}</span>
+                          <button
+                            onClick={() => { const next = { ...entry.eigenesEssen }; delete next[p]; void updateEntryWithShoppingRescale(tag, slot, { eigenesEssen: Object.keys(next).length ? next : undefined }) }}
+                            style={{ fontSize: 10, color: '#888', background: 'none', border: 'none', cursor: 'pointer' as const, padding: '2px 4px' }}
+                          >✕</button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {canDirectEdit ? (
+                    <div>
+                      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' as const, marginBottom: 6 }}>
+                        {(members.length ? members : DEFAULT_MEMBERS).map(m => {
+                          const hasOwn = !!entry.eigenesEssen?.[m.id]
+                          return (
+                            <button
+                              key={m.id}
+                              onClick={() => setSchnellEigenPerson(schnellEigenPerson === m.id ? null : m.id)}
+                              style={{ padding: '5px 9px', border: `1px solid ${schnellEigenPerson === m.id ? '#D97706' : hasOwn ? '#1D9E75' : '#e5e7eb'}`, borderRadius: 8, background: schnellEigenPerson === m.id ? '#FEF3C7' : hasOwn ? '#E1F5EE' : 'white', color: schnellEigenPerson === m.id ? '#92400E' : hasOwn ? '#0F6E56' : '#444', fontSize: 11, cursor: 'pointer' as const, fontWeight: schnellEigenPerson === m.id ? 700 : 400 }}
+                            >{m.name || m.id}</button>
+                          )
+                        })}
                       </div>
-                    )}
-                  </div>
-                ) : (
-                  <div>
-                    {entry.eigenesEssen?.[currentUser!] === undefined && (
-                      <div style={{ display: 'flex', gap: 6 }}>
-                        <input
-                          value={schnellEigenText}
-                          onChange={ev => setSchnellEigenText(ev.target.value)}
-                          placeholder="Was isst du? (optional)"
-                          style={{ flex: 1, padding: '6px 10px', border: '1px solid #ddd', borderRadius: 8, fontSize: 11 }}
-                        />
-                        <button
-                          onClick={() => { void updateWeekEntry(tag, slot, { eigenesEssen: { ...entry.eigenesEssen, [currentUser!]: schnellEigenText.trim() } }); setSchnellEigenText(''); setSchnellaktionKey(null); setSchnellSub(null) }}
-                          style={{ padding: '6px 12px', border: '1px solid #D97706', borderRadius: 8, background: '#FFFBEB', color: '#92400E', fontSize: 11, fontWeight: 600, cursor: 'pointer' as const }}
-                        >🙋 Speichern</button>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
+                      {schnellEigenPerson && (
+                        <div style={{ display: 'flex', gap: 6 }}>
+                          <input
+                            value={schnellEigenText}
+                            onChange={ev => setSchnellEigenText(ev.target.value)}
+                            placeholder="Was isst du? (optional)"
+                            style={{ flex: 1, padding: '6px 10px', border: '1px solid #ddd', borderRadius: 8, fontSize: 11 }}
+                          />
+                          <button
+                            onClick={() => { void updateEntryWithShoppingRescale(tag, slot, { eigenesEssen: { ...entry.eigenesEssen, [schnellEigenPerson]: schnellEigenText.trim() } }); setSchnellEigenPerson(null); setSchnellEigenText('') }}
+                            style={{ padding: '6px 12px', border: '1px solid #D97706', borderRadius: 8, background: '#FFFBEB', color: '#92400E', fontSize: 11, fontWeight: 600, cursor: 'pointer' as const }}
+                          >🙋 OK</button>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div>
+                      {entry.eigenesEssen?.[currentUser!] === undefined && (
+                        <div style={{ display: 'flex', gap: 6 }}>
+                          <input
+                            value={schnellEigenText}
+                            onChange={ev => setSchnellEigenText(ev.target.value)}
+                            placeholder="Was isst du? (optional)"
+                            style={{ flex: 1, padding: '6px 10px', border: '1px solid #ddd', borderRadius: 8, fontSize: 11 }}
+                          />
+                          <button
+                            onClick={() => { void updateEntryWithShoppingRescale(tag, slot, { eigenesEssen: { ...entry.eigenesEssen, [currentUser!]: schnellEigenText.trim() } }); setSchnellEigenText(''); setSchnellaktionKey(null); setSchnellSub(null) }}
+                            style={{ padding: '6px 12px', border: '1px solid #D97706', borderRadius: 8, background: '#FFFBEB', color: '#92400E', fontSize: 11, fontWeight: 600, cursor: 'pointer' as const }}
+                          >🙋 Speichern</button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )
+            })()}
           </div>
         )}
       </div>
@@ -1340,6 +1407,40 @@ export default function WocheScreen({
   async function updateWeekEntry(tag: string, slot: WochenSlot, updates: Partial<WeekPlanEntry>) {
     const newPlan = weekPlan.map(e => e.tag === tag && e.slot === slot ? { ...e, ...updates } : e)
     await onWeekPlanChange(newPlan, mealsData)
+  }
+
+  function applyRatioToMenge(menge: string, ratio: number): string {
+    const m = menge.trim()
+    const match = m.match(/^(\d+(?:[.,]\d+)?)\s*(.*)$/)
+    if (!match) return m
+    const val = parseFloat(match[1].replace(',', '.'))
+    if (!val) return m
+    const newVal = Math.round(val * ratio * 10) / 10
+    const formatted = Number.isInteger(newVal) ? String(newVal) : String(newVal)
+    return match[2] ? formatted + ' ' + match[2] : formatted
+  }
+
+  async function updateEntryWithShoppingRescale(tag: string, slot: WochenSlot, updates: Partial<WeekPlanEntry>) {
+    const entry = weekPlan.find(e => e.tag === tag && e.slot === slot)
+    if (!entry) { await updateWeekEntry(tag, slot, updates); return }
+    const mbs = members.length ? members : DEFAULT_MEMBERS
+    const totalPersonCount = Math.max(1, getPersonCountForSlot(tag, slot, attendance, mbs))
+    const oldExcluded = Object.keys({ ...(entry.eigenesEssen ?? {}), ...(entry.resteEsser ?? {}) }).length
+    const merged = { ...entry, ...updates }
+    const newExcluded = Object.keys({ ...(merged.eigenesEssen ?? {}), ...(merged.resteEsser ?? {}) }).length
+    await updateWeekEntry(tag, slot, updates)
+    if (oldExcluded === newExcluded) return
+    const oldEff = Math.max(1, totalPersonCount - oldExcluded)
+    const newEff = Math.max(1, totalPersonCount - newExcluded)
+    if (oldEff === newEff) return
+    if (shopDone) return  // hint shown on card
+    const ratio = newEff / oldEff
+    const newList = shoppingList.map(item => {
+      if (item.gericht !== entry.gericht || item.tag !== tag || item.slot !== slot) return item
+      if (item.erledigt) return item
+      return { ...item, menge: applyRatioToMenge(item.menge, ratio) }
+    })
+    await onShoppingListChange(newList)
   }
 
   async function rejectProposal(id: string) {
@@ -3940,7 +4041,7 @@ export default function WocheScreen({
                             <div style={{ fontSize: 13, fontWeight: 700, color: '#111', display: 'flex', alignItems: 'center', gap: 4 }}>
                               {e.gericht}<span style={{ fontSize: 10, color: '#bbb' }}>›</span>
                               {e.mahlzeitTyp === 'leicht' && <span style={{ fontSize: 9, background: '#EEF2FF', color: '#4338CA', borderRadius: 4, padding: '1px 5px', fontWeight: 600 }}>leicht</span>}
-                              {getRecipeAllergenWarnings(getMeal(mealsData, e.tag, e.slot, e.gericht)).length > 0 && (
+                              {getRecipeAllergenWarningsForEntry(getMeal(mealsData, e.tag, e.slot, e.gericht), e).length > 0 && (
                                 <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 14, height: 14, borderRadius: '50%', background: '#EF4444', color: 'white', fontSize: 9, fontWeight: 700, flexShrink: 0 }}>!</span>
                               )}
                               {shoppingList.some(i => i.erledigt && i.tag === tag && i.slot === slot && i.gericht === e.gericht) && (
@@ -3950,8 +4051,8 @@ export default function WocheScreen({
                             {(getMeal(mealsData, e.tag, e.slot, e.gericht)?.ersetzteZutaten?.length ?? 0) > 0 && (
                               <div style={{ fontSize: 10, color: '#DC2626', marginTop: 1 }}>⚠️ {getMeal(mealsData, e.tag, e.slot, e.gericht)!.ersetzteZutaten!.join(' · ')}</div>
                             )}
-                            {getRecipeAllergenWarnings(getMeal(mealsData, e.tag, e.slot, e.gericht)).length > 0 && (
-                              <div style={{ fontSize: 10, color: '#991B1B', marginTop: 1 }}>⚠️ Prüfen: {getRecipeAllergenWarnings(getMeal(mealsData, e.tag, e.slot, e.gericht)).join(' · ')}</div>
+                            {getRecipeAllergenWarningsForEntry(getMeal(mealsData, e.tag, e.slot, e.gericht), e).length > 0 && (
+                              <div style={{ fontSize: 10, color: '#991B1B', marginTop: 1 }}>⚠️ Prüfen: {getRecipeAllergenWarningsForEntry(getMeal(mealsData, e.tag, e.slot, e.gericht), e).join(' · ')}</div>
                             )}
                             {planSettings?.mahlzeitenBestaetigt && planSettings.mahlzeitenKonfig?.[tag] && (() => {
                               const k = planSettings.mahlzeitenKonfig![tag]
@@ -3961,10 +4062,15 @@ export default function WocheScreen({
                               }
                               return null
                             })()}
-                            {e.reste && <div style={{ fontSize: 10, color: '#92400E', marginTop: 1 }}>🍲 Reste: {e.reste.beschreibung}</div>}
+                            {e.resteEsser && Object.entries(e.resteEsser).map(([p, t]) => (
+                              <div key={p} style={{ fontSize: 10, color: '#92400E', marginTop: 1 }}>🍲 {personNames[p] ?? p}: {t}</div>
+                            ))}
                             {e.eigenesEssen && Object.entries(e.eigenesEssen).map(([p, t]) => (
                               <div key={p} style={{ fontSize: 10, color: '#555', marginTop: 1 }}>🙋 {personNames[p] ?? p}{t ? `: ${t}` : ': eigenes Essen'}</div>
                             ))}
+                            {shopDone && (Object.keys(e.eigenesEssen ?? {}).length + Object.keys(e.resteEsser ?? {}).length) > 0 && (
+                              <div style={{ fontSize: 10, color: '#92400E', marginTop: 1 }}>🛒 Es wird jetzt weniger gebraucht</div>
+                            )}
                             <div style={{ fontSize: 11, color: '#aaa' }}>{e.minuten} min</div>
                           </div>
                         </div>
@@ -4921,15 +5027,15 @@ export default function WocheScreen({
             <div style={{ fontSize: 13, fontWeight: 700, color: '#111', display: 'flex', alignItems: 'center', gap: 4 }}>
               {entry.gericht}<span style={{ fontSize: 10, color: '#bbb' }}>›</span>
               {entry.mahlzeitTyp === 'leicht' && <span style={{ fontSize: 9, background: '#EEF2FF', color: '#4338CA', borderRadius: 4, padding: '1px 5px', fontWeight: 600 }}>leicht</span>}
-              {getRecipeAllergenWarnings(getMeal(mealsData, entry.tag, entry.slot, entry.gericht)).length > 0 && (
+              {getRecipeAllergenWarningsForEntry(getMeal(mealsData, entry.tag, entry.slot, entry.gericht), entry).length > 0 && (
                 <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 14, height: 14, borderRadius: '50%', background: '#EF4444', color: 'white', fontSize: 9, fontWeight: 700, flexShrink: 0 }}>!</span>
               )}
             </div>
             {(getMeal(mealsData, entry.tag, entry.slot, entry.gericht)?.ersetzteZutaten?.length ?? 0) > 0 && (
               <div style={{ fontSize: 10, color: '#DC2626', marginTop: 1 }}>⚠️ {getMeal(mealsData, entry.tag, entry.slot, entry.gericht)!.ersetzteZutaten!.join(' · ')}</div>
             )}
-            {getRecipeAllergenWarnings(getMeal(mealsData, entry.tag, entry.slot, entry.gericht)).length > 0 && (
-              <div style={{ fontSize: 10, color: '#991B1B', marginTop: 1 }}>⚠️ Prüfen: {getRecipeAllergenWarnings(getMeal(mealsData, entry.tag, entry.slot, entry.gericht)).join(' · ')}</div>
+            {getRecipeAllergenWarningsForEntry(getMeal(mealsData, entry.tag, entry.slot, entry.gericht), entry).length > 0 && (
+              <div style={{ fontSize: 10, color: '#991B1B', marginTop: 1 }}>⚠️ Prüfen: {getRecipeAllergenWarningsForEntry(getMeal(mealsData, entry.tag, entry.slot, entry.gericht), entry).join(' · ')}</div>
             )}
             {planSettings?.mahlzeitenBestaetigt && planSettings.mahlzeitenKonfig?.[tag] && (() => {
               const k = planSettings.mahlzeitenKonfig![tag]
@@ -4945,10 +5051,15 @@ export default function WocheScreen({
               const txt = ergs.map(w => w.text).join(', ')
               return <div style={{ fontSize: 10, color: '#6366F1', marginTop: 1 }}>✏️ angepasst: {txt.length > 35 ? txt.slice(0, 35) + '…' : txt}</div>
             })()}
-            {entry.reste && <div style={{ fontSize: 10, color: '#92400E', marginTop: 1 }}>🍲 Reste: {entry.reste.beschreibung}</div>}
+            {entry.resteEsser && Object.entries(entry.resteEsser).map(([p, t]) => (
+              <div key={p} style={{ fontSize: 10, color: '#92400E', marginTop: 1 }}>🍲 {personNames[p] ?? p}: {t}</div>
+            ))}
             {entry.eigenesEssen && Object.entries(entry.eigenesEssen).map(([p, t]) => (
               <div key={p} style={{ fontSize: 10, color: '#555', marginTop: 1 }}>🙋 {personNames[p] ?? p}{t ? `: ${t}` : ': eigenes Essen'}</div>
             ))}
+            {shopDone && (Object.keys(entry.eigenesEssen ?? {}).length + Object.keys(entry.resteEsser ?? {}).length) > 0 && (
+              <div style={{ fontSize: 10, color: '#92400E', marginTop: 1 }}>🛒 Es wird jetzt weniger gebraucht</div>
+            )}
             <div style={{ fontSize: 11, color: '#aaa' }}>{entry.minuten} min</div>
           </div>
         </div>
