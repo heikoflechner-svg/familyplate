@@ -52,6 +52,29 @@ function todayGerman(): string {
   return WOCHENTAGE[(new Date().getDay() + 6) % 7]
 }
 
+function getEaster(year: number): Date {
+  const a = year % 19, b = Math.floor(year / 100), c = year % 100
+  const d = Math.floor(b / 4), e = b % 4, f = Math.floor((b + 8) / 25)
+  const g = Math.floor((b - f + 1) / 3), h = (19 * a + b - d - g + 15) % 30
+  const i = Math.floor(c / 4), k = c % 4, l = (32 + 2 * e + 2 * i - h - k) % 7
+  const m = Math.floor((a + 11 * h + 22 * l) / 451)
+  const mo = Math.floor((h + l - 7 * m + 114) / 31) - 1
+  const dy = ((h + l - 7 * m + 114) % 31) + 1
+  return new Date(year, mo, dy)
+}
+
+function isShoppingClosed(isoDate: string): 'sunday' | 'holiday' | null {
+  const d = new Date(isoDate + 'T00:00:00')
+  if (d.getDay() === 0) return 'sunday'
+  const y = d.getFullYear(), mo = d.getMonth() + 1, dy = d.getDate()
+  const fixed: [number, number][] = [[1,1],[1,6],[5,1],[8,15],[10,3],[11,1],[12,25],[12,26]]
+  if (fixed.some(([m, dd]) => m === mo && dd === dy)) return 'holiday'
+  const easter = getEaster(y)
+  const offset = (n: number) => { const r = new Date(easter); r.setDate(r.getDate() + n); return r }
+  if ([-2, 1, 39, 50, 60].map(offset).some(r => r.getFullYear() === y && r.getMonth() + 1 === mo && r.getDate() === dy)) return 'holiday'
+  return null
+}
+
 function getSlot(weekPlan: WeekPlanEntry[], tag: string, slot: 'Mittag' | 'Abend'): WeekPlanEntry | null {
   return weekPlan.find(e => e.tag === tag && e.slot === slot) ?? null
 }
@@ -546,6 +569,8 @@ export default function WocheScreen({
     tag: string; slot: WochenSlot; entry: WeekPlanEntry
     items: Array<{ item: ShoppingItem; checked: boolean; zuGefriertruhe: boolean; isMeatOrFish: boolean }>
   } | null>(null)
+  const [shopWarningKey, setShopWarningKey] = useState<string | null>(null)
+  const skipNextShopWarnRef = useRef(false)
   const [moveSource, setMoveSource] = useState<{ tag: string; slot: WochenSlot; entry: WeekPlanEntry } | null>(null)
   const [movePendingTarget, setMovePendingTarget] = useState<{ tag: string; slot: WochenSlot; isNextWeek: boolean } | null>(null)
   const [moveSaving, setMoveSaving] = useState(false)
@@ -941,6 +966,7 @@ export default function WocheScreen({
   async function replanSlot(tag: string, slot: WochenSlot, forceTyp?: 'leicht' | 'normal', extraHinweis?: string) {
     const key = `${tag}-${slot}`
     closeMealPanel()
+    if (extraHinweis) skipNextShopWarnRef.current = true
     setSlotLoading(key)
     const forceKonfig = forceTyp ? {
       ...(defaultMealConfig ?? {}),
@@ -989,6 +1015,7 @@ export default function WocheScreen({
       setTimeout(() => setSaveFeedback(null), 5000)
     })
     closeMealPanel()
+    if (tag === today) setShopWarningKey(`${tag}-${slot}`)
   }
 
   function applyActiveStockItem(tag: string, slot: WochenSlot, name: string, emoji: string) {
@@ -1007,6 +1034,7 @@ export default function WocheScreen({
     const newEntry = { tag, slot, gericht: name.trim(), emoji: '🍽️', quelle: 'manuell', chef: wochenchef, minuten: 30 }
     void onWeekPlanChange([...weekPlan, newEntry], mealsData)
     closeMealPanel()
+    if (tag === today) setShopWarningKey(`${tag}-${slot}`)
   }
 
   function applyNewStockItem(tag: string, slot: WochenSlot, name: string, emoji: string) {
@@ -1856,6 +1884,14 @@ export default function WocheScreen({
     const newPlan = [...weekPlan.filter(e => e.tag !== pendingDay.tag), ...pendingDay.entries]
     await onWeekPlanChange(newPlan, migrateMealsDataAddSlotKeys(newPlan, { ...mealsData, ...pendingDayMeals }))
     await onPlanConfirm?.(pendingDay.entries)
+    if (pendingDay.tag === today && !skipNextShopWarnRef.current) {
+      for (const sl of ['Mittag', 'Abend'] as WochenSlot[]) {
+        const pe = pendingDay.entries.find(en => en.slot === sl)
+        const oe = weekPlan.find(en => en.tag === today && en.slot === sl)
+        if (pe && (!oe || oe.gericht !== pe.gericht)) { setShopWarningKey(`${today}-${sl}`); break }
+      }
+    }
+    skipNextShopWarnRef.current = false
     setPendingDay(null)
     setPendingDayMeals({})
     setSaving(false)
@@ -4099,6 +4135,28 @@ export default function WocheScreen({
                             </div>
                           )
                         })()}
+                        {shopWarningKey === key && (() => {
+                          const closed = isShoppingClosed(new Date().toISOString().slice(0, 10))
+                          return closed ? (
+                            <div style={{ padding: '6px 12px 8px', background: '#FFF7ED', borderTop: '1px solid #FDBA74' }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
+                                <div style={{ fontSize: 12, fontWeight: 600, color: '#C2410C' }}>🛒 Zutaten noch nicht eingekauft – heute {closed === 'sunday' ? 'ist Sonntag' : 'ist Feiertag'}, die Läden haben zu. Lieber etwas aus dem Vorrat?</div>
+                                <button onClick={() => setShopWarningKey(null)} style={{ background: 'none', border: 'none', color: '#999', fontSize: 16, cursor: 'pointer', padding: 0, lineHeight: 1, flexShrink: 0, marginLeft: 6 }}>✕</button>
+                              </div>
+                              <div style={{ display: 'flex', gap: 6 }}>
+                                <button onClick={() => { setShopWarningKey(null); setGerichtEditKey(key); setMealSubMode('pantry') }}
+                                  style={{ flex: 1, padding: '6px 8px', border: '1px solid #FDBA74', borderRadius: 8, background: 'white', color: '#C2410C', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>❄️ Aus Vorrat</button>
+                                <button onClick={() => { setShopWarningKey(null); void replanSlot(tag, slot, undefined, 'Heute ist kein Einkauf möglich – bitte wähle ein Gericht, das hauptsächlich aus Gefriertruhe und Speisekammer zubereitet werden kann.') }}
+                                  style={{ flex: 1, padding: '6px 8px', border: '1px solid #FDBA74', borderRadius: 8, background: '#FFF7ED', color: '#C2410C', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>⚡ Schnell & einfach</button>
+                              </div>
+                            </div>
+                          ) : (
+                            <div style={{ padding: '4px 12px 6px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#F9FAFB', borderTop: '1px solid #F0F0F0' }}>
+                              <span style={{ fontSize: 11, color: '#888' }}>🛒 Zutaten noch einkaufen</span>
+                              <button onClick={() => setShopWarningKey(null)} style={{ background: 'none', border: 'none', color: '#ccc', fontSize: 14, cursor: 'pointer', padding: 0, lineHeight: 1 }}>✕</button>
+                            </div>
+                          )
+                        })()}
                         {planConfirmed && !wvIsSwapMode && !moveSource && (currentUser !== wochenchef && !canEditSettings || shopDone) && (
                           <div style={{ borderTop: '1px solid #f5f5f5', display: 'flex', gap: 4, padding: '4px 12px 6px' }}>
                             <button
@@ -5222,6 +5280,28 @@ export default function WocheScreen({
                   </button>
                 </div>
               )}
+            </div>
+          )
+        })()}
+        {shopWarningKey === key && (() => {
+          const closed = isShoppingClosed(new Date().toISOString().slice(0, 10))
+          return closed ? (
+            <div style={{ padding: '6px 12px 8px', background: '#FFF7ED', borderTop: '1px solid #FDBA74' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: '#C2410C' }}>🛒 Zutaten noch nicht eingekauft – heute {closed === 'sunday' ? 'ist Sonntag' : 'ist Feiertag'}, die Läden haben zu. Lieber etwas aus dem Vorrat?</div>
+                <button onClick={() => setShopWarningKey(null)} style={{ background: 'none', border: 'none', color: '#999', fontSize: 16, cursor: 'pointer', padding: 0, lineHeight: 1, flexShrink: 0, marginLeft: 6 }}>✕</button>
+              </div>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <button onClick={() => { setShopWarningKey(null); setGerichtEditKey(key); setMealSubMode('pantry') }}
+                  style={{ flex: 1, padding: '6px 8px', border: '1px solid #FDBA74', borderRadius: 8, background: 'white', color: '#C2410C', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>❄️ Aus Vorrat</button>
+                <button onClick={() => { setShopWarningKey(null); void replanSlot(tag, slot, undefined, 'Heute ist kein Einkauf möglich – bitte wähle ein Gericht, das hauptsächlich aus Gefriertruhe und Speisekammer zubereitet werden kann.') }}
+                  style={{ flex: 1, padding: '6px 8px', border: '1px solid #FDBA74', borderRadius: 8, background: '#FFF7ED', color: '#C2410C', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>⚡ Schnell & einfach</button>
+              </div>
+            </div>
+          ) : (
+            <div style={{ padding: '4px 12px 6px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#F9FAFB', borderTop: '1px solid #F0F0F0' }}>
+              <span style={{ fontSize: 11, color: '#888' }}>🛒 Zutaten noch einkaufen</span>
+              <button onClick={() => setShopWarningKey(null)} style={{ background: 'none', border: 'none', color: '#ccc', fontSize: 14, cursor: 'pointer', padding: 0, lineHeight: 1 }}>✕</button>
             </div>
           )
         })()}
