@@ -20,6 +20,8 @@ export interface PantryItem {
   name: string
   menge: string
   ampel: Ampel
+  baldVerbrauchen?: boolean
+  datum?: string
 }
 
 export type MittagTyp = 'kein' | 'leicht' | 'normal'

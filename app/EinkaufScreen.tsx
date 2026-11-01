@@ -398,6 +398,7 @@ export default function EinkaufScreen({
   const dayCount = new Set(recipeItems.map(i => itemIso(i)).filter(Boolean)).size
   const gerichtCount = new Set(recipeItems.map(i => i.gericht)).size
   const hasAnyItems = shoppingList.length > 0 || nwShoppingList.length > 0
+  const baldVerbrauchenNames = new Set(pantryItems.filter(i => i.baldVerbrauchen).map(i => i.name.toLowerCase()))
 
   function nwUpdate(updated: ShoppingItem[]) {
     void onNextWeekDataChange?.({ shoppingList: updated }, nextWeekStart ?? getNextMondayIso())
@@ -694,10 +695,10 @@ export default function EinkaufScreen({
                         <span style={{ fontSize: 12, fontWeight: 600, color: '#333' }}>{group.gericht}</span>
                       </div>
                       {group.items.map(item => (
-                        <ItemRow key={item.id} item={item} onToggle={() => combinedToggle(item.id)} onRemove={() => combinedRemove(item.id)} />
+                        <ItemRow key={item.id} item={item} onToggle={() => combinedToggle(item.id)} onRemove={() => combinedRemove(item.id)} schonDa={baldVerbrauchenNames.has(item.name.toLowerCase())} />
                       ))}
                       {manualItems.filter(i => i.tag === group.tag && i.slot === group.slot).map(item => (
-                        <ItemRow key={item.id} item={item} onToggle={() => combinedToggle(item.id)} onRemove={() => combinedRemove(item.id)} />
+                        <ItemRow key={item.id} item={item} onToggle={() => combinedToggle(item.id)} onRemove={() => combinedRemove(item.id)} schonDa={baldVerbrauchenNames.has(item.name.toLowerCase())} />
                       ))}
                     </div>
                   ))}
@@ -709,7 +710,7 @@ export default function EinkaufScreen({
                           {item.tag?.slice(0, 2)} · {item.slot}
                         </span>
                       </div>
-                      <ItemRow item={item} onToggle={() => combinedToggle(item.id)} onRemove={() => combinedRemove(item.id)} />
+                      <ItemRow item={item} onToggle={() => combinedToggle(item.id)} onRemove={() => combinedRemove(item.id)} schonDa={baldVerbrauchenNames.has(item.name.toLowerCase())} />
                     </div>
                   ))}
                 </>
@@ -725,6 +726,7 @@ export default function EinkaufScreen({
                       onToggle={() => combinedToggleConsolidated(item.ids)}
                       onEdit={() => setEditingItem(editingItem === item.name ? null : item.name)}
                       editing={editingItem === item.name}
+                      schonDa={baldVerbrauchenNames.has(item.name.toLowerCase())}
                     />
                     {editingItem === item.name && (
                       <WarengruppePanel
@@ -762,6 +764,7 @@ export default function EinkaufScreen({
                               onToggle={() => combinedToggleConsolidated(item.ids)}
                               onEdit={() => setEditingItem(editingItem === item.name ? null : item.name)}
                               editing={editingItem === item.name}
+                              schonDa={baldVerbrauchenNames.has(item.name.toLowerCase())}
                             />
                             {editingItem === item.name && (
                               <WarengruppePanel
@@ -940,7 +943,7 @@ export default function EinkaufScreen({
   )
 }
 
-function ItemRow({ item, onToggle, onRemove }: { item: ShoppingItem; onToggle: () => void; onRemove: () => void }) {
+function ItemRow({ item, onToggle, onRemove, schonDa }: { item: ShoppingItem; onToggle: () => void; onRemove: () => void; schonDa?: boolean }) {
   const isFuer = !!item.fuer
   const isErsatz = item.kategorie === 'Ersatz-Zutat'
   const textColor = item.erledigt ? '#bbb' : isFuer ? '#856404' : isErsatz ? '#2563EB' : '#111'
@@ -954,6 +957,9 @@ function ItemRow({ item, onToggle, onRemove }: { item: ShoppingItem; onToggle: (
           <span style={{ fontSize: 10, background: '#FFF3CD', color: '#856404', borderRadius: 4, padding: '1px 5px', marginLeft: 6, whiteSpace: 'nowrap' }}>
             ⚠️ {!item.gericht && item.tag ? `${item.tag.slice(0, 2)} ${item.slot ?? ''} · ` : ''}für {item.fuer}
           </span>
+        )}
+        {schonDa && !item.erledigt && (
+          <span style={{ fontSize: 10, background: '#DCFCE7', color: '#15803D', borderRadius: 4, padding: '1px 5px', marginLeft: 6, whiteSpace: 'nowrap' }}>🏠 schon da</span>
         )}
       </div>
       <button
@@ -1004,11 +1010,12 @@ function buildVariantBracket(variants: ConsolidatedItem['variants'], canonicalNa
   return `(${parts.join(', ')})`
 }
 
-function ConsolidatedRow({ item, onToggle, onEdit, editing }: {
+function ConsolidatedRow({ item, onToggle, onEdit, editing, schonDa }: {
   item: ConsolidatedItem
   onToggle: () => void
   onEdit?: () => void
   editing?: boolean
+  schonDa?: boolean
 }) {
   const [showDetails, setShowDetails] = useState(false)
   const isErsatz = item.kategorie === 'Ersatz-Zutat'
@@ -1027,6 +1034,7 @@ function ConsolidatedRow({ item, onToggle, onEdit, editing }: {
             {item.name}
             {item.menge && <span style={{ fontSize: 11, color: '#aaa', marginLeft: 5 }}>({item.menge})</span>}
             {variantBracket && <span style={{ fontSize: 11, color: '#888', marginLeft: 4 }}>{variantBracket}</span>}
+            {schonDa && !item.erledigt && <span style={{ fontSize: 10, background: '#DCFCE7', color: '#15803D', borderRadius: 4, padding: '1px 5px', marginLeft: 6, whiteSpace: 'nowrap' }}>🏠 schon da</span>}
           </div>
           {hasDetails && (
             <button

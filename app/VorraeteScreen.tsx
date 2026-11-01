@@ -144,13 +144,47 @@ export default function VorraeteScreen({ freezerItems, pantryItems, onFreezerCha
 
         {subTab === 'speisekammer' && (
           <>
+            {(() => {
+              const baldItems = pantryItems.filter(i => i.baldVerbrauchen && i.datum)
+              if (!baldItems.length) return null
+              const today = new Date()
+              today.setHours(0, 0, 0, 0)
+              return (
+                <div style={{ border: '1px solid #FCD34D', borderRadius: 12, overflow: 'hidden', marginBottom: 10, background: '#FFFBEB' }}>
+                  <div style={{ padding: '8px 12px', borderBottom: '1px solid #FCD34D', fontSize: 12, fontWeight: 700, color: '#92400E' }}>🕒 Bald verbrauchen</div>
+                  {baldItems.map(item => {
+                    const d = new Date(item.datum!)
+                    d.setHours(0, 0, 0, 0)
+                    const days = Math.round((today.getTime() - d.getTime()) / 86400000)
+                    const badge = days >= 3
+                      ? <span style={{ fontSize: 10, background: '#FEE2E2', color: '#DC2626', borderRadius: 4, padding: '1px 5px', fontWeight: 600, marginLeft: 4 }}>⚠️ bitte prüfen</span>
+                      : days === 2
+                        ? <span style={{ fontSize: 10, background: '#FEF3C7', color: '#D97706', borderRadius: 4, padding: '1px 5px', fontWeight: 600, marginLeft: 4 }}>⚠️ prüfen</span>
+                        : <span style={{ fontSize: 10, background: '#FEF9C3', color: '#A16207', borderRadius: 4, padding: '1px 5px', fontWeight: 600, marginLeft: 4 }}>🕒 bald</span>
+                    return (
+                      <div key={item.id} className="storage-item">
+                        <div className={`ampel ${item.ampel}`} />
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: 13, fontWeight: 500, display: 'flex', alignItems: 'center', flexWrap: 'wrap' }}>{item.emoji} {item.name}{badge}</div>
+                          <div style={{ fontSize: 11, color: '#aaa' }}>{item.menge}</div>
+                        </div>
+                        <button onClick={() => removePantryItem(item.id)} style={{ border: 'none', background: 'none', color: '#ddd', fontSize: 20, cursor: 'pointer', lineHeight: 1 }}>×</button>
+                      </div>
+                    )
+                  })}
+                </div>
+              )
+            })()}
             <div style={{ border: '1px solid #eee', borderRadius: 12, overflow: 'hidden', marginBottom: 14 }}>
-              {pantryItems.length === 0 && (
+              {pantryItems.filter(i => !i.baldVerbrauchen).length === 0 && pantryItems.filter(i => i.baldVerbrauchen).length === 0 && (
                 <div style={{ padding: '20px 12px', fontSize: 13, color: '#aaa', textAlign: 'center' }}>
                   Speisekammer leer
                 </div>
               )}
-              {pantryItems.map(item => (
+              {pantryItems.filter(i => !i.baldVerbrauchen).length === 0 && pantryItems.filter(i => i.baldVerbrauchen).length > 0 && (
+                <div style={{ padding: '12px', fontSize: 12, color: '#aaa', textAlign: 'center' }}>Keine weiteren Einträge</div>
+              )}
+              {pantryItems.filter(i => !i.baldVerbrauchen).map(item => (
                 <div key={item.id} className="storage-item">
                   <div className={`ampel ${item.ampel}`} />
                   <div style={{ flex: 1 }}>

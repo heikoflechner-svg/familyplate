@@ -3,7 +3,7 @@ import { useState, useEffect, useRef, useMemo } from 'react'
 import { generateWeekPlan, getRemySuggestions, generateRecipe, rescaleRecipe, adjustRecipe, loadMissingRecipes, getPersonCountForSlot, saveLastDishes, isFullRecipe, getMondayIso, getNextMondayIso, applySwap, checkAllergiesForSwap, checkFreshnessWarning, loadHistoryDishes, fetchFreshMealsData, saveMealsDataOnly, mergeRecipeToDb } from '../lib/mealLogic'
 import { checkAllergens, formatAllergenWarningsCard } from '../lib/allergenCheck'
 import { rescaleShoppingListMengen, rewriteShoppingItemsForDish, swapShoppingItemsTags, generateShoppingList, removeShoppingItemsForDish, moveShoppingItemsForDish, generateItemsForEntry } from '../lib/shoppingLogic'
-import { getFreezerListString, getPantryListString, addFreezerItem, deleteFreezerItem } from '../lib/freezerLogic'
+import { getFreezerListString, getPantryListString, addFreezerItem, deleteFreezerItem, addPantryItem } from '../lib/freezerLogic'
 import { buildFamilyPrompt, buildMemberCfg, DEFAULT_MEMBERS, buildErnährungsHinweis } from '../lib/familyLogic'
 import type { WeekPlanEntry, Rezept, FreezerItem, PantryItem, Wish, Chef, WochenSlot, FamilyMember, DayAttendance, ChangeProposal, ShoppingItem, RemyVorschlag, NextWeekData, NextWeekWish, PlanSettings, TagMahlzeitenKonfig, RezeptbuchEntry, ErnährungsVorgabe } from '../lib/state'
 import { computeRatingAvg, fmtAvg, type DishRating } from '../lib/dishRatingsLogic'
@@ -215,6 +215,7 @@ interface Props {
   shoppingList: ShoppingItem[]
   onShoppingListChange: (list: ShoppingItem[]) => Promise<void>
   onFreezerChange: (items: FreezerItem[]) => void
+  onPantryChange?: (items: PantryItem[]) => void
   initialView?: 'home' | 'attendance'
   onInitialViewConsumed?: () => void
   shoppingDays?: string[]
@@ -291,7 +292,7 @@ export default function WocheScreen({
   weekPlan, mealsData, mittagsloseTage, planWE, freezerItems, pantryItems,
   wishes, currentUser, wochenchef, members, attendance, attendanceConfirmed, proposals, planConfirmed, shopDone, onWeekPlanChange, onWeekPlanAndWishesChange, onWishesChange,
   onAttendanceChange, onAttendanceConfirmedChange, onPlanConfirm, onProposalsChange, onWochenchefChange, onPlanConfirmedChange, onShopDoneChange,
-  shoppingList, onShoppingListChange, onFreezerChange,
+  shoppingList, onShoppingListChange, onFreezerChange, onPantryChange,
   initialView = 'home',
   onInitialViewConsumed,
   shoppingDays = [],
@@ -541,6 +542,10 @@ export default function WocheScreen({
   const [swapChef2, setSwapChef2] = useState<Chef | null>(null)
 
   const [removeConfirmKey, setRemoveConfirmKey] = useState<string | null>(null)
+  const [restzutatenDialog, setRestzutatenDialog] = useState<{
+    tag: string; slot: WochenSlot; entry: WeekPlanEntry
+    items: Array<{ item: ShoppingItem; checked: boolean; zuGefriertruhe: boolean; isMeatOrFish: boolean }>
+  } | null>(null)
   const [moveSource, setMoveSource] = useState<{ tag: string; slot: WochenSlot; entry: WeekPlanEntry } | null>(null)
   const [movePendingTarget, setMovePendingTarget] = useState<{ tag: string; slot: WochenSlot; isNextWeek: boolean } | null>(null)
   const [moveSaving, setMoveSaving] = useState(false)
@@ -2266,7 +2271,7 @@ export default function WocheScreen({
     await executeNwSwap(t1, s1, e1, t2, s2, e2)
   }
 
-  async function executeRemove(tag: string, slot: WochenSlot, entry: WeekPlanEntry) {
+  async function doExecuteRemove(tag: string, slot: WochenSlot, entry: WeekPlanEntry) {
     const newPlan = weekPlan.filter(e => !(e.tag === tag && e.slot === slot))
     const newMealsData = { ...mealsData }
     delete newMealsData[mealsKey(tag, slot)]
@@ -2274,6 +2279,56 @@ export default function WocheScreen({
     await onWeekPlanChange(newPlan, newMealsData)
     await onShoppingListChange(newShoppingList)
     setRemoveConfirmKey(null)
+  }
+
+  async function executeRemove(tag: string, slot: WochenSlot, entry: WeekPlanEntry) {
+    const erledigte = shoppingList.filter(i => i.erledigt && i.tag === tag && i.slot === slot && i.gericht === entry.gericht && !i.nextWeek)
+    if (erledigte.length > 0) {
+      setRemoveConfirmKey(null)
+      setRestzutatenDialog({
+        tag, slot, entry,
+        items: erledigte.map(i => ({
+          item: i,
+          checked: true,
+          zuGefriertruhe: false,
+          isMeatOrFish: classifyGericht(i.name) !== null,
+        })),
+      })
+      return
+    }
+    await doExecuteRemove(tag, slot, entry)
+  }
+
+  async function confirmRestzutaten() {
+    if (!restzutatenDialog) return
+    const { tag, slot, entry, items } = restzutatenDialog
+    const today = new Date().toISOString().slice(0, 10)
+    const newPantryItems = [...pantryItems]
+    const newFreezerItems = [...freezerItems]
+    for (const { item, checked, zuGefriertruhe } of items) {
+      if (!checked) continue
+      const typ = classifyGericht(item.name)
+      const emoji = typ === 'fisch' ? '🐟' : (typ === 'fleisch' ? '🥩' : '🥫')
+      if (zuGefriertruhe) {
+        const datum = new Date().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })
+        const added = await addFreezerItem({ typ: 'roh', emoji, name: item.name, menge: item.menge || '', datum, ampel: 'yellow' })
+        if (added) newFreezerItems.push(added)
+      } else {
+        const added = await addPantryItem({ emoji, name: item.name, menge: item.menge || '', ampel: 'yellow', baldVerbrauchen: true, datum: today })
+        if (added) newPantryItems.push(added)
+      }
+    }
+    onFreezerChange(newFreezerItems)
+    onPantryChange?.(newPantryItems)
+    setRestzutatenDialog(null)
+    await doExecuteRemove(tag, slot, entry)
+  }
+
+  async function skipRestzutaten() {
+    if (!restzutatenDialog) return
+    const { tag, slot, entry } = restzutatenDialog
+    setRestzutatenDialog(null)
+    await doExecuteRemove(tag, slot, entry)
   }
 
   async function handleRemoveRequest(tag: string, slot: WochenSlot, entry: WeekPlanEntry) {
@@ -3184,6 +3239,35 @@ export default function WocheScreen({
     )
   }
 
+  const restzutatenOverlay = restzutatenDialog ? (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 300, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
+      <div style={{ flex: 1, background: 'rgba(0,0,0,0.4)' }} onClick={() => void skipRestzutaten()} />
+      <div style={{ background: 'white', borderRadius: '16px 16px 0 0', padding: '18px 16px 28px', maxHeight: '80vh', overflowY: 'auto' }}>
+        <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 4 }}>🥡 Übrige Zutaten verwerten?</div>
+        <div style={{ fontSize: 12, color: '#888', marginBottom: 14 }}>Diese Zutaten wurden bereits eingekauft. Möchtest du sie in den Vorrat legen?</div>
+        {restzutatenDialog.items.map((r, idx) => (
+          <div key={idx} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 8, padding: '8px 10px', background: r.checked ? '#F0FAF5' : '#f9f9f9', borderRadius: 8, border: `1px solid ${r.checked ? '#B2DFCC' : '#eee'}` }}>
+            <input type="checkbox" checked={r.checked} onChange={() => setRestzutatenDialog(d => d ? { ...d, items: d.items.map((it, i) => i === idx ? { ...it, checked: !it.checked } : it) } : null)} style={{ width: 16, height: 16, marginTop: 2, cursor: 'pointer', flexShrink: 0 }} />
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 13, fontWeight: 500 }}>{r.item.name}</div>
+              {r.item.menge && <div style={{ fontSize: 11, color: '#888' }}>{r.item.menge}</div>}
+            </div>
+            {r.checked && r.isMeatOrFish && (
+              <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#1D6FCA', cursor: 'pointer', flexShrink: 0 }}>
+                <input type="checkbox" checked={r.zuGefriertruhe} onChange={() => setRestzutatenDialog(d => d ? { ...d, items: d.items.map((it, i) => i === idx ? { ...it, zuGefriertruhe: !it.zuGefriertruhe } : it) } : null)} />
+                ❄️ Gefriertruhe
+              </label>
+            )}
+          </div>
+        ))}
+        <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+          <button onClick={() => void confirmRestzutaten()} style={{ flex: 2, padding: '12px', background: '#1D9E75', color: 'white', border: 'none', borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>✓ In Vorrat legen</button>
+          <button onClick={() => void skipRestzutaten()} style={{ flex: 1, padding: '12px', background: 'white', border: '1px solid #ddd', borderRadius: 10, fontSize: 13, color: '#555', cursor: 'pointer' }}>Überspringen</button>
+        </div>
+      </div>
+    </div>
+  ) : null
+
   // ── Attendance view ────────────────────────────────────────────────────────
   if (view === 'attendance') {
     const confirmedCount = attendanceConfirmed.filter(c => allChefIds.includes(c)).length
@@ -3338,6 +3422,7 @@ export default function WocheScreen({
         {selectedMealName && (
           <RecipeModal name={selectedMealName} rezept={selectedRezept(selectedMealName)} loading={recipeLoading === selectedMealName} onClose={() => { setSelectedMealName(null); setRecipeContext(null); setAdjustAllergieHinweise([]) }} canRewrite={currentUser === wochenchef || canEditSettings} onRewrite={rewriteRecipe} onAdjust={handleAdjustRecipe} allergieHinweise={adjustAllergieHinweise} offeneAllergene={getRecipeAllergenWarnings(selectedRezept(selectedMealName) ?? undefined)} onSaveToBook={onSaveToBook ? (r) => { void handleSaveToBook(r) } : undefined} savedToBook={savedToBookName === selectedMealName} saveToBookLoading={saveToBookLoading} />
         )}
+        {restzutatenOverlay}
         <div className="topbar">
           {planState !== 'loading' && (
             <button className="back" onClick={() => setView(weekPlan.length > 0 ? 'home' : 'home')}>‹</button>
@@ -3579,6 +3664,7 @@ export default function WocheScreen({
         {selectedMealName && (
           <RecipeModal name={selectedMealName} rezept={selectedRezept(selectedMealName)} loading={recipeLoading === selectedMealName} onClose={() => { setSelectedMealName(null); setRecipeContext(null); setAdjustAllergieHinweise([]) }} canRewrite={currentUser === wochenchef || canEditSettings} onRewrite={rewriteRecipe} onAdjust={handleAdjustRecipe} allergieHinweise={adjustAllergieHinweise} offeneAllergene={getRecipeAllergenWarnings(selectedRezept(selectedMealName) ?? undefined)} onSaveToBook={onSaveToBook ? (r) => { void handleSaveToBook(r) } : undefined} savedToBook={savedToBookName === selectedMealName} saveToBookLoading={saveToBookLoading} />
         )}
+        {restzutatenOverlay}
         {swapTarget && swapSource && (() => {
           const { tag: t1, slot: s1, entry: e1 } = swapSource
           const { tag: t2, slot: s2, entry: e2 } = swapTarget
@@ -5332,6 +5418,7 @@ export default function WocheScreen({
       {selectedMealName && (
         <RecipeModal name={selectedMealName} rezept={selectedRezept(selectedMealName)} loading={recipeLoading === selectedMealName} onClose={() => { setSelectedMealName(null); setRecipeContext(null); setAdjustAllergieHinweise([]) }} canRewrite={currentUser === wochenchef || canEditSettings} onRewrite={rewriteRecipe} onAdjust={handleAdjustRecipe} allergieHinweise={adjustAllergieHinweise} offeneAllergene={getRecipeAllergenWarnings(selectedRezept(selectedMealName) ?? undefined)} onSaveToBook={onSaveToBook ? (r) => { void handleSaveToBook(r) } : undefined} savedToBook={savedToBookName === selectedMealName} saveToBookLoading={saveToBookLoading} />
       )}
+      {restzutatenOverlay}
       {swapTarget && swapSource && (() => {
         const { tag: t1, slot: s1, entry: e1 } = swapSource
         const { tag: t2, slot: s2, entry: e2 } = swapTarget

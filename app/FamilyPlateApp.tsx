@@ -984,6 +984,7 @@ export default function FamilyPlateApp() {
             shoppingList={shoppingList}
             onShoppingListChange={handleShoppingListChange}
             onFreezerChange={setFreezerItems}
+            onPantryChange={setPantryItems}
             initialView={wocheInitView}
             onInitialViewConsumed={() => setWocheInitView('home')}
             shoppingDays={shoppingDays}

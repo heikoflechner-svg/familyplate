@@ -73,6 +73,8 @@ export async function addPantryItem(item: {
   name: string
   menge: string
   ampel: Ampel
+  baldVerbrauchen?: boolean
+  datum?: string
 }): Promise<PantryItem | null> {
   const { data, error } = await supabase
     .from('pantry_items')
@@ -119,9 +121,8 @@ export function getFreezerListString(items: FreezerItem[]): string {
 
 export function getPantryListString(items: PantryItem[]): string {
   if (!items.length) return 'leer'
-  // Alle Items inkl. roter (dringender) Artikel – früher fälschlich herausgefiltert
   return items.map((i) => {
-    const flag = i.ampel === 'red' ? ' [DRINGEND verwenden]' : ''
+    const flag = i.baldVerbrauchen ? ' [BALD VERBRAUCHEN]' : (i.ampel === 'red' ? ' [DRINGEND verwenden]' : '')
     return `${i.name} (${i.menge})${flag}`
   }).join(', ')
 }
