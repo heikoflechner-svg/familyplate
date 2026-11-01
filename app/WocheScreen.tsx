@@ -2305,6 +2305,7 @@ export default function WocheScreen({
     const today = new Date().toISOString().slice(0, 10)
     const newPantryItems = [...pantryItems]
     const newFreezerItems = [...freezerItems]
+    let saveError = false
     for (const { item, checked, zuGefriertruhe } of items) {
       if (!checked) continue
       const typ = classifyGericht(item.name)
@@ -2313,14 +2314,17 @@ export default function WocheScreen({
         const datum = new Date().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })
         const added = await addFreezerItem({ typ: 'roh', emoji, name: item.name, menge: item.menge || '', datum, ampel: 'yellow' })
         if (added) newFreezerItems.push(added)
+        else saveError = true
       } else {
         const added = await addPantryItem({ emoji, name: item.name, menge: item.menge || '', ampel: 'yellow', baldVerbrauchen: true, datum: today })
         if (added) newPantryItems.push(added)
+        else saveError = true
       }
     }
     onFreezerChange(newFreezerItems)
     onPantryChange?.(newPantryItems)
     setRestzutatenDialog(null)
+    if (saveError) setError('Einige Zutaten konnten nicht in den Vorrat gelegt werden (Speichern fehlgeschlagen).')
     await doExecuteRemove(tag, slot, entry)
   }
 

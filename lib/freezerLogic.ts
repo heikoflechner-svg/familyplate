@@ -57,6 +57,18 @@ export async function deleteFreezerItem(id: string): Promise<boolean> {
 
 // ── Speisekammer ──────────────────────────────────────────────────────────────
 
+function mapPantryRow(row: Record<string, unknown>): PantryItem {
+  return {
+    id: row.id as string,
+    emoji: row.emoji as string,
+    name: row.name as string,
+    menge: row.menge as string,
+    ampel: row.ampel as Ampel,
+    baldVerbrauchen: row.bald_verbrauchen === true || undefined,
+    datum: row.datum as string | undefined,
+  }
+}
+
 export async function loadPantryItems(): Promise<PantryItem[]> {
   const { data, error } = await supabase
     .from('pantry_items')
@@ -65,7 +77,7 @@ export async function loadPantryItems(): Promise<PantryItem[]> {
     .order('created_at', { ascending: true })
 
   if (error || !data) return []
-  return data as PantryItem[]
+  return (data as Record<string, unknown>[]).map(mapPantryRow)
 }
 
 export async function addPantryItem(item: {
@@ -76,14 +88,24 @@ export async function addPantryItem(item: {
   baldVerbrauchen?: boolean
   datum?: string
 }): Promise<PantryItem | null> {
+  const { baldVerbrauchen, datum, ...rest } = item
   const { data, error } = await supabase
     .from('pantry_items')
-    .insert({ family_id: getFamilyId(), ...item })
+    .insert({
+      family_id: getFamilyId(),
+      ...rest,
+      ...(baldVerbrauchen ? { bald_verbrauchen: true } : {}),
+      ...(datum !== undefined ? { datum } : {}),
+    })
     .select()
     .single()
 
-  if (error || !data) return null
-  return data as PantryItem
+  if (error) {
+    console.error('[addPantryItem] Fehler:', error.message)
+    return null
+  }
+  if (!data) return null
+  return mapPantryRow(data as Record<string, unknown>)
 }
 
 export async function updatePantryItem(
