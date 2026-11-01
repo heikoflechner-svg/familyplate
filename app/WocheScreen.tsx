@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { generateWeekPlan, getRemySuggestions, generateRecipe, rescaleRecipe, adjustRecipe, loadMissingRecipes, getPersonCountForSlot, saveLastDishes, isFullRecipe, getMondayIso, getNextMondayIso, applySwap, checkAllergiesForSwap, checkFreshnessWarning, loadHistoryDishes, fetchFreshMealsData, saveMealsDataOnly, mergeRecipeToDb } from '../lib/mealLogic'
 import { checkAllergens, formatAllergenWarningsCard } from '../lib/allergenCheck'
-import { rescaleShoppingListMengen, rewriteShoppingItemsForDish, swapShoppingItemsTags, generateShoppingList, removeShoppingItemsForDish, moveShoppingItemsForDish } from '../lib/shoppingLogic'
+import { rescaleShoppingListMengen, rewriteShoppingItemsForDish, swapShoppingItemsTags, generateShoppingList, removeShoppingItemsForDish, moveShoppingItemsForDish, generateItemsForEntry } from '../lib/shoppingLogic'
 import { getFreezerListString, getPantryListString, addFreezerItem, deleteFreezerItem } from '../lib/freezerLogic'
 import { buildFamilyPrompt, buildMemberCfg, DEFAULT_MEMBERS } from '../lib/familyLogic'
 import type { WeekPlanEntry, Rezept, FreezerItem, PantryItem, Wish, Chef, WochenSlot, FamilyMember, DayAttendance, ChangeProposal, ShoppingItem, RemyVorschlag, NextWeekData, NextWeekWish, PlanSettings, TagMahlzeitenKonfig, RezeptbuchEntry } from '../lib/state'
@@ -2980,9 +2980,15 @@ export default function WocheScreen({
     const nachtragsAltWishes = wishes.filter((w): w is Extract<Wish, { type: 'alternative' }> & { postConfirm: true } => !!(w.postConfirm && w.type === 'alternative'))
     let finalPlan = [...weekPlan]
     const newMeals: Record<string, Rezept> = {}
+    // Track old→new dish changes per tag+slot for shopping list update
+    const dishChanges: { tag: string; slot: WochenSlot; oldGericht: string; newGericht: string }[] = []
     await Promise.all(nachtragsAltIds.map(async (wishId) => {
       const wish = wishes.find(w => w.id === wishId)
       if (!wish || wish.type !== 'alternative') return
+      const oldEntry = weekPlan.find(e => e.tag === wish.tag && e.slot === wish.slot)
+      if (oldEntry && oldEntry.gericht !== wish.dishName) {
+        dishChanges.push({ tag: wish.tag, slot: wish.slot as WochenSlot, oldGericht: oldEntry.gericht, newGericht: wish.dishName })
+      }
       finalPlan = finalPlan.map(e =>
         e.tag === wish.tag && e.slot === wish.slot
           ? { ...e, gericht: wish.dishName, emoji: wish.emoji }
@@ -2999,6 +3005,21 @@ export default function WocheScreen({
     const processedIds = new Set(nachtragsAltWishes.map(w => w.id))
     const newWishes = wishes.filter(w => !processedIds.has(w.id))
     await onWeekPlanAndWishesChange(finalPlan, migrateMealsDataAddSlotKeys(finalPlan, { ...mealsData, ...newMeals }), newWishes)
+    // Update shopping list: remove old dish items, add new dish items
+    if (dishChanges.length > 0) {
+      const allMeals = { ...mealsData, ...newMeals }
+      let newList = shoppingList
+      for (const { tag, slot, oldGericht, newGericht } of dishChanges) {
+        const { list: afterRemove } = removeShoppingItemsForDish(newList, tag, slot, oldGericht, false)
+        newList = afterRemove
+        const newEntry = finalPlan.find(e => e.tag === tag && e.slot === slot)
+        const newRezept = allMeals[newGericht] ?? allMeals[mealsKey(tag, slot)]
+        if (newEntry && newRezept) {
+          newList = [...newList, ...generateItemsForEntry(newEntry, { [newGericht]: newRezept })]
+        }
+      }
+      await onShoppingListChange(newList)
+    }
     setNachtragsAltIds([])
     setSaving(false)
   }

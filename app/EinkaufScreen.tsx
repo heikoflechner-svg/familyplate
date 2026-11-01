@@ -461,20 +461,20 @@ export default function EinkaufScreen({
             <button
               onClick={() => setConfirmNeu(true)}
               disabled={generating}
-              style={{ border: 'none', background: 'none', color: generating ? '#aaa' : '#1D9E75', fontSize: 12, cursor: generating ? 'default' : 'pointer' }}
+              style={{ border: 'none', background: 'none', color: generating ? '#ccc' : '#bbb', fontSize: 11, cursor: generating ? 'default' : 'pointer' }}
             >
-              {generating ? '⏳ …' : '🔄 Neu'}
+              {generating ? '⏳ …' : '↺ Liste aktualisieren'}
             </button>
           )}
           {confirmNeu && (
             <span style={{ fontSize: 11, color: '#555', display: 'flex', alignItems: 'center', gap: 6 }}>
-              Neu erstellen?
+              <span style={{ color: '#888', maxWidth: 180, lineHeight: 1.3 }}>Liste aus dem Wochenplan neu aufbauen? Abgehakte Artikel bleiben erhalten. Fehlende Rezepte werden dabei von Rémy erstellt.</span>
               <button onClick={() => { setConfirmNeu(false); void regenerateNow() }}
-                style={{ border: '1px solid #1D9E75', borderRadius: 6, background: '#E6F7F2', color: '#1D9E75', fontSize: 11, padding: '2px 8px', cursor: 'pointer' }}>
+                style={{ border: '1px solid #bbb', borderRadius: 6, background: '#f5f5f5', color: '#555', fontSize: 11, padding: '2px 8px', cursor: 'pointer', flexShrink: 0 }}>
                 Ja
               </button>
               <button onClick={() => setConfirmNeu(false)}
-                style={{ border: '1px solid #ddd', borderRadius: 6, background: 'none', color: '#888', fontSize: 11, padding: '2px 8px', cursor: 'pointer' }}>
+                style={{ border: '1px solid #ddd', borderRadius: 6, background: 'none', color: '#aaa', fontSize: 11, padding: '2px 8px', cursor: 'pointer', flexShrink: 0 }}>
                 Nein
               </button>
             </span>

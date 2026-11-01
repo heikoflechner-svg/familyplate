@@ -100,7 +100,7 @@ export function isWaterIngredient(name: string): boolean {
     n.startsWith('wasser ') || n.startsWith('wasser,')
 }
 
-function generateItemsForEntry(entry: WeekPlanEntry, mealsData: Record<string, Rezept>, nextWeek = false): ShoppingItem[] {
+export function generateItemsForEntry(entry: WeekPlanEntry, mealsData: Record<string, Rezept>, nextWeek = false): ShoppingItem[] {
   if (entry.zutatenschonDa) return []
   const rezept = getMeal(mealsData, entry.tag, entry.slot, entry.gericht)
   if (!rezept) return []
