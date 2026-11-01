@@ -1013,8 +1013,9 @@ export default function WocheScreen({
   const [schnellSub, setSchnellSub] = useState<'falltAus' | 'koch' | 'schnell' | 'reste' | 'eigen' | null>(null)
   const [schnellStreichenConfirm, setSchnellStreichenConfirm] = useState<string | null>(null)
   const [schnellRestePersonen, setSchnellRestePersonen] = useState<string[]>([])
-  const [schnellResteZiel, setSchnellResteZiel] = useState<{ tag: string; slot: WochenSlot } | null>(null)
+  const [schnellResteZielKey, setSchnellResteZielKey] = useState<string | null>(null)
   const [schnellEigenPerson, setSchnellEigenPerson] = useState<string | null>(null)
+  const [schnellEigenAddToList, setSchnellEigenAddToList] = useState(false)
   const [schnellEigenText, setSchnellEigenText] = useState('')
 
   function getSlotAnwesend(tag: string, slot: WochenSlot): Chef[] {
@@ -1094,8 +1095,9 @@ export default function WocheScreen({
     setSchnellSub(null)
     setSchnellStreichenConfirm(null)
     setSchnellRestePersonen([])
-    setSchnellResteZiel(null)
+    setSchnellResteZielKey(null)
     setSchnellEigenPerson(null)
+    setSchnellEigenAddToList(false)
     setSchnellEigenText('')
   }
 
@@ -1185,7 +1187,7 @@ export default function WocheScreen({
                     const ai = WOCHENTAGE.indexOf(a.tag); const bi = WOCHENTAGE.indexOf(b.tag)
                     return ai !== bi ? ai - bi : (a.slot === 'Mittag' ? -1 : 1)
                   })[0]
-                  setSchnellResteZiel(first ? { tag: first.tag, slot: first.slot as WochenSlot } : null)
+                  setSchnellResteZielKey(first ? `${first.tag}|${first.slot}` : null)
                 }
               }} style={schnellBtn(schnellSub === 'reste')}>🍲 Reste</button>
               <button onClick={() => { setSchnellSub(schnellSub === 'eigen' ? null : 'eigen'); setSchnellStreichenConfirm(null) }} style={schnellBtn(schnellSub === 'eigen')}>🙋 Ich</button>
@@ -1263,7 +1265,7 @@ export default function WocheScreen({
                 const ai = WOCHENTAGE.indexOf(a.tag); const bi = WOCHENTAGE.indexOf(b.tag)
                 return ai !== bi ? ai - bi : (a.slot === 'Mittag' ? -1 : 1)
               })
-              const canSave = schnellRestePersonen.length > 0 && schnellResteZiel !== null
+              const canSave = schnellRestePersonen.length > 0 && schnellResteZielKey !== null
               return (
                 <div>
                   <div style={{ fontSize: 10, color: '#888', marginBottom: 4 }}>Für wen? (Reste von {entry.emoji} {entry.gericht})</div>
@@ -1283,12 +1285,12 @@ export default function WocheScreen({
                     ? <div style={{ fontSize: 10, color: '#bbb', marginBottom: 6 }}>Keine weiteren Mahlzeiten diese Woche</div>
                     : <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' as const, marginBottom: 8 }}>
                         {futureMeals.map(fm => {
-                          const fmKey = `${fm.tag}-${fm.slot}`
-                          const isSel = schnellResteZiel?.tag === fm.tag && schnellResteZiel?.slot === fm.slot
+                          const fmKey = `${fm.tag}|${fm.slot}`
+                          const isSel = schnellResteZielKey === fmKey
                           return (
                             <button key={fmKey}
-                              onClick={() => setSchnellResteZiel({ tag: fm.tag, slot: fm.slot as WochenSlot })}
-                              style={{ padding: '5px 8px', borderRadius: 8, border: `1px solid ${isSel ? '#D97706' : '#e5e7eb'}`, background: isSel ? '#FEF3C7' : 'white', color: isSel ? '#92400E' : '#444', fontSize: 10, fontWeight: isSel ? 700 : 400, cursor: 'pointer' as const }}
+                              onClick={() => setSchnellResteZielKey(fmKey)}
+                              style={{ padding: '5px 8px', borderRadius: 8, border: `2px solid ${isSel ? '#D97706' : '#e5e7eb'}`, background: isSel ? '#FEF3C7' : 'white', color: isSel ? '#92400E' : '#444', fontSize: 10, fontWeight: isSel ? 700 : 400, cursor: 'pointer' as const }}
                             >{TAG_SHORT[fm.tag] ?? fm.tag} {fm.slot === 'Mittag' ? '☀️' : '🌙'}</button>
                           )
                         })}
@@ -1297,14 +1299,15 @@ export default function WocheScreen({
                   <button
                     disabled={!canSave}
                     onClick={() => {
-                      if (!schnellResteZiel || schnellRestePersonen.length === 0) return
-                      const zielEntry = weekPlan.find(e => e.tag === schnellResteZiel.tag && e.slot === schnellResteZiel.slot)
+                      if (!schnellResteZielKey || schnellRestePersonen.length === 0) return
+                      const [zielTag, zielSlot] = schnellResteZielKey.split('|')
+                      const zielEntry = weekPlan.find(e => e.tag === zielTag && e.slot === zielSlot)
                       if (!zielEntry) return
                       const beschreibung = `Reste ${entry.emoji} ${entry.gericht}`
                       const newResteEsser = { ...(zielEntry.resteEsser ?? {}) }
                       schnellRestePersonen.forEach(p => { newResteEsser[p] = beschreibung })
-                      void updateEntryWithShoppingRescale(schnellResteZiel.tag, schnellResteZiel.slot, { resteEsser: newResteEsser })
-                      setSchnellRestePersonen([]); setSchnellResteZiel(null); setSchnellaktionKey(null); setSchnellSub(null)
+                      void updateEntryWithShoppingRescale(zielTag, zielSlot as WochenSlot, { resteEsser: newResteEsser })
+                      setSchnellRestePersonen([]); setSchnellResteZielKey(null); setSchnellaktionKey(null); setSchnellSub(null)
                     }}
                     style={{ width: '100%', padding: '8px', background: canSave ? '#FFFBEB' : '#f5f5f5', color: canSave ? '#92400E' : '#bbb', border: `1px solid ${canSave ? '#D97706' : '#e5e7eb'}`, borderRadius: 8, fontSize: 11, fontWeight: 600, cursor: canSave ? 'pointer' as const : 'default' as const }}
                   >🍲 Reste eintragen</button>
@@ -1314,6 +1317,22 @@ export default function WocheScreen({
             {schnellSub === 'eigen' && (() => {
               const allExcluded = new Set([...Object.keys(entry.eigenesEssen ?? {}), ...Object.keys(entry.resteEsser ?? {})])
               const niemandIsstMit = slotAnwesend.length > 0 && slotAnwesend.every(p => allExcluded.has(p))
+              const saveEigen = (personId: string, text: string, addToList: boolean) => {
+                void updateEntryWithShoppingRescale(tag, slot, { eigenesEssen: { ...entry.eigenesEssen, [personId]: text } })
+                if (addToList && text) {
+                  const newItem: import('../lib/state').ShoppingItem = {
+                    id: Math.random().toString(36).slice(2, 9),
+                    name: text,
+                    menge: '1',
+                    kategorie: 'Sonstiges',
+                    erledigt: false,
+                    tag, slot,
+                    fuer: personNames[personId] ?? personId,
+                  }
+                  void onShoppingListChange([...shoppingList, newItem])
+                }
+                setSchnellEigenPerson(null); setSchnellEigenText(''); setSchnellEigenAddToList(false)
+              }
               return (
                 <div>
                   {niemandIsstMit && (
@@ -1326,15 +1345,22 @@ export default function WocheScreen({
                   )}
                   {Object.keys(entry.eigenesEssen ?? {}).length > 0 && (
                     <div style={{ marginBottom: 6 }}>
-                      {Object.entries(entry.eigenesEssen!).map(([p, t]) => (
-                        <div key={p} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 3 }}>
-                          <span style={{ fontSize: 11, color: '#555' }}>🙋 {personNames[p] ?? p}{t ? `: ${t}` : ''}</span>
-                          <button
-                            onClick={() => { const next = { ...entry.eigenesEssen }; delete next[p]; void updateEntryWithShoppingRescale(tag, slot, { eigenesEssen: Object.keys(next).length ? next : undefined }) }}
-                            style={{ fontSize: 10, color: '#888', background: 'none', border: 'none', cursor: 'pointer' as const, padding: '2px 4px' }}
-                          >✕</button>
-                        </div>
-                      ))}
+                      {Object.entries(entry.eigenesEssen!).map(([p, t]) => {
+                        const m = activeMembers.find(m => m.id === p)
+                        const allergien = m?.allergien ?? []
+                        return (
+                          <div key={p} style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 3, gap: 4 }}>
+                            <div style={{ fontSize: 11, color: '#555', flex: 1 }}>
+                              🙋 {personNames[p] ?? p}{t ? `: ${t}` : ''}
+                              {allergien.length > 0 && <span style={{ color: '#D97706' }}> · beachten: {allergien.join(', ')}</span>}
+                            </div>
+                            <button
+                              onClick={() => { const next = { ...entry.eigenesEssen }; delete next[p]; void updateEntryWithShoppingRescale(tag, slot, { eigenesEssen: Object.keys(next).length ? next : undefined }) }}
+                              style={{ flexShrink: 0, padding: '2px 6px', border: '1px solid #FECACA', borderRadius: 6, background: '#FEF2F2', color: '#DC2626', fontSize: 11, fontWeight: 700, cursor: 'pointer' as const, lineHeight: 1.2 }}
+                            >✕</button>
+                          </div>
+                        )
+                      })}
                     </div>
                   )}
                   {canDirectEdit ? (
@@ -1345,43 +1371,73 @@ export default function WocheScreen({
                           return (
                             <button
                               key={m.id}
-                              onClick={() => setSchnellEigenPerson(schnellEigenPerson === m.id ? null : m.id)}
+                              onClick={() => { setSchnellEigenPerson(schnellEigenPerson === m.id ? null : m.id); setSchnellEigenText(''); setSchnellEigenAddToList(false) }}
                               style={{ padding: '5px 9px', border: `1px solid ${schnellEigenPerson === m.id ? '#D97706' : hasOwn ? '#1D9E75' : '#e5e7eb'}`, borderRadius: 8, background: schnellEigenPerson === m.id ? '#FEF3C7' : hasOwn ? '#E1F5EE' : 'white', color: schnellEigenPerson === m.id ? '#92400E' : hasOwn ? '#0F6E56' : '#444', fontSize: 11, cursor: 'pointer' as const, fontWeight: schnellEigenPerson === m.id ? 700 : 400 }}
                             >{m.name || m.id}</button>
                           )
                         })}
                       </div>
-                      {schnellEigenPerson && (
-                        <div style={{ display: 'flex', gap: 6 }}>
-                          <input
-                            value={schnellEigenText}
-                            onChange={ev => setSchnellEigenText(ev.target.value)}
-                            placeholder="Was isst du? (optional)"
-                            style={{ flex: 1, padding: '6px 10px', border: '1px solid #ddd', borderRadius: 8, fontSize: 11 }}
-                          />
-                          <button
-                            onClick={() => { void updateEntryWithShoppingRescale(tag, slot, { eigenesEssen: { ...entry.eigenesEssen, [schnellEigenPerson]: schnellEigenText.trim() } }); setSchnellEigenPerson(null); setSchnellEigenText('') }}
-                            style={{ padding: '6px 12px', border: '1px solid #D97706', borderRadius: 8, background: '#FFFBEB', color: '#92400E', fontSize: 11, fontWeight: 600, cursor: 'pointer' as const }}
-                          >🙋 OK</button>
-                        </div>
-                      )}
+                      {schnellEigenPerson && (() => {
+                        const selMember = activeMembers.find(m => m.id === schnellEigenPerson)
+                        const allergien = selMember?.allergien ?? []
+                        return (
+                          <div>
+                            {allergien.length > 0 && (
+                              <div style={{ fontSize: 10, color: '#D97706', marginBottom: 4 }}>⚠️ {selMember?.name ?? schnellEigenPerson}: {allergien.join(', ')}</div>
+                            )}
+                            <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
+                              <input
+                                value={schnellEigenText}
+                                onChange={ev => setSchnellEigenText(ev.target.value)}
+                                placeholder="Was isst du? (optional)"
+                                style={{ flex: 1, padding: '6px 10px', border: '1px solid #ddd', borderRadius: 8, fontSize: 11 }}
+                              />
+                              <button
+                                onClick={() => saveEigen(schnellEigenPerson, schnellEigenText.trim(), schnellEigenAddToList)}
+                                style={{ padding: '6px 12px', border: '1px solid #D97706', borderRadius: 8, background: '#FFFBEB', color: '#92400E', fontSize: 11, fontWeight: 600, cursor: 'pointer' as const }}
+                              >🙋 OK</button>
+                            </div>
+                            {schnellEigenText.trim() && (
+                              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10, color: '#555', cursor: 'pointer' as const }}>
+                                <input type="checkbox" checked={schnellEigenAddToList} onChange={ev => setSchnellEigenAddToList(ev.target.checked)} />
+                                Auf die Einkaufsliste setzen
+                              </label>
+                            )}
+                          </div>
+                        )
+                      })()}
                     </div>
                   ) : (
                     <div>
-                      {entry.eigenesEssen?.[currentUser!] === undefined && (
-                        <div style={{ display: 'flex', gap: 6 }}>
-                          <input
-                            value={schnellEigenText}
-                            onChange={ev => setSchnellEigenText(ev.target.value)}
-                            placeholder="Was isst du? (optional)"
-                            style={{ flex: 1, padding: '6px 10px', border: '1px solid #ddd', borderRadius: 8, fontSize: 11 }}
-                          />
-                          <button
-                            onClick={() => { void updateEntryWithShoppingRescale(tag, slot, { eigenesEssen: { ...entry.eigenesEssen, [currentUser!]: schnellEigenText.trim() } }); setSchnellEigenText(''); setSchnellaktionKey(null); setSchnellSub(null) }}
-                            style={{ padding: '6px 12px', border: '1px solid #D97706', borderRadius: 8, background: '#FFFBEB', color: '#92400E', fontSize: 11, fontWeight: 600, cursor: 'pointer' as const }}
-                          >🙋 Speichern</button>
-                        </div>
-                      )}
+                      {entry.eigenesEssen?.[currentUser!] === undefined && (() => {
+                        const selMember = activeMembers.find(m => m.id === currentUser)
+                        const allergien = selMember?.allergien ?? []
+                        return (
+                          <div>
+                            {allergien.length > 0 && (
+                              <div style={{ fontSize: 10, color: '#D97706', marginBottom: 4 }}>⚠️ Deine Allergien: {allergien.join(', ')}</div>
+                            )}
+                            <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
+                              <input
+                                value={schnellEigenText}
+                                onChange={ev => setSchnellEigenText(ev.target.value)}
+                                placeholder="Was isst du? (optional)"
+                                style={{ flex: 1, padding: '6px 10px', border: '1px solid #ddd', borderRadius: 8, fontSize: 11 }}
+                              />
+                              <button
+                                onClick={() => { saveEigen(currentUser!, schnellEigenText.trim(), schnellEigenAddToList); setSchnellaktionKey(null); setSchnellSub(null) }}
+                                style={{ padding: '6px 12px', border: '1px solid #D97706', borderRadius: 8, background: '#FFFBEB', color: '#92400E', fontSize: 11, fontWeight: 600, cursor: 'pointer' as const }}
+                              >🙋 Speichern</button>
+                            </div>
+                            {schnellEigenText.trim() && (
+                              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10, color: '#555', cursor: 'pointer' as const }}>
+                                <input type="checkbox" checked={schnellEigenAddToList} onChange={ev => setSchnellEigenAddToList(ev.target.checked)} />
+                                Auf die Einkaufsliste setzen
+                              </label>
+                            )}
+                          </div>
+                        )
+                      })()}
                     </div>
                   )}
                 </div>
@@ -1435,9 +1491,10 @@ export default function WocheScreen({
     if (oldEff === newEff) return
     if (shopDone) return  // hint shown on card
     const ratio = newEff / oldEff
+    const anyModifiable = shoppingList.some(item => item.tag === tag && item.slot === slot && !item.erledigt)
+    if (!anyModifiable) return
     const newList = shoppingList.map(item => {
-      if (item.gericht !== entry.gericht || item.tag !== tag || item.slot !== slot) return item
-      if (item.erledigt) return item
+      if (item.tag !== tag || item.slot !== slot || item.erledigt) return item
       return { ...item, menge: applyRatioToMenge(item.menge, ratio) }
     })
     await onShoppingListChange(newList)
@@ -4065,12 +4122,22 @@ export default function WocheScreen({
                             {e.resteEsser && Object.entries(e.resteEsser).map(([p, t]) => (
                               <div key={p} style={{ fontSize: 10, color: '#92400E', marginTop: 1 }}>🍲 {personNames[p] ?? p}: {t}</div>
                             ))}
-                            {e.eigenesEssen && Object.entries(e.eigenesEssen).map(([p, t]) => (
-                              <div key={p} style={{ fontSize: 10, color: '#555', marginTop: 1 }}>🙋 {personNames[p] ?? p}{t ? `: ${t}` : ': eigenes Essen'}</div>
-                            ))}
-                            {shopDone && (Object.keys(e.eigenesEssen ?? {}).length + Object.keys(e.resteEsser ?? {}).length) > 0 && (
-                              <div style={{ fontSize: 10, color: '#92400E', marginTop: 1 }}>🛒 Es wird jetzt weniger gebraucht</div>
-                            )}
+                            {e.eigenesEssen && Object.entries(e.eigenesEssen).map(([p, t]) => {
+                              const pm = activeMembers.find(m => m.id === p)
+                              const allergien = pm?.allergien ?? []
+                              return (
+                                <div key={p} style={{ fontSize: 10, color: '#555', marginTop: 1 }}>
+                                  🙋 {personNames[p] ?? p}{t ? `: ${t}` : ': eigenes Essen'}
+                                  {allergien.length > 0 && <span style={{ color: '#D97706' }}> · beachten: {allergien.join(', ')}</span>}
+                                </div>
+                              )
+                            })}
+                            {(Object.keys(e.eigenesEssen ?? {}).length + Object.keys(e.resteEsser ?? {}).length) > 0 && (() => {
+                              const excludedNames = [...Object.keys(e.eigenesEssen ?? {}), ...Object.keys(e.resteEsser ?? {})].map(p => personNames[p] ?? p)
+                              return shopDone
+                                ? <div style={{ fontSize: 10, color: '#92400E', marginTop: 1 }}>🛒 Es wird jetzt weniger gebraucht</div>
+                                : <div style={{ fontSize: 10, color: '#6366F1', marginTop: 1 }}>ℹ️ {excludedNames.join(', ')} {excludedNames.length === 1 ? 'isst' : 'essen'} heute selbst – Rezept manuell anpassen falls nötig</div>
+                            })()}
                             <div style={{ fontSize: 11, color: '#aaa' }}>{e.minuten} min</div>
                           </div>
                         </div>
@@ -5054,12 +5121,22 @@ export default function WocheScreen({
             {entry.resteEsser && Object.entries(entry.resteEsser).map(([p, t]) => (
               <div key={p} style={{ fontSize: 10, color: '#92400E', marginTop: 1 }}>🍲 {personNames[p] ?? p}: {t}</div>
             ))}
-            {entry.eigenesEssen && Object.entries(entry.eigenesEssen).map(([p, t]) => (
-              <div key={p} style={{ fontSize: 10, color: '#555', marginTop: 1 }}>🙋 {personNames[p] ?? p}{t ? `: ${t}` : ': eigenes Essen'}</div>
-            ))}
-            {shopDone && (Object.keys(entry.eigenesEssen ?? {}).length + Object.keys(entry.resteEsser ?? {}).length) > 0 && (
-              <div style={{ fontSize: 10, color: '#92400E', marginTop: 1 }}>🛒 Es wird jetzt weniger gebraucht</div>
-            )}
+            {entry.eigenesEssen && Object.entries(entry.eigenesEssen).map(([p, t]) => {
+              const pm = activeMembers.find(m => m.id === p)
+              const allergien = pm?.allergien ?? []
+              return (
+                <div key={p} style={{ fontSize: 10, color: '#555', marginTop: 1 }}>
+                  🙋 {personNames[p] ?? p}{t ? `: ${t}` : ': eigenes Essen'}
+                  {allergien.length > 0 && <span style={{ color: '#D97706' }}> · beachten: {allergien.join(', ')}</span>}
+                </div>
+              )
+            })}
+            {(Object.keys(entry.eigenesEssen ?? {}).length + Object.keys(entry.resteEsser ?? {}).length) > 0 && (() => {
+              const excludedNames = [...Object.keys(entry.eigenesEssen ?? {}), ...Object.keys(entry.resteEsser ?? {})].map(p => personNames[p] ?? p)
+              return shopDone
+                ? <div style={{ fontSize: 10, color: '#92400E', marginTop: 1 }}>🛒 Es wird jetzt weniger gebraucht</div>
+                : <div style={{ fontSize: 10, color: '#6366F1', marginTop: 1 }}>ℹ️ {excludedNames.join(', ')} {excludedNames.length === 1 ? 'isst' : 'essen'} heute selbst – Rezept manuell anpassen falls nötig</div>
+            })()}
             <div style={{ fontSize: 11, color: '#aaa' }}>{entry.minuten} min</div>
           </div>
         </div>
