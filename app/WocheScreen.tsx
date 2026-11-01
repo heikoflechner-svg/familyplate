@@ -335,13 +335,20 @@ export default function WocheScreen({
     if (FLEISCH_KEYWORDS.some(k => n.includes(k))) return 'fleisch'
     return null
   }
-  function getErnährungsWarnung(entry: WeekPlanEntry): string | null {
+  function getErnährungsWarnung(entry: WeekPlanEntry, planContext?: WeekPlanEntry[]): string | null {
     if (!ernährungsVorgabe) return null
     const typ = classifyGericht(entry.gericht)
     if (!typ) return null
-    if (ernährungsVorgabe.grundhaltung === 'vegan' && (typ === 'fleisch' || typ === 'fisch')) return '🌱'
-    if (ernährungsVorgabe.grundhaltung === 'vegetarisch' && typ === 'fleisch') return '🌱'
-    if (typ === 'fleisch' && ernährungsVorgabe.vegetarischeTage?.includes(entry.tag)) return '🌱'
+    if (ernährungsVorgabe.grundhaltung === 'vegan') {
+      if (typ === 'fleisch') return '⚠️ Fleisch'
+      if (typ === 'fisch') return '⚠️ Fisch'
+    }
+    if (ernährungsVorgabe.grundhaltung === 'vegetarisch' && typ === 'fleisch') return '⚠️ Fleisch'
+    if (typ === 'fleisch' && ernährungsVorgabe.vegetarischeTage?.includes(entry.tag)) return '⚠️ Fleisch'
+    if (typ === 'fleisch' && ernährungsVorgabe.fleischMaxProWoche != null && planContext) {
+      const count = planContext.filter(e => classifyGericht(e.gericht) === 'fleisch').length
+      if (count > ernährungsVorgabe.fleischMaxProWoche) return '⚠️ zu viel Fleisch'
+    }
     return null
   }
   const gaesteProTag = attendance.filter(a => (a.gaeste ?? 0) > 0).map(a => ({ tag: a.tag, gaeste: a.gaeste }))
@@ -3449,7 +3456,7 @@ export default function WocheScreen({
                               {getRecipeAllergenWarnings(pendingPlanMeals[e.gericht]).length > 0 && (
                                 <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 14, height: 14, borderRadius: '50%', background: '#EF4444', color: 'white', fontSize: 9, fontWeight: 700, flexShrink: 0 }}>!</span>
                               )}
-                              {getErnährungsWarnung(e) && <span style={{ fontSize: 9, background: '#DCFCE7', color: '#15803D', borderRadius: 4, padding: '1px 5px', fontWeight: 600 }}>🌱</span>}
+                              {(() => { const w = getErnährungsWarnung(e, pendingPlan); return w ? <span style={{ fontSize: 9, background: '#FEF3C7', color: '#D97706', borderRadius: 4, padding: '1px 5px', fontWeight: 600, flexShrink: 0 }}>{w}</span> : null })()}
                             </div>
                             {(pendingPlanMeals[e.gericht]?.ersetzteZutaten?.length ?? 0) > 0 && (
                               <div style={{ fontSize: 10, color: '#DC2626', marginTop: 1 }}>⚠️ {pendingPlanMeals[e.gericht]!.ersetzteZutaten!.join(' · ')}</div>
@@ -4167,7 +4174,7 @@ export default function WocheScreen({
                               {shoppingList.some(i => i.erledigt && i.tag === tag && i.slot === slot && i.gericht === e.gericht) && (
                                 <span style={{ fontSize: 9, background: '#DCFCE7', color: '#15803D', borderRadius: 4, padding: '1px 5px', fontWeight: 600, flexShrink: 0 }}>🛒✓</span>
                               )}
-                              {getErnährungsWarnung(e) && <span style={{ fontSize: 9, background: '#DCFCE7', color: '#15803D', borderRadius: 4, padding: '1px 5px', fontWeight: 600, flexShrink: 0 }}>🌱</span>}
+                              {(() => { const w = getErnährungsWarnung(e, weekPlan); return w ? <span style={{ fontSize: 9, background: '#FEF3C7', color: '#D97706', borderRadius: 4, padding: '1px 5px', fontWeight: 600, flexShrink: 0 }}>{w}</span> : null })()}
                             </div>
                             {(getMeal(mealsData, e.tag, e.slot, e.gericht)?.ersetzteZutaten?.length ?? 0) > 0 && (
                               <div style={{ fontSize: 10, color: '#DC2626', marginTop: 1 }}>⚠️ {getMeal(mealsData, e.tag, e.slot, e.gericht)!.ersetzteZutaten!.join(' · ')}</div>
@@ -5169,7 +5176,7 @@ export default function WocheScreen({
               {getRecipeAllergenWarningsForEntry(getMeal(mealsData, entry.tag, entry.slot, entry.gericht), entry).length > 0 && (
                 <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 14, height: 14, borderRadius: '50%', background: '#EF4444', color: 'white', fontSize: 9, fontWeight: 700, flexShrink: 0 }}>!</span>
               )}
-              {getErnährungsWarnung(entry) && <span style={{ fontSize: 9, background: '#DCFCE7', color: '#15803D', borderRadius: 4, padding: '1px 5px', fontWeight: 600, flexShrink: 0 }}>🌱</span>}
+              {(() => { const w = getErnährungsWarnung(entry, weekPlan); return w ? <span style={{ fontSize: 9, background: '#FEF3C7', color: '#D97706', borderRadius: 4, padding: '1px 5px', fontWeight: 600, flexShrink: 0 }}>{w}</span> : null })()}
             </div>
             {(getMeal(mealsData, entry.tag, entry.slot, entry.gericht)?.ersetzteZutaten?.length ?? 0) > 0 && (
               <div style={{ fontSize: 10, color: '#DC2626', marginTop: 1 }}>⚠️ {getMeal(mealsData, entry.tag, entry.slot, entry.gericht)!.ersetzteZutaten!.join(' · ')}</div>

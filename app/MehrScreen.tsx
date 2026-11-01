@@ -461,6 +461,26 @@ export default function MehrScreen({
               </div>
             )}
 
+            {/* Fleisch max – nur wenn nicht vegan/vegetarisch */}
+            {ernDraft.grundhaltung !== 'vegan' && ernDraft.grundhaltung !== 'vegetarisch' && (
+              <div style={{ marginBottom: 10 }}>
+                <div style={{ fontSize: 11, color: '#888', marginBottom: 6 }}>Fleisch höchstens pro Woche</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <button onClick={() => { setErnDraft(d => ({ ...d, fleischMaxProWoche: Math.max(0, (d.fleischMaxProWoche ?? 7) - 1) })); setErnDirty(true) }}
+                    style={{ width: 24, height: 24, borderRadius: 6, border: '1px solid #ddd', background: 'white', fontSize: 14, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>−</button>
+                  <span style={{ fontSize: 13, fontWeight: 600, minWidth: 30, textAlign: 'center' }}>
+                    {ernDraft.fleischMaxProWoche == null ? 'kein Limit' : `${ernDraft.fleischMaxProWoche}×`}
+                  </span>
+                  <button onClick={() => { setErnDraft(d => ({ ...d, fleischMaxProWoche: d.fleischMaxProWoche == null ? 7 : Math.min(14, d.fleischMaxProWoche + 1) })); setErnDirty(true) }}
+                    style={{ width: 24, height: 24, borderRadius: 6, border: '1px solid #ddd', background: 'white', fontSize: 14, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
+                  {ernDraft.fleischMaxProWoche != null && (
+                    <button onClick={() => { setErnDraft(d => { const { fleischMaxProWoche: _, ...rest } = d; return rest }); setErnDirty(true) }}
+                      style={{ fontSize: 10, color: '#bbb', background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px' }}>✕</button>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* Fisch – nur wenn nicht vegan */}
             {ernDraft.grundhaltung !== 'vegan' && (
               <div style={{ marginBottom: 10 }}>

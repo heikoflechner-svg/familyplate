@@ -169,6 +169,9 @@ export function buildErnährungsHinweis(vorgabe: ErnährungsVorgabe, month: numb
   if (vorgabe.vegetarischeTage?.length && vorgabe.grundhaltung !== 'vegan' && vorgabe.grundhaltung !== 'vegetarisch') {
     parts.push(`An folgenden Tagen bitte vegetarisch planen (kein Fleisch): ${vorgabe.vegetarischeTage.join(', ')}.`)
   }
+  if (vorgabe.fleischMaxProWoche != null && vorgabe.fleischMaxProWoche >= 0 && vorgabe.grundhaltung !== 'vegan' && vorgabe.grundhaltung !== 'vegetarisch') {
+    parts.push(`Bitte höchstens ${vorgabe.fleischMaxProWoche} Fleischgericht${vorgabe.fleischMaxProWoche !== 1 ? 'e' : ''} pro Woche einplanen.`)
+  }
   if (vorgabe.fischMinProWoche && vorgabe.fischMinProWoche > 0 && vorgabe.grundhaltung !== 'vegan' && vorgabe.grundhaltung !== 'vegetarisch') {
     const modus = vorgabe.fischModus === 'etwa' ? 'etwa' : 'mindestens'
     parts.push(`Bitte ${modus} ${vorgabe.fischMinProWoche} Fischgericht${vorgabe.fischMinProWoche > 1 ? 'e' : ''} pro Woche einplanen.`)

@@ -214,6 +214,7 @@ export const DEFAULT_LAEDEN = ['Aldi', 'Edeka', 'Kaufland', 'Netto', 'Sonstiges'
 export interface ErnährungsVorgabe {
   grundhaltung?: 'alles' | 'vegetarisch' | 'vegan'
   vegetarischeTage?: string[]
+  fleischMaxProWoche?: number
   fischMinProWoche?: number
   fischModus?: 'mindestens' | 'etwa'
   saisonalBevorzugen?: boolean
