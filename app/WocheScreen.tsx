@@ -881,7 +881,7 @@ export default function WocheScreen({
     void onNextWeekDataChange({ plan: newPlan, mealsData: nextWeekData.mealsData }, nextMonday)
   }
 
-  async function replanSlot(tag: string, slot: WochenSlot, forceTyp?: 'leicht' | 'normal') {
+  async function replanSlot(tag: string, slot: WochenSlot, forceTyp?: 'leicht' | 'normal', extraHinweis?: string) {
     const key = `${tag}-${slot}`
     closeMealPanel()
     setSlotLoading(key)
@@ -889,6 +889,7 @@ export default function WocheScreen({
       ...(defaultMealConfig ?? {}),
       [tag]: { ...((defaultMealConfig ?? {})[tag] ?? { mittag: 'normal', abend: 'normal' }), [slot === 'Mittag' ? 'mittag' : 'abend']: forceTyp },
     } : defaultMealConfig
+    const augmentedPrompt = extraHinweis ? `${familyPrompt}\n\nHeute spontan: ${extraHinweis}` : familyPrompt
     try {
       const { plan: result, mealsData: newMeals } = await generateWeekPlan({
         mittagsloseTage: slot === 'Abend' ? [...new Set([...effectiveMtl, tag])] : effectiveMtl.filter(t => t !== tag),
@@ -897,7 +898,7 @@ export default function WocheScreen({
         pantryList: getPantryListString(pantryItems),
         behaltene: weekPlan.filter(e => !(e.tag === tag && e.slot === slot)),
         neuTage: [tag],
-        familyPrompt,
+        familyPrompt: augmentedPrompt,
         memberIds,
         gaesteProTag: gaesteProTag.filter(g => g.tag === tag).length > 0 ? gaesteProTag.filter(g => g.tag === tag) : undefined,
         mahlzeitenKonfig: forceKonfig,
@@ -1209,8 +1210,21 @@ export default function WocheScreen({
                 </div>
               </div>
             )}
-            {(schnellSub === 'schnell' || schnellSub === 'reste' || schnellSub === 'eigen') && (
-              <div style={{ fontSize: 11, color: '#888', fontStyle: 'italic' }}>kommt in Schritt {schnellSub === 'schnell' ? '3' : '4'}</div>
+            {schnellSub === 'schnell' && canDirectEdit && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <button
+                  disabled={slotLoading !== null || dayLoading !== null}
+                  onClick={() => replanSlot(tag, slot, 'leicht', 'Bitte nur ein schnelles Gericht (max. 15 Minuten), das sich spontan zubereiten lässt.')}
+                  style={{ padding: '8px 10px', border: '1px solid #D97706', borderRadius: 8, background: slotLoading !== null ? '#f5f5f5' : '#FFFBEB', color: slotLoading !== null ? '#bbb' : '#92400E', fontSize: 11, fontWeight: 600, cursor: slotLoading !== null ? 'default' as const : 'pointer' as const, textAlign: 'left' as const }}
+                >⚡ Rémy, schnell bitte!</button>
+                <button
+                  onClick={() => { setMoveSource({ tag, slot, entry }); setRemoveConfirmKey(null); setSchnellaktionKey(null); setSchnellSub(null) }}
+                  style={{ padding: '8px 10px', border: '1px solid #ddd', borderRadius: 8, background: 'white', color: '#444', fontSize: 11, cursor: 'pointer' as const, textAlign: 'left' as const }}
+                >→ Original verschieben</button>
+              </div>
+            )}
+            {(schnellSub === 'reste' || schnellSub === 'eigen') && (
+              <div style={{ fontSize: 11, color: '#888', fontStyle: 'italic' }}>kommt in Schritt 4</div>
             )}
           </div>
         )}
