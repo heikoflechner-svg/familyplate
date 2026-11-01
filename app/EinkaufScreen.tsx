@@ -117,6 +117,8 @@ export default function EinkaufScreen({
   const [viewMode, setViewMode] = useState<ViewMode>('tag')
   const [editingItem, setEditingItem] = useState<string | null>(null)
   const [selectedDates, setSelectedDates] = useState<Set<string>>(new Set())
+  const [confirmNeu, setConfirmNeu] = useState(false)
+  const [imWagenOpen, setImWagenOpen] = useState(false)
   const autoLoadDoneRef = useRef(false)
   const nwAutoLoadRef = useRef(false)
   const selInitRef = useRef(false)
@@ -290,6 +292,22 @@ export default function EinkaufScreen({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nwConfirmed, nwPlan.length])
 
+  // Merge newly generated recipe items with the existing list:
+  // - Preserves erledigt state for matching items (name + tag + slot)
+  // - Keeps manual/eigenesEssen items (no gericht) that are not being regenerated
+  // - When regeneratedTags is defined, also keeps recipe items for non-selected days
+  function mergeShoppingList(newItems: ShoppingItem[], oldList: ShoppingItem[], regeneratedTags?: string[]): ShoppingItem[] {
+    const keepOld = regeneratedTags
+      ? oldList.filter(i => !i.gericht || !i.tag || !regeneratedTags.includes(i.tag))
+      : oldList.filter(i => !i.gericht)
+    const newWithState = newItems.map(ni => {
+      const old = oldList.find(oi => oi.gericht && ni.gericht &&
+        oi.name.toLowerCase() === ni.name.toLowerCase() && oi.tag === ni.tag && oi.slot === ni.slot)
+      return old?.erledigt ? { ...ni, erledigt: true } : ni
+    })
+    return [...keepOld, ...newWithState]
+  }
+
   // Regenerate list for currently selected days (no picker needed)
   async function regenerateNow() {
     if (generating) return
@@ -336,18 +354,19 @@ export default function EinkaufScreen({
         await loadInto(cwEntries, thisWeekMeals)
         if (hasNwCov) await loadInto(covEntries, nwMealsStore)
         await onMealsDataChange(thisWeekMeals)
-        onShoppingListChange(generateShoppingList(
+        const newCwItems = generateShoppingList(
           weekPlan, thisWeekMeals, effectiveCwTags ?? undefined,
           hasNwCov ? nwPlan : undefined,
           hasNwCov ? nwMealsStore : undefined,
           hasNwCov ? nwCovTags : undefined,
-        ))
+        )
+        onShoppingListChange(mergeShoppingList(newCwItems, shoppingList, effectiveCwTags ?? undefined))
       }
 
       if (hasNwOwn) {
         await loadInto(nwPlan.filter(e => nwOwnTags.includes(e.tag)), nwMealsStore)
         const nwList = generateShoppingList(nwPlan, nwMealsStore, nwOwnTags)
-        await onNextWeekDataChange?.({ shoppingList: nwList, mealsData: nwMealsStore }, nextWeekStart ?? getNextMondayIso())
+        await onNextWeekDataChange?.({ shoppingList: mergeShoppingList(nwList, nwShoppingList, nwOwnTags), mealsData: nwMealsStore }, nextWeekStart ?? getNextMondayIso())
       }
     } finally {
       setGenerating(false)
@@ -367,12 +386,15 @@ export default function EinkaufScreen({
   })
 
   const fromLastWeekItems = shoppingList.filter(i => i.fromLastWeek)
-  const recipeItems = filteredItems.filter(i => i.gericht)
-  const manualItems = filteredItems.filter(i => !i.gericht && !i.fromLastWeek)
+  const doneCount = filteredItems.filter(i => i.erledigt).length
+  // Erledigt items are moved to "Im Wagen" section; hidden entirely when shopDone
+  const activeDisplayItems = filteredItems.filter(i => !i.erledigt)
+  const doneDisplayItems = shopDone ? [] : filteredItems.filter(i => i.erledigt)
+  const recipeItems = activeDisplayItems.filter(i => i.gericht)
+  const manualItems = activeDisplayItems.filter(i => !i.gericht && !i.fromLastWeek)
   const hasNwItems = recipeItems.some(i => i.nextWeek)
   const groups = groupShoppingByMeal(recipeItems, weekPlan, hasNwItems ? nwPlan : undefined)
   const consolidated = consolidateShoppingList(recipeItems, zutatenWarengruppe, zutatenAliase)
-  const doneCount = filteredItems.filter(i => i.erledigt).length
   const dayCount = new Set(recipeItems.map(i => itemIso(i)).filter(Boolean)).size
   const gerichtCount = new Set(recipeItems.map(i => i.gericht)).size
   const hasAnyItems = shoppingList.length > 0 || nwShoppingList.length > 0
@@ -435,14 +457,27 @@ export default function EinkaufScreen({
       <div className="topbar">
         <h1>🛒 Einkauf</h1>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
-          {weekPlan.length > 0 && (
+          {weekPlan.length > 0 && !confirmNeu && (
             <button
-              onClick={regenerateNow}
+              onClick={() => setConfirmNeu(true)}
               disabled={generating}
               style={{ border: 'none', background: 'none', color: generating ? '#aaa' : '#1D9E75', fontSize: 12, cursor: generating ? 'default' : 'pointer' }}
             >
               {generating ? '⏳ …' : '🔄 Neu'}
             </button>
+          )}
+          {confirmNeu && (
+            <span style={{ fontSize: 11, color: '#555', display: 'flex', alignItems: 'center', gap: 6 }}>
+              Neu erstellen?
+              <button onClick={() => { setConfirmNeu(false); void regenerateNow() }}
+                style={{ border: '1px solid #1D9E75', borderRadius: 6, background: '#E6F7F2', color: '#1D9E75', fontSize: 11, padding: '2px 8px', cursor: 'pointer' }}>
+                Ja
+              </button>
+              <button onClick={() => setConfirmNeu(false)}
+                style={{ border: '1px solid #ddd', borderRadius: 6, background: 'none', color: '#888', fontSize: 11, padding: '2px 8px', cursor: 'pointer' }}>
+                Nein
+              </button>
+            </span>
           )}
           {doneCount > 0 && (
             <button
@@ -638,25 +673,48 @@ export default function EinkaufScreen({
               )}
             </div>
 
-            {viewMode === 'tag' && (
-              <>
-                {groups.map(group => (
-                  <div key={`${group.tag}-${group.slot}-${group.gericht}`} style={{ marginBottom: 18 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4, paddingBottom: 4, borderBottom: '1.5px solid #eee' }}>
-                      <span style={{ fontSize: 11 }}>{group.slot === 'Mittag' ? '🌞' : '🌙'}</span>
-                      <span style={{ fontSize: 11, fontWeight: 700, color: group.nextWeek ? '#1D6E9E' : '#888', textTransform: 'uppercase', letterSpacing: '.5px' }}>
-                        {group.tag.slice(0, 2)} · {group.slot}{group.nextWeek ? ' · NW' : ''}
-                      </span>
-                      <span style={{ fontSize: 13, marginLeft: 4 }}>{group.emoji}</span>
-                      <span style={{ fontSize: 12, fontWeight: 600, color: '#333' }}>{group.gericht}</span>
+            {viewMode === 'tag' && (() => {
+              const groupedTagSlots = new Set(groups.map(g => `${g.tag}|${g.slot}`))
+              const ungroupedTaggedManuals = manualItems.filter(i => i.tag && i.slot && !groupedTagSlots.has(`${i.tag}|${i.slot}`))
+              const DAYS_ORDER = ['Montag','Dienstag','Mittwoch','Donnerstag','Freitag','Samstag','Sonntag']
+              const sortedUngrouped = [...ungroupedTaggedManuals].sort((a, b) => {
+                const ai = DAYS_ORDER.indexOf(a.tag ?? ''); const bi = DAYS_ORDER.indexOf(b.tag ?? '')
+                return ai !== bi ? ai - bi : (a.slot === 'Mittag' ? -1 : 1)
+              })
+              return (
+                <>
+                  {groups.map(group => (
+                    <div key={`${group.tag}-${group.slot}-${group.gericht}`} style={{ marginBottom: 18 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4, paddingBottom: 4, borderBottom: '1.5px solid #eee' }}>
+                        <span style={{ fontSize: 11 }}>{group.slot === 'Mittag' ? '🌞' : '🌙'}</span>
+                        <span style={{ fontSize: 11, fontWeight: 700, color: group.nextWeek ? '#1D6E9E' : '#888', textTransform: 'uppercase', letterSpacing: '.5px' }}>
+                          {group.tag.slice(0, 2)} · {group.slot}{group.nextWeek ? ' · NW' : ''}
+                        </span>
+                        <span style={{ fontSize: 13, marginLeft: 4 }}>{group.emoji}</span>
+                        <span style={{ fontSize: 12, fontWeight: 600, color: '#333' }}>{group.gericht}</span>
+                      </div>
+                      {group.items.map(item => (
+                        <ItemRow key={item.id} item={item} onToggle={() => combinedToggle(item.id)} onRemove={() => combinedRemove(item.id)} />
+                      ))}
+                      {manualItems.filter(i => i.tag === group.tag && i.slot === group.slot).map(item => (
+                        <ItemRow key={item.id} item={item} onToggle={() => combinedToggle(item.id)} onRemove={() => combinedRemove(item.id)} />
+                      ))}
                     </div>
-                    {group.items.map(item => (
-                      <ItemRow key={item.id} item={item} onToggle={() => combinedToggle(item.id)} onRemove={() => combinedRemove(item.id)} />
-                    ))}
-                  </div>
-                ))}
-              </>
-            )}
+                  ))}
+                  {sortedUngrouped.map(item => (
+                    <div key={item.id} style={{ marginBottom: 18 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4, paddingBottom: 4, borderBottom: '1.5px solid #eee' }}>
+                        <span style={{ fontSize: 11 }}>{item.slot === 'Mittag' ? '🌞' : '🌙'}</span>
+                        <span style={{ fontSize: 11, fontWeight: 700, color: '#888', textTransform: 'uppercase', letterSpacing: '.5px' }}>
+                          {item.tag?.slice(0, 2)} · {item.slot}
+                        </span>
+                      </div>
+                      <ItemRow item={item} onToggle={() => combinedToggle(item.id)} onRemove={() => combinedRemove(item.id)} />
+                    </div>
+                  ))}
+                </>
+              )
+            })()}
 
             {viewMode === 'zusammen' && (
               <>
@@ -803,10 +861,28 @@ export default function EinkaufScreen({
               </>
             )}
 
-            {manualItems.length > 0 && viewMode !== 'laden' && (
-              <div style={{ marginBottom: 16 }}>
-                <div className="lbl">Weitere Artikel</div>
-                {manualItems.map(item => (
+            {(() => {
+              // In tag view, tagged manuals (eigenesEssen) are already shown at their day/slot
+              const weitereArtikel = viewMode === 'tag'
+                ? manualItems.filter(i => !i.tag || !i.slot)
+                : manualItems
+              return weitereArtikel.length > 0 && viewMode !== 'laden' ? (
+                <div style={{ marginBottom: 16 }}>
+                  <div className="lbl">Weitere Artikel</div>
+                  {weitereArtikel.map(item => (
+                    <ItemRow key={item.id} item={item} onToggle={() => combinedToggle(item.id)} onRemove={() => combinedRemove(item.id)} />
+                  ))}
+                </div>
+              ) : null
+            })()}
+
+            {doneDisplayItems.length > 0 && (
+              <div style={{ marginTop: 8, borderTop: '1px solid #f0f0f0', paddingTop: 8, marginBottom: 8 }}>
+                <button onClick={() => setImWagenOpen(o => !o)}
+                  style={{ border: 'none', background: 'none', fontSize: 12, color: '#aaa', cursor: 'pointer', padding: '4px 0', width: '100%', textAlign: 'left' }}>
+                  {imWagenOpen ? '▾' : '▸'} ✓ Im Wagen ({doneDisplayItems.length})
+                </button>
+                {imWagenOpen && doneDisplayItems.map(item => (
                   <ItemRow key={item.id} item={item} onToggle={() => combinedToggle(item.id)} onRemove={() => combinedRemove(item.id)} />
                 ))}
               </div>
