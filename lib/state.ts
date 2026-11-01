@@ -40,6 +40,8 @@ export interface WeekPlanEntry {
   mahlzeitTyp?: 'leicht' | 'normal'
   zutatenschonDa?: boolean
   zutatenSchonGekauft?: string[]
+  reste?: { beschreibung: string }
+  eigenesEssen?: { [chefId: string]: string }
 }
 
 export interface ChangeProposal {

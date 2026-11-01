@@ -1002,6 +1002,9 @@ export default function WocheScreen({
   const [schnellaktionKey, setSchnellaktionKey] = useState<string | null>(null)
   const [schnellSub, setSchnellSub] = useState<'falltAus' | 'koch' | 'schnell' | 'reste' | 'eigen' | null>(null)
   const [schnellStreichenConfirm, setSchnellStreichenConfirm] = useState<string | null>(null)
+  const [schnellResteText, setSchnellResteText] = useState('')
+  const [schnellEigenPerson, setSchnellEigenPerson] = useState<string | null>(null)
+  const [schnellEigenText, setSchnellEigenText] = useState('')
 
   function getSlotAnwesend(tag: string, slot: WochenSlot): Chef[] {
     const allChefs = (members.length ? members : DEFAULT_MEMBERS).map(m => m.id as Chef)
@@ -1079,6 +1082,9 @@ export default function WocheScreen({
     setSchnellaktionKey(null)
     setSchnellSub(null)
     setSchnellStreichenConfirm(null)
+    setSchnellResteText('')
+    setSchnellEigenPerson(null)
+    setSchnellEigenText('')
   }
 
   function toggleEditMeal(key: string) {
@@ -1223,8 +1229,96 @@ export default function WocheScreen({
                 >→ Original verschieben</button>
               </div>
             )}
-            {(schnellSub === 'reste' || schnellSub === 'eigen') && (
-              <div style={{ fontSize: 11, color: '#888', fontStyle: 'italic' }}>kommt in Schritt 4</div>
+            {schnellSub === 'reste' && (
+              <div>
+                {entry.reste ? (
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span style={{ fontSize: 11, color: '#555' }}>🍲 {entry.reste.beschreibung}</span>
+                    <button
+                      onClick={() => void updateWeekEntry(tag, slot, { reste: undefined, zutatenschonDa: undefined })}
+                      style={{ fontSize: 10, color: '#888', background: 'none', border: 'none', cursor: 'pointer' as const, padding: '2px 4px' }}
+                    >✕ entfernen</button>
+                  </div>
+                ) : (
+                  <div>
+                    <input
+                      value={schnellResteText}
+                      onChange={ev => setSchnellResteText(ev.target.value)}
+                      placeholder="z.B. Tomatensuppe von gestern"
+                      style={{ width: '100%', padding: '7px 10px', border: '1px solid #ddd', borderRadius: 8, fontSize: 11, boxSizing: 'border-box' as const, marginBottom: 6 }}
+                    />
+                    <button
+                      disabled={!schnellResteText.trim()}
+                      onClick={() => { void updateWeekEntry(tag, slot, { reste: { beschreibung: schnellResteText.trim() }, zutatenschonDa: true }); setSchnellResteText(''); setSchnellaktionKey(null); setSchnellSub(null) }}
+                      style={{ width: '100%', padding: '8px', background: schnellResteText.trim() ? '#FFFBEB' : '#f5f5f5', color: schnellResteText.trim() ? '#92400E' : '#bbb', border: `1px solid ${schnellResteText.trim() ? '#D97706' : '#e5e7eb'}`, borderRadius: 8, fontSize: 11, fontWeight: 600, cursor: schnellResteText.trim() ? 'pointer' as const : 'default' as const }}
+                    >🍲 Reste eintragen</button>
+                  </div>
+                )}
+              </div>
+            )}
+            {schnellSub === 'eigen' && (
+              <div>
+                {Object.keys(entry.eigenesEssen ?? {}).length > 0 && (
+                  <div style={{ marginBottom: 6 }}>
+                    {Object.entries(entry.eigenesEssen!).map(([p, t]) => (
+                      <div key={p} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 3 }}>
+                        <span style={{ fontSize: 11, color: '#555' }}>🙋 {personNames[p] ?? p}{t ? `: ${t}` : ''}</span>
+                        <button
+                          onClick={() => { const next = { ...entry.eigenesEssen }; delete next[p]; void updateWeekEntry(tag, slot, { eigenesEssen: Object.keys(next).length ? next : undefined }) }}
+                          style={{ fontSize: 10, color: '#888', background: 'none', border: 'none', cursor: 'pointer' as const, padding: '2px 4px' }}
+                        >✕</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {canDirectEdit ? (
+                  <div>
+                    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' as const, marginBottom: 6 }}>
+                      {(members.length ? members : DEFAULT_MEMBERS).map(m => {
+                        const hasOwn = !!entry.eigenesEssen?.[m.id]
+                        return (
+                          <button
+                            key={m.id}
+                            onClick={() => setSchnellEigenPerson(schnellEigenPerson === m.id ? null : m.id)}
+                            style={{ padding: '5px 9px', border: `1px solid ${schnellEigenPerson === m.id ? '#D97706' : hasOwn ? '#1D9E75' : '#e5e7eb'}`, borderRadius: 8, background: schnellEigenPerson === m.id ? '#FEF3C7' : hasOwn ? '#E1F5EE' : 'white', color: schnellEigenPerson === m.id ? '#92400E' : hasOwn ? '#0F6E56' : '#444', fontSize: 11, cursor: 'pointer' as const, fontWeight: schnellEigenPerson === m.id ? 700 : 400 }}
+                          >{m.name || m.id}</button>
+                        )
+                      })}
+                    </div>
+                    {schnellEigenPerson && (
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <input
+                          value={schnellEigenText}
+                          onChange={ev => setSchnellEigenText(ev.target.value)}
+                          placeholder="Was isst du? (optional)"
+                          style={{ flex: 1, padding: '6px 10px', border: '1px solid #ddd', borderRadius: 8, fontSize: 11 }}
+                        />
+                        <button
+                          onClick={() => { void updateWeekEntry(tag, slot, { eigenesEssen: { ...entry.eigenesEssen, [schnellEigenPerson]: schnellEigenText.trim() } }); setSchnellEigenPerson(null); setSchnellEigenText('') }}
+                          style={{ padding: '6px 12px', border: '1px solid #D97706', borderRadius: 8, background: '#FFFBEB', color: '#92400E', fontSize: 11, fontWeight: 600, cursor: 'pointer' as const }}
+                        >🙋 OK</button>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div>
+                    {entry.eigenesEssen?.[currentUser!] === undefined && (
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <input
+                          value={schnellEigenText}
+                          onChange={ev => setSchnellEigenText(ev.target.value)}
+                          placeholder="Was isst du? (optional)"
+                          style={{ flex: 1, padding: '6px 10px', border: '1px solid #ddd', borderRadius: 8, fontSize: 11 }}
+                        />
+                        <button
+                          onClick={() => { void updateWeekEntry(tag, slot, { eigenesEssen: { ...entry.eigenesEssen, [currentUser!]: schnellEigenText.trim() } }); setSchnellEigenText(''); setSchnellaktionKey(null); setSchnellSub(null) }}
+                          style={{ padding: '6px 12px', border: '1px solid #D97706', borderRadius: 8, background: '#FFFBEB', color: '#92400E', fontSize: 11, fontWeight: 600, cursor: 'pointer' as const }}
+                        >🙋 Speichern</button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
             )}
           </div>
         )}
@@ -1241,6 +1335,11 @@ export default function WocheScreen({
     )
     await onWeekPlanChange(newPlan, mealsData)
     await onProposalsChange(proposals.filter(p => p.id !== proposal.id))
+  }
+
+  async function updateWeekEntry(tag: string, slot: WochenSlot, updates: Partial<WeekPlanEntry>) {
+    const newPlan = weekPlan.map(e => e.tag === tag && e.slot === slot ? { ...e, ...updates } : e)
+    await onWeekPlanChange(newPlan, mealsData)
   }
 
   async function rejectProposal(id: string) {
@@ -3862,6 +3961,10 @@ export default function WocheScreen({
                               }
                               return null
                             })()}
+                            {e.reste && <div style={{ fontSize: 10, color: '#92400E', marginTop: 1 }}>🍲 Reste: {e.reste.beschreibung}</div>}
+                            {e.eigenesEssen && Object.entries(e.eigenesEssen).map(([p, t]) => (
+                              <div key={p} style={{ fontSize: 10, color: '#555', marginTop: 1 }}>🙋 {personNames[p] ?? p}{t ? `: ${t}` : ': eigenes Essen'}</div>
+                            ))}
                             <div style={{ fontSize: 11, color: '#aaa' }}>{e.minuten} min</div>
                           </div>
                         </div>
@@ -4842,6 +4945,10 @@ export default function WocheScreen({
               const txt = ergs.map(w => w.text).join(', ')
               return <div style={{ fontSize: 10, color: '#6366F1', marginTop: 1 }}>✏️ angepasst: {txt.length > 35 ? txt.slice(0, 35) + '…' : txt}</div>
             })()}
+            {entry.reste && <div style={{ fontSize: 10, color: '#92400E', marginTop: 1 }}>🍲 Reste: {entry.reste.beschreibung}</div>}
+            {entry.eigenesEssen && Object.entries(entry.eigenesEssen).map(([p, t]) => (
+              <div key={p} style={{ fontSize: 10, color: '#555', marginTop: 1 }}>🙋 {personNames[p] ?? p}{t ? `: ${t}` : ': eigenes Essen'}</div>
+            ))}
             <div style={{ fontSize: 11, color: '#aaa' }}>{entry.minuten} min</div>
           </div>
         </div>
