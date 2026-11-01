@@ -35,6 +35,23 @@ export async function loadRezeptbuch(): Promise<RezeptbuchEntry[] | null> {
 export async function saveRezeptToBook(rezept: Rezept, erstelltVon: Chef): Promise<RezeptbuchEntry | null> {
   const familyId = getFamilyId()
   if (!familyId) return null
+  // Check for existing entry by name to prevent duplicates
+  const { data: existing } = await supabase
+    .from('recipe_book')
+    .select('id')
+    .eq('family_id', familyId)
+    .ilike('rezept->>name', rezept.name)
+    .maybeSingle()
+  if (existing) {
+    const { data, error } = await supabase
+      .from('recipe_book')
+      .update({ rezept, updated_at: new Date().toISOString() })
+      .eq('id', (existing as { id: string }).id)
+      .select('*')
+      .single()
+    if (error || !data) { console.error('[saveRezeptToBook update]', error); return null }
+    return rowToEntry(data as Record<string, unknown>)
+  }
   let kategorie: string | null = null
   try {
     const resp = await fetch('/api/rezeptbuch/kategorisieren', {

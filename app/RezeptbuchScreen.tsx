@@ -294,7 +294,17 @@ export default function RezeptbuchScreen({
   }
 
   const pastDishes = collectPastDishes()
-  const favEntries = entries.filter(e => e.isFavorit)
+  // Deduplicate by name (keeps entry with most recent zuletztGekocht)
+  const uniqueEntries = (() => {
+    const seen = new Map<string, RezeptbuchEntry>()
+    for (const e of entries) {
+      const k = e.rezept.name.toLowerCase()
+      const prev = seen.get(k)
+      if (!prev || (e.zuletztGekocht ?? '') > (prev.zuletztGekocht ?? '') || e.malGekocht > prev.malGekocht) seen.set(k, e)
+    }
+    return Array.from(seen.values())
+  })()
+  const favEntries = uniqueEntries.filter(e => e.isFavorit)
 
   function sortEntries(list: RezeptbuchEntry[]): RezeptbuchEntry[] {
     if (sortMode === 'gekocht') return [...list].sort((a, b) => b.malGekocht - a.malGekocht)
@@ -309,7 +319,7 @@ export default function RezeptbuchScreen({
   }
 
   const filteredEntries = sortEntries(
-    search.trim() ? entries.filter(e => e.rezept.name.toLowerCase().includes(search.toLowerCase())) : entries
+    search.trim() ? uniqueEntries.filter(e => e.rezept.name.toLowerCase().includes(search.toLowerCase())) : uniqueEntries
   )
 
   const M = ['Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez']
@@ -640,8 +650,8 @@ export default function RezeptbuchScreen({
         <h1 style={{ fontSize: isSelectionMode ? 15 : 17, fontWeight: isSelectionMode ? 700 : undefined }}>
           {isSelectionMode ? `Rezept wählen für ${slotLabel}` : '📖 Rezepte'}
         </h1>
-        {isSelectionMode && entries.length > 0 && (
-          <span style={{ fontSize: 11, color: '#bbb', marginLeft: 'auto', whiteSpace: 'nowrap' }}>{entries.length} Einträge</span>
+        {isSelectionMode && uniqueEntries.length > 0 && (
+          <span style={{ fontSize: 11, color: '#bbb', marginLeft: 'auto', whiteSpace: 'nowrap' }}>{uniqueEntries.length} Einträge</span>
         )}
       </div>
 
@@ -685,7 +695,7 @@ export default function RezeptbuchScreen({
               </button>
             )}
 
-            {entries.length === 0 && (
+            {uniqueEntries.length === 0 && (
               <div style={{ textAlign: 'center', padding: '32px 0', color: '#aaa', fontSize: 13, lineHeight: 1.6 }}>
                 Noch keine Rezepte gespeichert.<br />
                 <span style={{ fontSize: 12 }}>Über ⭐ Ins Rezeptbuch hinzufügen.</span>
@@ -731,11 +741,11 @@ export default function RezeptbuchScreen({
               </>
             )}
 
-            {entries.length > 0 && (
+            {uniqueEntries.length > 0 && (
               <>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 12, marginBottom: 8 }}>
                   <div style={{ fontSize: 12, fontWeight: 700, color: '#888', textTransform: 'uppercase', letterSpacing: '0.05em' }}>📖 Alle Rezepte</div>
-                  <div style={{ fontSize: 11, color: '#bbb' }}>{entries.length} Einträge</div>
+                  <div style={{ fontSize: 11, color: '#bbb' }}>{uniqueEntries.length} Einträge</div>
                 </div>
                 {filteredEntries.length === 0 && <div style={{ textAlign: 'center', padding: '20px 0', color: '#aaa', fontSize: 13 }}>Kein Treffer.</div>}
                 {filteredEntries.map(entry => {

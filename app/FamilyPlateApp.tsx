@@ -442,6 +442,18 @@ export default function FamilyPlateApp() {
     navigator.serviceWorker.addEventListener('controllerchange', () => window.location.reload())
   }, [])
 
+  // Trigger SW update check when app becomes visible (e.g. returning from home screen)
+  useEffect(() => {
+    if (process.env.NODE_ENV !== 'production') return
+    if (!('serviceWorker' in navigator)) return
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible') return
+      navigator.serviceWorker.getRegistration('/sw.js').then(reg => reg?.update()).catch(() => {})
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, [])
+
   // Supabase Realtime: week_plans-Änderungen anderer Geräte live empfangen.
   // Während der Nutzer tippt (offenes Input-Feld) wird die Aktualisierung zurückgestellt
   // und nach dem Verlassen des Feldes angewendet (nicht verworfen).
@@ -698,19 +710,13 @@ export default function FamilyPlateApp() {
 
   async function handleSaveToBook(rezept: Rezept) {
     if (!currentUser) return
-    const duplicate = rezeptbuchEntries.find(e => e.rezept.name.toLowerCase() === rezept.name.toLowerCase())
-    if (duplicate) {
-      const replace = window.confirm(`"${rezept.name}" ist bereits im Rezeptbuch.\nOK = Rezept ersetzen · Abbrechen = als zweite Version speichern`)
-      if (replace) {
-        await updateRezeptInBook(duplicate.id, rezept)
-        setRezeptbuchEntries(prev => prev.map(e => e.id === duplicate.id ? { ...e, rezept } : e))
-      } else {
-        const saved = await saveRezeptToBook(rezept, currentUser)
-        if (saved) setRezeptbuchEntries(prev => [saved, ...prev])
-      }
-    } else {
-      const saved = await saveRezeptToBook(rezept, currentUser)
-      if (saved) setRezeptbuchEntries(prev => [saved, ...prev])
+    const saved = await saveRezeptToBook(rezept, currentUser)
+    if (saved) {
+      setRezeptbuchEntries(prev => {
+        const idx = prev.findIndex(e => e.id === saved.id)
+        if (idx >= 0) return prev.map(e => e.id === saved.id ? saved : e)
+        return [saved, ...prev]
+      })
     }
   }
 

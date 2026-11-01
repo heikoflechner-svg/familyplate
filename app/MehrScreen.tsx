@@ -311,29 +311,32 @@ export default function MehrScreen({
             <span style={{ marginLeft: 'auto', color: '#bbb', fontSize: 18 }}>›</span>
           </button>
 
-          {canEditSettings && (
-            <button
-              onClick={() => setView('standardwoche')}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 14, width: '100%',
-                background: '#fff', border: '1px solid #E5E7EB', borderRadius: 14,
-                padding: '16px 18px', marginTop: 12, cursor: 'pointer', textAlign: 'left',
-              }}
-            >
-              <span style={{ fontSize: 26 }}>📋</span>
-              <div>
-                <div style={{ fontSize: 15, fontWeight: 700, color: '#111' }}>Standardwoche</div>
-                <div style={{ fontSize: 12, color: '#888', marginTop: 2 }}>
-                  {defaultMealConfig
-                    ? `Mo–Fr Mittag ${defaultMealConfig['Montag']?.mittag ?? 'normal'} · Sa/So ${defaultPlanWE ? 'ein' : 'aus'}`
-                    : 'Grundeinstellung für neue Wochen'}
-                </div>
+          <button
+            onClick={() => setView('standardwoche')}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 14, width: '100%',
+              background: '#fff', border: '1px solid #E5E7EB', borderRadius: 14,
+              padding: '16px 18px', marginTop: 12, cursor: 'pointer', textAlign: 'left',
+            }}
+          >
+            <span style={{ fontSize: 26 }}>📋</span>
+            <div>
+              <div style={{ fontSize: 15, fontWeight: 700, color: '#111' }}>Standardwoche</div>
+              <div style={{ fontSize: 12, color: '#888', marginTop: 2 }}>
+                {defaultMealConfig
+                  ? `Mo–Fr Mittag ${defaultMealConfig['Montag']?.mittag ?? 'normal'} · Sa/So ${defaultPlanWE ? 'ein' : 'aus'}`
+                  : 'Grundeinstellung für neue Wochen'}
               </div>
-              <span style={{ marginLeft: 'auto', color: '#bbb', fontSize: 18 }}>›</span>
-            </button>
-          )}
+            </div>
+            <span style={{ marginLeft: 'auto', color: '#bbb', fontSize: 18 }}>›</span>
+          </button>
 
         </div>
+        {(process.env.NEXT_PUBLIC_BUILD_DATE || process.env.NEXT_PUBLIC_BUILD_COMMIT) && (
+          <div style={{ textAlign: 'center', fontSize: 10, color: '#ccc', padding: '10px 0 4px' }}>
+            {[process.env.NEXT_PUBLIC_BUILD_COMMIT, process.env.NEXT_PUBLIC_BUILD_DATE].filter(Boolean).join(' · ')}
+          </div>
+        )}
       </div>
     )
   }
@@ -361,6 +364,7 @@ export default function MehrScreen({
       finally { setStdSaving(false) }
     }
     const showTage = WOCHENTAGE.filter(t => stdPlanWE || !['Samstag', 'Sonntag'].includes(t))
+    const readOnly = !canEditSettings
     return (
       <div className="screen active" style={{ overflowY: 'auto' }}>
         <div className="topbar">
@@ -368,6 +372,12 @@ export default function MehrScreen({
           <h1>📋 Standardwoche</h1>
         </div>
         <div className="content" style={{ padding: '0 16px 24px' }}>
+          {readOnly && (
+            <div style={{ fontSize: 12, color: '#6B7280', background: '#F9FAFB', border: '1px solid #E5E7EB', borderRadius: 10, padding: '8px 12px', marginTop: 14, marginBottom: 4 }}>
+              ℹ️ Ansicht – Ändern können nur Organisator und Eltern.
+            </div>
+          )}
+          <div style={{ pointerEvents: readOnly ? 'none' : 'auto', opacity: readOnly ? 0.75 : 1 }}>
           <div style={{ fontSize: 12, color: '#666', marginTop: 16, marginBottom: 14 }}>
             Vorgabe für neue Wochen. Die Anwesenheit wird daraus vorausgefüllt.
           </div>
@@ -516,23 +526,28 @@ export default function MehrScreen({
             </div>
           </div>
 
-          <button
-            onClick={() => void handleStdSave()}
-            disabled={stdSaving || (!stdDirty && !ernDirty)}
-            style={{
-              width: '100%', padding: '14px', borderRadius: 14, border: 'none',
-              cursor: stdSaving || (!stdDirty && !ernDirty) ? 'default' : 'pointer',
-              fontSize: 15, fontWeight: 700, marginTop: 8,
-              background: stdSaving || (!stdDirty && !ernDirty) ? '#E5E7EB' : '#0F6E56',
-              color: stdSaving || (!stdDirty && !ernDirty) ? '#999' : '#fff',
-            }}
-          >
-            {stdSaving ? 'Speichere…' : 'Standard speichern'}
-          </button>
-          {stdSaved && (
-            <div style={{ textAlign: 'center', color: '#0F6E56', fontWeight: 700, fontSize: 14, marginTop: 10 }}>
-              ✓ Gespeichert
-            </div>
+          </div>{/* end pointer-events wrapper */}
+          {!readOnly && (
+            <>
+              <button
+                onClick={() => void handleStdSave()}
+                disabled={stdSaving || (!stdDirty && !ernDirty)}
+                style={{
+                  width: '100%', padding: '14px', borderRadius: 14, border: 'none',
+                  cursor: stdSaving || (!stdDirty && !ernDirty) ? 'default' : 'pointer',
+                  fontSize: 15, fontWeight: 700, marginTop: 8,
+                  background: stdSaving || (!stdDirty && !ernDirty) ? '#E5E7EB' : '#0F6E56',
+                  color: stdSaving || (!stdDirty && !ernDirty) ? '#999' : '#fff',
+                }}
+              >
+                {stdSaving ? 'Speichere…' : 'Standard speichern'}
+              </button>
+              {stdSaved && (
+                <div style={{ textAlign: 'center', color: '#0F6E56', fontWeight: 700, fontSize: 14, marginTop: 10 }}>
+                  ✓ Gespeichert
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>

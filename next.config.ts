@@ -3,6 +3,10 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   generateBuildId: async () => Date.now().toString(),
   reactStrictMode: false,
+  env: {
+    NEXT_PUBLIC_BUILD_DATE: new Date().toISOString().slice(0, 10),
+    NEXT_PUBLIC_BUILD_COMMIT: process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7) ?? '',
+  },
   headers: async () => [
     {
       // Ensure sw.js is never aggressively cached so browsers always
