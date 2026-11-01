@@ -211,6 +211,14 @@ export interface Invitation {
 
 export const DEFAULT_LAEDEN = ['Aldi', 'Edeka', 'Kaufland', 'Netto', 'Sonstiges']
 
+export interface ErnährungsVorgabe {
+  grundhaltung?: 'alles' | 'vegetarisch' | 'vegan'
+  vegetarischeTage?: string[]
+  fischMinProWoche?: number
+  fischModus?: 'mindestens' | 'etwa'
+  saisonalBevorzugen?: boolean
+}
+
 export interface FamilyProfile {
   members: FamilyMember[]
   laeden: string[]
@@ -219,6 +227,7 @@ export interface FamilyProfile {
   defaultPlanWE?: boolean
   zutatenWarengruppe?: Record<string, string>
   zutatenAliase?: Record<string, string>
+  ernährungsVorgabe?: ErnährungsVorgabe
 }
 
 export interface AppState {

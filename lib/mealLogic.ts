@@ -437,6 +437,7 @@ export async function generateWeekPlan(params: {
   mahlzeitenKonfig?: Record<string, { mittag: string; abend: string }>
   vermeidenList?: string[]
   empfehlenList?: string[]
+  ernährungsHinweis?: string
 }): Promise<{ plan: WeekPlanEntry[]; mealsData: Record<string, Rezept> }> {
   const resp = await fetch('/api/week-plan', {
     method: 'POST',

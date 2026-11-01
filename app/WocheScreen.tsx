@@ -4,8 +4,8 @@ import { generateWeekPlan, getRemySuggestions, generateRecipe, rescaleRecipe, ad
 import { checkAllergens, formatAllergenWarningsCard } from '../lib/allergenCheck'
 import { rescaleShoppingListMengen, rewriteShoppingItemsForDish, swapShoppingItemsTags, generateShoppingList, removeShoppingItemsForDish, moveShoppingItemsForDish, generateItemsForEntry } from '../lib/shoppingLogic'
 import { getFreezerListString, getPantryListString, addFreezerItem, deleteFreezerItem } from '../lib/freezerLogic'
-import { buildFamilyPrompt, buildMemberCfg, DEFAULT_MEMBERS } from '../lib/familyLogic'
-import type { WeekPlanEntry, Rezept, FreezerItem, PantryItem, Wish, Chef, WochenSlot, FamilyMember, DayAttendance, ChangeProposal, ShoppingItem, RemyVorschlag, NextWeekData, NextWeekWish, PlanSettings, TagMahlzeitenKonfig, RezeptbuchEntry } from '../lib/state'
+import { buildFamilyPrompt, buildMemberCfg, DEFAULT_MEMBERS, buildErnährungsHinweis } from '../lib/familyLogic'
+import type { WeekPlanEntry, Rezept, FreezerItem, PantryItem, Wish, Chef, WochenSlot, FamilyMember, DayAttendance, ChangeProposal, ShoppingItem, RemyVorschlag, NextWeekData, NextWeekWish, PlanSettings, TagMahlzeitenKonfig, RezeptbuchEntry, ErnährungsVorgabe } from '../lib/state'
 import { computeRatingAvg, fmtAvg, type DishRating } from '../lib/dishRatingsLogic'
 import { supabase } from '../lib/supabase'
 import SlotWunschPanel from './SlotWunschPanel'
@@ -239,6 +239,7 @@ interface Props {
   onMarkGekocht?: (id: string) => void
   dishRatings?: DishRating[]
   onRateGericht?: (gerName: string, sterne: number, member?: Chef, rezept?: Rezept) => void
+  ernährungsVorgabe?: ErnährungsVorgabe
 }
 
 type View = 'home' | 'week' | 'plan' | 'attendance'
@@ -315,12 +316,34 @@ export default function WocheScreen({
   onMarkGekocht,
   dishRatings = [],
   onRateGericht,
+  ernährungsVorgabe,
 }: Props) {
   const hasMittag = (tag: string) => !mittagsloseTage.includes(tag)
   const personNames: Record<Chef, string> = Object.fromEntries(
     (members.length ? members : DEFAULT_MEMBERS).map(m => [m.id, m.name])
   ) as Record<Chef, string>
   const familyPrompt = buildFamilyPrompt(members.length ? members : DEFAULT_MEMBERS)
+  const ernährungsHinweis = ernährungsVorgabe
+    ? buildErnährungsHinweis(ernährungsVorgabe, new Date().getMonth() + 1)
+    : undefined
+
+  const FLEISCH_KEYWORDS = ['huhn', 'hähnchen', 'hühnchen', 'rind', 'steak', 'schnitzel', 'hack', 'wurst', 'speck', 'bacon', 'schwein', 'pork', 'lamm', 'turkey', 'truthahn', 'ente', 'pute', 'gulasch', 'bolognese', 'fleisch', 'salami', 'schinken', 'bratwurst', 'kassler', 'chicken', 'geschnetzeltes']
+  const FISCH_KEYWORDS = ['lachs', 'thunfisch', 'kabeljau', 'forelle', 'fisch', 'garnelen', 'shrimps', 'calamari', 'zander', 'makrele', 'hering', 'tilapia', 'scholle', 'meeresfrüchte', 'muscheln', 'seelachs', 'pangasius', 'dorade', 'wolfsbarsch']
+  function classifyGericht(name: string): 'fleisch' | 'fisch' | null {
+    const n = name.toLowerCase()
+    if (FISCH_KEYWORDS.some(k => n.includes(k))) return 'fisch'
+    if (FLEISCH_KEYWORDS.some(k => n.includes(k))) return 'fleisch'
+    return null
+  }
+  function getErnährungsWarnung(entry: WeekPlanEntry): string | null {
+    if (!ernährungsVorgabe) return null
+    const typ = classifyGericht(entry.gericht)
+    if (!typ) return null
+    if (ernährungsVorgabe.grundhaltung === 'vegan' && (typ === 'fleisch' || typ === 'fisch')) return '🌱'
+    if (ernährungsVorgabe.grundhaltung === 'vegetarisch' && typ === 'fleisch') return '🌱'
+    if (typ === 'fleisch' && ernährungsVorgabe.vegetarischeTage?.includes(entry.tag)) return '🌱'
+    return null
+  }
   const gaesteProTag = attendance.filter(a => (a.gaeste ?? 0) > 0).map(a => ({ tag: a.tag, gaeste: a.gaeste }))
   const activeMembers = members.length ? members : DEFAULT_MEMBERS
   const CFG = buildMemberCfg(activeMembers)
@@ -743,6 +766,7 @@ export default function WocheScreen({
         memberIds,
         lastDishes: mergedLastDishes,
         mahlzeitenKonfig: defaultMealConfig,
+        ernährungsHinweis,
       })
       setNwPlanProgress(100)
       setNwPendingPlan(result)
@@ -773,6 +797,7 @@ export default function WocheScreen({
         familyPrompt,
         memberIds,
         mahlzeitenKonfig: forceKonfig,
+        ernährungsHinweis,
       })
       const newEntry = result.find(e => e.tag === tag && e.slot === slot)
       if (newEntry) {
@@ -824,6 +849,7 @@ export default function WocheScreen({
         familyPrompt,
         memberIds,
         mahlzeitenKonfig: forceKonfig,
+        ernährungsHinweis,
       })
       const newEntry = result.find(e => e.tag === tag && e.slot === slot)
       if (newEntry) {
@@ -921,6 +947,7 @@ export default function WocheScreen({
         memberIds,
         gaesteProTag: gaesteProTag.filter(g => g.tag === tag).length > 0 ? gaesteProTag.filter(g => g.tag === tag) : undefined,
         mahlzeitenKonfig: forceKonfig,
+        ernährungsHinweis,
       })
       const newEntry = result.find(e => e.tag === tag && e.slot === slot)
       if (newEntry) {
@@ -1904,6 +1931,7 @@ export default function WocheScreen({
         memberIds,
         gaesteProTag: gaesteProTag.filter(g => g.tag === tag).length > 0 ? gaesteProTag.filter(g => g.tag === tag) : undefined,
         mahlzeitenKonfig: forceKonfig,
+        ernährungsHinweis,
       })
       const newEntry = result.find(e => e.tag === tag && e.slot === slot)
       if (newEntry) {
@@ -1932,6 +1960,7 @@ export default function WocheScreen({
         memberIds,
         gaesteProTag: gaesteProTag.filter(g => g.tag === tag).length > 0 ? gaesteProTag.filter(g => g.tag === tag) : undefined,
         mahlzeitenKonfig: defaultMealConfig,
+        ernährungsHinweis,
       })
       setPendingPlan(prev => [...prev.filter(e => e.tag !== tag), ...result.filter(e => e.tag === tag)])
       setPendingPlanMeals(prev => ({ ...prev, ...newMeals }))
@@ -1960,6 +1989,7 @@ export default function WocheScreen({
         memberIds,
         gaesteProTag: gaesteProTag.filter(g => g.tag === tag).length > 0 ? gaesteProTag.filter(g => g.tag === tag) : undefined,
         mahlzeitenKonfig: defaultMealConfig,
+        ernährungsHinweis,
       })
       setPendingDay({ tag, entries: result.filter(e => e.tag === tag) })
       setPendingDayMeals(newMeals)
@@ -2729,6 +2759,7 @@ export default function WocheScreen({
         mahlzeitenKonfig: defaultMealConfig,
         vermeidenList: vermeidenList.length > 0 ? vermeidenList : undefined,
         empfehlenList: empfehlenList.length > 0 ? empfehlenList : undefined,
+        ernährungsHinweis,
       })
       setPendingPlan(newPlan)
       setPendingPlanMeals(newMeals)
@@ -3418,6 +3449,7 @@ export default function WocheScreen({
                               {getRecipeAllergenWarnings(pendingPlanMeals[e.gericht]).length > 0 && (
                                 <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 14, height: 14, borderRadius: '50%', background: '#EF4444', color: 'white', fontSize: 9, fontWeight: 700, flexShrink: 0 }}>!</span>
                               )}
+                              {getErnährungsWarnung(e) && <span style={{ fontSize: 9, background: '#DCFCE7', color: '#15803D', borderRadius: 4, padding: '1px 5px', fontWeight: 600 }}>🌱</span>}
                             </div>
                             {(pendingPlanMeals[e.gericht]?.ersetzteZutaten?.length ?? 0) > 0 && (
                               <div style={{ fontSize: 10, color: '#DC2626', marginTop: 1 }}>⚠️ {pendingPlanMeals[e.gericht]!.ersetzteZutaten!.join(' · ')}</div>
@@ -4135,6 +4167,7 @@ export default function WocheScreen({
                               {shoppingList.some(i => i.erledigt && i.tag === tag && i.slot === slot && i.gericht === e.gericht) && (
                                 <span style={{ fontSize: 9, background: '#DCFCE7', color: '#15803D', borderRadius: 4, padding: '1px 5px', fontWeight: 600, flexShrink: 0 }}>🛒✓</span>
                               )}
+                              {getErnährungsWarnung(e) && <span style={{ fontSize: 9, background: '#DCFCE7', color: '#15803D', borderRadius: 4, padding: '1px 5px', fontWeight: 600, flexShrink: 0 }}>🌱</span>}
                             </div>
                             {(getMeal(mealsData, e.tag, e.slot, e.gericht)?.ersetzteZutaten?.length ?? 0) > 0 && (
                               <div style={{ fontSize: 10, color: '#DC2626', marginTop: 1 }}>⚠️ {getMeal(mealsData, e.tag, e.slot, e.gericht)!.ersetzteZutaten!.join(' · ')}</div>
@@ -5136,6 +5169,7 @@ export default function WocheScreen({
               {getRecipeAllergenWarningsForEntry(getMeal(mealsData, entry.tag, entry.slot, entry.gericht), entry).length > 0 && (
                 <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 14, height: 14, borderRadius: '50%', background: '#EF4444', color: 'white', fontSize: 9, fontWeight: 700, flexShrink: 0 }}>!</span>
               )}
+              {getErnährungsWarnung(entry) && <span style={{ fontSize: 9, background: '#DCFCE7', color: '#15803D', borderRadius: 4, padding: '1px 5px', fontWeight: 600, flexShrink: 0 }}>🌱</span>}
             </div>
             {(getMeal(mealsData, entry.tag, entry.slot, entry.gericht)?.ersetzteZutaten?.length ?? 0) > 0 && (
               <div style={{ fontSize: 10, color: '#DC2626', marginTop: 1 }}>⚠️ {getMeal(mealsData, entry.tag, entry.slot, entry.gericht)!.ersetzteZutaten!.join(' · ')}</div>

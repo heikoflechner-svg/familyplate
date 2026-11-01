@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect } from 'react'
-import type { Chef, FamilyMember, ChangeProposal, WeekPlanEntry, NextWeekData, TagMahlzeitenKonfig, MittagTyp, AbendTyp, Rezept, DayAttendance, RezeptbuchEntry } from '../lib/state'
+import type { Chef, FamilyMember, ChangeProposal, WeekPlanEntry, NextWeekData, TagMahlzeitenKonfig, MittagTyp, AbendTyp, Rezept, DayAttendance, RezeptbuchEntry, ErnährungsVorgabe } from '../lib/state'
 import type { DishRating } from '../lib/dishRatingsLogic'
 import { buildMemberCfg, DEFAULT_MEMBERS } from '../lib/familyLogic'
 import { getNextMondayIso, loadWeekHistory } from '../lib/mealLogic'
@@ -53,7 +53,8 @@ interface Props {
   memberStatuses?: { kuerzel: string; role: string; isLinked: boolean }[]
   defaultMealConfig?: Record<string, TagMahlzeitenKonfig>
   defaultPlanWE: boolean
-  onDefaultMealConfigChange: (config: Record<string, TagMahlzeitenKonfig>, planWE: boolean) => Promise<void>
+  onDefaultMealConfigChange: (config: Record<string, TagMahlzeitenKonfig>, planWE: boolean, ernährungsVorgabe?: ErnährungsVorgabe) => Promise<void>
+  ernährungsVorgabe?: ErnährungsVorgabe
   rezeptbuchEntries?: RezeptbuchEntry[]
   mealsData?: Record<string, Rezept>
   weekStart?: string | null
@@ -74,6 +75,7 @@ export default function MehrScreen({
   laeden, onLaedenChange, canEditSettings,
   memberStatuses = [],
   defaultMealConfig, defaultPlanWE, onDefaultMealConfigChange,
+  ernährungsVorgabe,
   rezeptbuchEntries = [],
   mealsData = {},
   weekStart = null,
@@ -93,6 +95,8 @@ export default function MehrScreen({
   const [stdSaving, setStdSaving] = useState(false)
   const [stdDirty, setStdDirty] = useState(false)
   const [stdSaved, setStdSaved] = useState(false)
+  const [ernDraft, setErnDraft] = useState<ErnährungsVorgabe>({})
+  const [ernDirty, setErnDirty] = useState(false)
   const [newLaden, setNewLaden] = useState('')
   const [laedenOpen, setLaedenOpen] = useState(false)
   const [changingCurrent, setChangingCurrent] = useState(false)
@@ -133,6 +137,8 @@ export default function MehrScreen({
     setStdDraft(initial)
     setStdPlanWE(defaultPlanWE)
     setStdDirty(false)
+    setErnDraft(ernährungsVorgabe ?? {})
+    setErnDirty(false)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view])
 
@@ -346,8 +352,9 @@ export default function MehrScreen({
       if (stdSaving) return
       setStdSaving(true)
       try {
-        await onDefaultMealConfigChange(stdDraft, stdPlanWE)
+        await onDefaultMealConfigChange(stdDraft, stdPlanWE, ernDirty ? ernDraft : undefined)
         setStdDirty(false)
+        setErnDirty(false)
         setStdSaved(true)
         setTimeout(() => setStdSaved(false), 2500)
       }
@@ -415,15 +422,89 @@ export default function MehrScreen({
             )
           })}
 
+          {/* ── 🌿 Ernährung ──────────────────────────────────────────── */}
+          <div style={{ background: '#fff', border: '1px solid #E5E7EB', borderRadius: 14, padding: '14px 16px', marginTop: 12, marginBottom: 10 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#111', marginBottom: 10 }}>🌿 Ernährung</div>
+
+            {/* Grundhaltung */}
+            <div style={{ marginBottom: 10 }}>
+              <div style={{ fontSize: 11, color: '#888', marginBottom: 6 }}>Grundhaltung</div>
+              <div style={{ display: 'flex', gap: 6 }}>
+                {(['alles', 'vegetarisch', 'vegan'] as const).map(v => (
+                  <button key={v} onClick={() => { setErnDraft(d => ({ ...d, grundhaltung: v })); setErnDirty(true) }}
+                    style={{ padding: '5px 11px', borderRadius: 20, border: 'none', cursor: 'pointer', fontSize: 12,
+                      fontWeight: (ernDraft.grundhaltung ?? 'alles') === v ? 700 : 400,
+                      background: (ernDraft.grundhaltung ?? 'alles') === v ? '#0F6E56' : '#F3F4F6',
+                      color: (ernDraft.grundhaltung ?? 'alles') === v ? '#fff' : '#444' }}>
+                    {v === 'alles' ? 'Alles' : v === 'vegetarisch' ? 'Vegetarisch' : 'Vegan'}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Vegetarische Tage – nur wenn nicht vegan/vegetarisch */}
+            {ernDraft.grundhaltung !== 'vegan' && ernDraft.grundhaltung !== 'vegetarisch' && (
+              <div style={{ marginBottom: 10 }}>
+                <div style={{ fontSize: 11, color: '#888', marginBottom: 6 }}>Vegetarische Tage</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                  {WOCHENTAGE.slice(0, stdPlanWE ? 7 : 5).map(t => {
+                    const on = ernDraft.vegetarischeTage?.includes(t) ?? false
+                    return (
+                      <button key={t} onClick={() => { setErnDraft(d => ({ ...d, vegetarischeTage: on ? (d.vegetarischeTage ?? []).filter(x => x !== t) : [...(d.vegetarischeTage ?? []), t] })); setErnDirty(true) }}
+                        style={{ padding: '4px 9px', borderRadius: 20, border: 'none', cursor: 'pointer', fontSize: 11,
+                          fontWeight: on ? 700 : 400, background: on ? '#0F6E56' : '#F3F4F6', color: on ? '#fff' : '#444' }}>
+                        {TAG_SHORT[t]}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Fisch – nur wenn nicht vegan */}
+            {ernDraft.grundhaltung !== 'vegan' && (
+              <div style={{ marginBottom: 10 }}>
+                <div style={{ fontSize: 11, color: '#888', marginBottom: 6 }}>Fisch pro Woche</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  {(['mindestens', 'etwa'] as const).map(m => (
+                    <button key={m} onClick={() => { setErnDraft(d => ({ ...d, fischModus: m })); setErnDirty(true) }}
+                      style={{ padding: '4px 9px', borderRadius: 20, border: 'none', cursor: 'pointer', fontSize: 11,
+                        fontWeight: (ernDraft.fischModus ?? 'mindestens') === m ? 700 : 400,
+                        background: (ernDraft.fischModus ?? 'mindestens') === m ? '#0F6E56' : '#F3F4F6',
+                        color: (ernDraft.fischModus ?? 'mindestens') === m ? '#fff' : '#444' }}>
+                      {m === 'mindestens' ? 'mind.' : 'etwa'}
+                    </button>
+                  ))}
+                  <button onClick={() => { setErnDraft(d => ({ ...d, fischMinProWoche: Math.max(0, (d.fischMinProWoche ?? 0) - 1) })); setErnDirty(true) }}
+                    style={{ width: 24, height: 24, borderRadius: 6, border: '1px solid #ddd', background: 'white', fontSize: 14, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>−</button>
+                  <span style={{ fontSize: 13, fontWeight: 600, minWidth: 20, textAlign: 'center' }}>{ernDraft.fischMinProWoche ?? 0}×</span>
+                  <button onClick={() => { setErnDraft(d => ({ ...d, fischMinProWoche: Math.min(7, (d.fischMinProWoche ?? 0) + 1) })); setErnDirty(true) }}
+                    style={{ width: 24, height: 24, borderRadius: 6, border: '1px solid #ddd', background: 'white', fontSize: 14, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
+                </div>
+              </div>
+            )}
+
+            {/* Saisonal */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span style={{ fontSize: 12, color: '#444' }}>Saisonale Zutaten bevorzugen</span>
+              <button onClick={() => { setErnDraft(d => ({ ...d, saisonalBevorzugen: !d.saisonalBevorzugen })); setErnDirty(true) }}
+                style={{ padding: '6px 18px', borderRadius: 20, border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600,
+                  background: ernDraft.saisonalBevorzugen ? '#0F6E56' : '#F3F4F6',
+                  color: ernDraft.saisonalBevorzugen ? '#fff' : '#444' }}>
+                {ernDraft.saisonalBevorzugen ? 'Ja' : 'Nein'}
+              </button>
+            </div>
+          </div>
+
           <button
             onClick={() => void handleStdSave()}
-            disabled={stdSaving || !stdDirty}
+            disabled={stdSaving || (!stdDirty && !ernDirty)}
             style={{
               width: '100%', padding: '14px', borderRadius: 14, border: 'none',
-              cursor: stdSaving || !stdDirty ? 'default' : 'pointer',
+              cursor: stdSaving || (!stdDirty && !ernDirty) ? 'default' : 'pointer',
               fontSize: 15, fontWeight: 700, marginTop: 8,
-              background: stdSaving || !stdDirty ? '#E5E7EB' : '#0F6E56',
-              color: stdSaving || !stdDirty ? '#999' : '#fff',
+              background: stdSaving || (!stdDirty && !ernDirty) ? '#E5E7EB' : '#0F6E56',
+              color: stdSaving || (!stdDirty && !ernDirty) ? '#999' : '#fff',
             }}
           >
             {stdSaving ? 'Speichere…' : 'Standard speichern'}

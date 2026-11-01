@@ -1,5 +1,5 @@
 import { supabase, getFamilyId } from './supabase'
-import type { Chef, FamilyMember, FamilyProfile, WeekPlanEntry, TagMahlzeitenKonfig } from './state'
+import type { Chef, FamilyMember, FamilyProfile, WeekPlanEntry, TagMahlzeitenKonfig, ErnährungsVorgabe } from './state'
 import { DEFAULT_LAEDEN } from './state'
 
 export const MEMBER_PALETTE = [
@@ -24,7 +24,7 @@ export const CHEF_ORDER: Chef[] = DEFAULT_MEMBERS.map(m => m.id)
 export async function loadFamilyProfile(): Promise<FamilyProfile | null> {
   const { data, error } = await supabase
     .from('family_profiles')
-    .select('members, onboarding_done, laeden, zutaten_laden, default_meal_config, default_plan_we')
+    .select('members, onboarding_done, laeden, zutaten_laden, default_meal_config, default_plan_we, ernaehrungs_vorgabe')
     .eq('family_id', getFamilyId())
     .single()
 
@@ -55,6 +55,7 @@ export async function loadFamilyProfile(): Promise<FamilyProfile | null> {
     zutatenAliase,
     defaultMealConfig: (data.default_meal_config as Record<string, TagMahlzeitenKonfig> | null) ?? undefined,
     defaultPlanWE: (data.default_plan_we as boolean | null) ?? undefined,
+    ernährungsVorgabe: (data.ernaehrungs_vorgabe as ErnährungsVorgabe | null) ?? undefined,
   }
 }
 
@@ -141,6 +142,44 @@ export function applyChefStats(members: FamilyMember[], confirmedEntries: WeekPl
       },
     }
   })
+}
+
+const SAISONALE_ZUTATEN: Record<number, string[]> = {
+  1: ['Porree', 'Sellerie', 'Rosenkohl', 'Grünkohl', 'Rote Bete', 'Chicorée'],
+  2: ['Porree', 'Sellerie', 'Rosenkohl', 'Grünkohl', 'Chicorée', 'Feldsalat'],
+  3: ['Spinat', 'Radieschen', 'Frühlingszwiebeln', 'Rhabarber', 'Bärlauch'],
+  4: ['Spargel', 'Spinat', 'Radieschen', 'Rhabarber', 'Bärlauch'],
+  5: ['Spargel', 'Erdbeeren', 'Spinat', 'Radieschen', 'Kohlrabi'],
+  6: ['Erdbeeren', 'Erbsen', 'Kohlrabi', 'Bohnen', 'Kirschen', 'Zucchini'],
+  7: ['Zucchini', 'Bohnen', 'Tomaten', 'Gurken', 'Himbeeren', 'Paprika'],
+  8: ['Tomaten', 'Paprika', 'Auberginen', 'Zucchini', 'Heidelbeeren', 'Pfifferlinge'],
+  9: ['Kürbis', 'Äpfel', 'Birnen', 'Zwetschgen', 'Feldsalat', 'Pilze'],
+  10: ['Kürbis', 'Äpfel', 'Birnen', 'Rosenkohl', 'Feldsalat', 'Porree'],
+  11: ['Rosenkohl', 'Grünkohl', 'Porree', 'Äpfel', 'Sellerie', 'Rote Bete'],
+  12: ['Rosenkohl', 'Grünkohl', 'Porree', 'Sellerie', 'Rote Bete', 'Chicorée'],
+}
+
+export function buildErnährungsHinweis(vorgabe: ErnährungsVorgabe, month: number): string {
+  const parts: string[] = []
+  if (vorgabe.grundhaltung === 'vegan') {
+    parts.push('Die Familie ernährt sich vegan – bitte ausschließlich vegane Gerichte (kein Fleisch, kein Fisch, keine Milchprodukte, keine Eier) einplanen.')
+  } else if (vorgabe.grundhaltung === 'vegetarisch') {
+    parts.push('Die Familie ernährt sich vegetarisch – bitte ausschließlich vegetarische Gerichte (kein Fleisch, kein Fisch) einplanen.')
+  }
+  if (vorgabe.vegetarischeTage?.length && vorgabe.grundhaltung !== 'vegan' && vorgabe.grundhaltung !== 'vegetarisch') {
+    parts.push(`An folgenden Tagen bitte vegetarisch planen (kein Fleisch): ${vorgabe.vegetarischeTage.join(', ')}.`)
+  }
+  if (vorgabe.fischMinProWoche && vorgabe.fischMinProWoche > 0 && vorgabe.grundhaltung !== 'vegan' && vorgabe.grundhaltung !== 'vegetarisch') {
+    const modus = vorgabe.fischModus === 'etwa' ? 'etwa' : 'mindestens'
+    parts.push(`Bitte ${modus} ${vorgabe.fischMinProWoche} Fischgericht${vorgabe.fischMinProWoche > 1 ? 'e' : ''} pro Woche einplanen.`)
+  }
+  if (vorgabe.saisonalBevorzugen) {
+    const saisonZutaten = SAISONALE_ZUTATEN[month] ?? []
+    if (saisonZutaten.length > 0) {
+      parts.push(`Saisonale Zutaten bevorzugen – aktuell passend: ${saisonZutaten.join(', ')}.`)
+    }
+  }
+  return parts.join(' ')
 }
 
 export function buildFamilyPrompt(members: FamilyMember[]): string {

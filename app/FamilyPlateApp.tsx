@@ -682,15 +682,17 @@ export default function FamilyPlateApp() {
   async function handleDefaultMealConfigChange(
     defaultMealConfig: NonNullable<FamilyProfile['defaultMealConfig']>,
     defaultPlanWE: boolean,
+    ernährungsVorgabe?: FamilyProfile['ernährungsVorgabe'],
   ) {
     if (!familyProfile) return
     const { data: { session } } = await supabase.auth.getSession()
     if (!session?.access_token) return
-    setFamilyProfile({ ...familyProfile, defaultMealConfig, defaultPlanWE })
+    const updated = { ...familyProfile, defaultMealConfig, defaultPlanWE, ...(ernährungsVorgabe !== undefined ? { ernährungsVorgabe } : {}) }
+    setFamilyProfile(updated)
     await fetch('/api/family/save-default-meal-config', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
-      body: JSON.stringify({ defaultMealConfig, defaultPlanWE }),
+      body: JSON.stringify({ defaultMealConfig, defaultPlanWE, ...(ernährungsVorgabe !== undefined ? { ernährungsVorgabe } : {}) }),
     })
   }
 
@@ -1005,6 +1007,7 @@ export default function FamilyPlateApp() {
             onMarkGekocht={handleMarkGekocht}
             dishRatings={dishRatings}
             onRateGericht={handleRateGericht}
+            ernährungsVorgabe={familyProfile?.ernährungsVorgabe}
           />
         </div>
         {activeTab === 'gefriertruhe' && (
@@ -1078,6 +1081,7 @@ export default function FamilyPlateApp() {
             defaultMealConfig={familyProfile.defaultMealConfig}
             defaultPlanWE={familyProfile.defaultPlanWE ?? false}
             onDefaultMealConfigChange={handleDefaultMealConfigChange}
+            ernährungsVorgabe={familyProfile.ernährungsVorgabe}
             rezeptbuchEntries={rezeptbuchEntries}
             mealsData={mealsData}
             weekStart={weekStart}

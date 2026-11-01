@@ -18,13 +18,17 @@ export async function POST(req: NextRequest) {
 
   let defaultMealConfig: Record<string, unknown>
   let defaultPlanWE: boolean | undefined
+  let ernährungsVorgabe: Record<string, unknown> | undefined
   try {
-    const body = await req.json() as { defaultMealConfig?: unknown; defaultPlanWE?: unknown }
+    const body = await req.json() as { defaultMealConfig?: unknown; defaultPlanWE?: unknown; ernährungsVorgabe?: unknown }
     if (!body.defaultMealConfig || typeof body.defaultMealConfig !== 'object' || Array.isArray(body.defaultMealConfig)) {
       return NextResponse.json({ error: 'Ungültige Anfrage.' }, { status: 400 })
     }
     defaultMealConfig = body.defaultMealConfig as Record<string, unknown>
     if (typeof body.defaultPlanWE === 'boolean') defaultPlanWE = body.defaultPlanWE
+    if (body.ernährungsVorgabe && typeof body.ernährungsVorgabe === 'object' && !Array.isArray(body.ernährungsVorgabe)) {
+      ernährungsVorgabe = body.ernährungsVorgabe as Record<string, unknown>
+    }
   } catch {
     return NextResponse.json({ error: 'Ungültige Anfrage.' }, { status: 400 })
   }
@@ -70,6 +74,7 @@ export async function POST(req: NextRequest) {
 
   const updatePayload: Record<string, unknown> = { default_meal_config: defaultMealConfig }
   if (defaultPlanWE !== undefined) updatePayload.default_plan_we = defaultPlanWE
+  if (ernährungsVorgabe !== undefined) updatePayload.ernaehrungs_vorgabe = ernährungsVorgabe
 
   const { error: updateError } = await supabaseAdmin
     .from('family_profiles')
