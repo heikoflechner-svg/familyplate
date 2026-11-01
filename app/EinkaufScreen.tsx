@@ -876,7 +876,7 @@ function ItemRow({ item, onToggle, onRemove }: { item: ShoppingItem; onToggle: (
         {item.menge && <span style={{ fontSize: 11, color: '#aaa', marginLeft: 5 }}>({item.menge})</span>}
         {isFuer && !item.erledigt && (
           <span style={{ fontSize: 10, background: '#FFF3CD', color: '#856404', borderRadius: 4, padding: '1px 5px', marginLeft: 6, whiteSpace: 'nowrap' }}>
-            ⚠️ für {item.fuer}
+            ⚠️ {!item.gericht && item.tag ? `${item.tag.slice(0, 2)} ${item.slot ?? ''} · ` : ''}für {item.fuer}
           </span>
         )}
       </div>

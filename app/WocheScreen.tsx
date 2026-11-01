@@ -1365,7 +1365,7 @@ export default function WocheScreen({
                               {allergien.length > 0 && <span style={{ color: '#D97706' }}> · beachten: {allergien.join(', ')}</span>}
                             </div>
                             <button
-                              onClick={() => { const next = { ...eigenesEssenNorm }; delete next[p]; void updateEntryWithShoppingRescale(tag, slot, { eigenesEssen: Object.keys(next).length ? next : undefined }) }}
+                              onClick={() => { const next = { ...eigenesEssenNorm }; delete next[p]; void updateEntryWithShoppingRescale(tag, slot, { eigenesEssen: Object.keys(next).length ? next : undefined }); if (t) { const pn = personNames[p] ?? p; const nl = shoppingList.filter(i => !(i.tag === tag && i.slot === slot && !i.gericht && i.fuer === pn && i.name === t && !i.erledigt)); if (nl.length !== shoppingList.length) void onShoppingListChange(nl) } }}
                               style={{ flexShrink: 0, padding: '2px 6px', border: '1px solid #FECACA', borderRadius: 6, background: '#FEF2F2', color: '#DC2626', fontSize: 11, fontWeight: 700, cursor: 'pointer' as const, lineHeight: 1.2 }}
                             >✕</button>
                           </div>
@@ -4143,7 +4143,7 @@ export default function WocheScreen({
                                     {allergien.length > 0 && <span style={{ color: '#D97706' }}> · beachten: {allergien.join(', ')}</span>}
                                   </span>
                                   {canRemove && (
-                                    <button onClick={() => { const next = { ...normalizeEigenesEssen(e.eigenesEssen) }; delete next[p]; void updateEntryWithShoppingRescale(e.tag, e.slot, { eigenesEssen: Object.keys(next).length ? next : undefined }) }}
+                                    <button onClick={() => { const norm = normalizeEigenesEssen(e.eigenesEssen); const next = { ...norm }; delete next[p]; void updateEntryWithShoppingRescale(e.tag, e.slot, { eigenesEssen: Object.keys(next).length ? next : undefined }); const eigenText = norm[p]; if (eigenText) { const pn = personNames[p] ?? p; const nl = shoppingList.filter(i => !(i.tag === e.tag && i.slot === e.slot && !i.gericht && i.fuer === pn && i.name === eigenText && !i.erledigt)); if (nl.length !== shoppingList.length) void onShoppingListChange(nl) } }}
                                       style={{ flexShrink: 0, padding: '0px 5px', border: '1px solid #FECACA', borderRadius: 5, background: '#FEF2F2', color: '#DC2626', fontSize: 10, fontWeight: 700, cursor: 'pointer' as const, lineHeight: '16px' }}
                                     >✕</button>
                                   )}
@@ -5150,7 +5150,7 @@ export default function WocheScreen({
                     {allergien.length > 0 && <span style={{ color: '#D97706' }}> · beachten: {allergien.join(', ')}</span>}
                   </span>
                   {canRemove && (
-                    <button onClick={() => { const next = { ...normalizeEigenesEssen(entry.eigenesEssen) }; delete next[p]; void updateEntryWithShoppingRescale(entry.tag, entry.slot, { eigenesEssen: Object.keys(next).length ? next : undefined }) }}
+                    <button onClick={() => { const norm = normalizeEigenesEssen(entry.eigenesEssen); const next = { ...norm }; delete next[p]; void updateEntryWithShoppingRescale(entry.tag, entry.slot, { eigenesEssen: Object.keys(next).length ? next : undefined }); const eigenText = norm[p]; if (eigenText) { const pn = personNames[p] ?? p; const nl = shoppingList.filter(i => !(i.tag === entry.tag && i.slot === entry.slot && !i.gericht && i.fuer === pn && i.name === eigenText && !i.erledigt)); if (nl.length !== shoppingList.length) void onShoppingListChange(nl) } }}
                       style={{ flexShrink: 0, padding: '0px 5px', border: '1px solid #FECACA', borderRadius: 5, background: '#FEF2F2', color: '#DC2626', fontSize: 10, fontWeight: 700, cursor: 'pointer' as const, lineHeight: '16px' }}
                     >✕</button>
                   )}
