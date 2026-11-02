@@ -10,7 +10,12 @@ export function getMeal(
   slot: WochenSlot | string,
   gerName?: string
 ): Rezept | undefined {
-  return mealsData[`${tag}-${slot}`] ?? (gerName ? mealsData[gerName] : undefined)
+  const slotRecipe = mealsData[`${tag}-${slot}`]
+  // Slot-key recipe is stale if its name doesn't match the current dish — ignore it
+  if (slotRecipe && gerName && slotRecipe.name !== gerName) {
+    return mealsData[gerName]
+  }
+  return slotRecipe ?? (gerName ? mealsData[gerName] : undefined)
 }
 
 export function needsMigration(plan: WeekPlanEntry[], meals: Record<string, Rezept>): boolean {

@@ -903,10 +903,16 @@ export default function WocheScreen({
   function applyNwManualDish(tag: string, slot: WochenSlot, name: string, typ?: 'leicht' | 'normal') {
     if (!name.trim() || !onNextWeekDataChange || !nextWeekData?.plan) return
     const nextMonday = nextWeekStart ?? getNextMondayIso()
+    const oldEntry = nextWeekData.plan.find(e => e.tag === tag && e.slot === slot)
     const newPlan = nextWeekData.plan.map(e =>
       e.tag === tag && e.slot === slot ? { ...e, gericht: name.trim(), emoji: '🍽️', quelle: 'manuell', ...(typ ? { mahlzeitTyp: typ } : {}) } : e
     )
-    void onNextWeekDataChange({ plan: newPlan, mealsData: nextWeekData.mealsData }, nextMonday)
+    let newMealsData = nextWeekData.mealsData ?? {}
+    if (!oldEntry || oldEntry.gericht !== name.trim()) {
+      const { [mealsKey(tag, slot)]: _dropped, ...rest } = newMealsData
+      newMealsData = rest
+    }
+    void onNextWeekDataChange({ plan: newPlan, mealsData: newMealsData }, nextMonday)
     setNwEditMealKey(null)
     setNwMealSubMode(null)
     setNwManualDish('')
@@ -936,10 +942,16 @@ export default function WocheScreen({
   function applyNwStockItem(tag: string, slot: WochenSlot, name: string, emoji: string) {
     if (!onNextWeekDataChange || !nextWeekData?.plan) return
     const nextMonday = nextWeekStart ?? getNextMondayIso()
+    const oldEntry = nextWeekData.plan.find(e => e.tag === tag && e.slot === slot)
     const newPlan = nextWeekData.plan.map(e =>
       e.tag === tag && e.slot === slot ? { ...e, gericht: name, emoji, quelle: 'vorrat' } : e
     )
-    void onNextWeekDataChange({ plan: newPlan, mealsData: nextWeekData.mealsData }, nextMonday)
+    let newMealsData = nextWeekData.mealsData ?? {}
+    if (!oldEntry || oldEntry.gericht !== name) {
+      const { [mealsKey(tag, slot)]: _dropped, ...rest } = newMealsData
+      newMealsData = rest
+    }
+    void onNextWeekDataChange({ plan: newPlan, mealsData: newMealsData }, nextMonday)
     setNwEditMealKey(null)
     setNwMealSubMode(null)
   }
@@ -1006,8 +1018,12 @@ export default function WocheScreen({
       e.tag === tag && e.slot === slot ? { ...e, gericht: name.trim(), emoji: '🍽️', quelle: 'manuell', ...(typ ? { mahlzeitTyp: typ } : {}) } : e
     )
     let newMeals = mealsData
+    if (!oldEntry || oldEntry.gericht !== name.trim()) {
+      const { [mealsKey(tag, slot)]: _slotDrop, ...rest } = newMeals
+      newMeals = rest
+    }
     if (oldEntry && oldEntry.gericht !== name.trim() && !weekPlan.some(e => !(e.tag === tag && e.slot === slot) && e.gericht === oldEntry.gericht)) {
-      const { [oldEntry.gericht]: _dropped, ...rest } = mealsData
+      const { [oldEntry.gericht]: _dropped, ...rest } = newMeals
       newMeals = rest
     }
     onWeekPlanChange(newPlan, newMeals).catch(() => {
@@ -1019,10 +1035,16 @@ export default function WocheScreen({
   }
 
   function applyActiveStockItem(tag: string, slot: WochenSlot, name: string, emoji: string) {
+    const oldEntry = weekPlan.find(e => e.tag === tag && e.slot === slot)
     const newPlan = weekPlan.map(e =>
       e.tag === tag && e.slot === slot ? { ...e, gericht: name, emoji, quelle: 'vorrat' } : e
     )
-    onWeekPlanChange(newPlan, mealsData).catch(() => {
+    let newMeals = mealsData
+    if (!oldEntry || oldEntry.gericht !== name) {
+      const { [mealsKey(tag, slot)]: _dropped, ...rest } = mealsData
+      newMeals = rest
+    }
+    onWeekPlanChange(newPlan, newMeals).catch(() => {
       setSaveFeedback('Speichern fehlgeschlagen – bitte Seite neu laden.')
       setTimeout(() => setSaveFeedback(null), 5000)
     })
@@ -1882,7 +1904,9 @@ export default function WocheScreen({
     if (!pendingDay) return
     setSaving(true)
     const newPlan = [...weekPlan.filter(e => e.tag !== pendingDay.tag), ...pendingDay.entries]
-    await onWeekPlanChange(newPlan, migrateMealsDataAddSlotKeys(newPlan, { ...mealsData, ...pendingDayMeals }))
+    const baseData = { ...mealsData }
+    for (const e of pendingDay.entries) delete baseData[mealsKey(e.tag, e.slot)]
+    await onWeekPlanChange(newPlan, migrateMealsDataAddSlotKeys(newPlan, { ...baseData, ...pendingDayMeals }))
     await onPlanConfirm?.(pendingDay.entries)
     if (pendingDay.tag === today && !skipNextShopWarnRef.current) {
       for (const sl of ['Mittag', 'Abend'] as WochenSlot[]) {
