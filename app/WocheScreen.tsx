@@ -544,6 +544,7 @@ export default function WocheScreen({
   const [selectedMealName, setSelectedMealName] = useState<string | null>(null)
   const [recipeContext, setRecipeContext] = useState<{ tag: string; slot: WochenSlot; source: 'current' | 'pending' | 'nwPending' | 'nwSaved'; emoji: string } | null>(null)
   const [recipeLoading, setRecipeLoading] = useState<string | null>(null)
+  const [recipeErrorReason, setRecipeErrorReason] = useState<string | null>(null)
   const [adjustAllergieHinweise, setAdjustAllergieHinweise] = useState<string[]>([])
   const [saveToBookLoading, setSaveToBookLoading] = useState(false)
   const [savedToBookName, setSavedToBookName] = useState<string | null>(null)
@@ -2576,11 +2577,22 @@ export default function WocheScreen({
     return `${total}${gaeste > 0 ? ` (${gaeste} Gast${gaeste > 1 ? 'e' : ''})` : ''}`
   }
 
+  function codeToHuman(code: string | null): string {
+    if (!code) return 'unbekannter Fehler'
+    if (code === 'truncated') return 'Antwort abgeschnitten'
+    if (code === 'format') return 'Format-Fehler'
+    if (code === '429') return 'Fehler 429 (zu viele Anfragen)'
+    if (code === 'network') return 'Netzwerk-Fehler'
+    if (code === 'gen' || code === '500') return 'Server-Fehler'
+    return `Fehler ${code}`
+  }
+
   // Rezept-Detail öffnen: immer zuerst frisch aus DB laden, dann ggf. generieren.
   // Lock-Mechanismus verhindert, dass zwei Geräte gleichzeitig dasselbe Rezept erstellen.
   async function openRecipe(gericht: string, emoji: string, tag: string, slot: WochenSlot) {
     setSelectedMealName(gericht)
     setRecipeContext({ tag, slot, source: 'current', emoji })
+    setRecipeErrorReason(null)
     const personCount = getPersonCountForSlot(tag, slot, attendance, members.length ? members : DEFAULT_MEMBERS)
 
     // Lokaler Cache-Treffer: kein DB-Call nötig
@@ -2615,9 +2627,9 @@ export default function WocheScreen({
       const lockEntry = freshRaw[lockKey] as (Rezept & { generatedAt?: string }) | undefined
       if (lockEntry?.name === '__generating' && lockEntry.generatedAt) {
         const lockAge = Date.now() - new Date(lockEntry.generatedAt).getTime()
-        if (lockAge < 2 * 60 * 1000) {
-          // Warten bis fertiges Rezept da ist (max 2 Minuten)
-          for (let i = 0; i < 40; i++) {
+        if (lockAge < 70 * 1000) {
+          // Warten bis fertiges Rezept da ist (max 70 Sekunden)
+          for (let i = 0; i < 20; i++) {
             await new Promise<void>(resolve => setTimeout(resolve, 3000))
             const polledRaw = await fetchFreshMealsData()
             const polled = Object.fromEntries(Object.entries(polledRaw).filter(([k]) => !k.startsWith('__gen:')))
@@ -2653,8 +2665,7 @@ export default function WocheScreen({
           const cleaned = { ...freshRaw }
           delete cleaned[lockKey]
           await saveMealsDataOnly(cleaned)
-          const code = getLastRecipeErrorCode()
-          setError(`Rémy konnte das Rezept nicht erstellen${code ? ` (Fehler ${code})` : ''} – bitte später erneut versuchen.`)
+          setRecipeErrorReason(codeToHuman(getLastRecipeErrorCode()))
         }
       } catch {
         try {
@@ -3499,7 +3510,7 @@ export default function WocheScreen({
           </div>
         )}
         {selectedMealName && (
-          <RecipeModal name={selectedMealName} rezept={selectedRezept(selectedMealName)} loading={recipeLoading === selectedMealName} onClose={() => { setSelectedMealName(null); setRecipeContext(null); setAdjustAllergieHinweise([]) }} canRewrite={currentUser === wochenchef || canEditSettings} onRewrite={rewriteRecipe} onAdjust={handleAdjustRecipe} allergieHinweise={adjustAllergieHinweise} offeneAllergene={getRecipeAllergenWarnings(selectedRezept(selectedMealName) ?? undefined)} onSaveToBook={onSaveToBook ? (r) => { void handleSaveToBook(r) } : undefined} savedToBook={savedToBookName === selectedMealName} saveToBookLoading={saveToBookLoading} />
+          <RecipeModal name={selectedMealName} rezept={selectedRezept(selectedMealName)} loading={recipeLoading === selectedMealName} errorReason={recipeLoading !== selectedMealName ? recipeErrorReason : null} onRetry={recipeContext?.source === 'current' ? () => { void openRecipe(selectedMealName, recipeContext?.emoji ?? '', recipeContext?.tag ?? '', recipeContext?.slot as WochenSlot) } : undefined} onClose={() => { setSelectedMealName(null); setRecipeContext(null); setRecipeErrorReason(null); setAdjustAllergieHinweise([]) }} canRewrite={currentUser === wochenchef || canEditSettings} onRewrite={rewriteRecipe} onAdjust={handleAdjustRecipe} allergieHinweise={adjustAllergieHinweise} offeneAllergene={getRecipeAllergenWarnings(selectedRezept(selectedMealName) ?? undefined)} onSaveToBook={onSaveToBook ? (r) => { void handleSaveToBook(r) } : undefined} savedToBook={savedToBookName === selectedMealName} saveToBookLoading={saveToBookLoading} />
         )}
         {restzutatenOverlay}
         <div className="topbar">
@@ -3741,7 +3752,7 @@ export default function WocheScreen({
           </div>
         )}
         {selectedMealName && (
-          <RecipeModal name={selectedMealName} rezept={selectedRezept(selectedMealName)} loading={recipeLoading === selectedMealName} onClose={() => { setSelectedMealName(null); setRecipeContext(null); setAdjustAllergieHinweise([]) }} canRewrite={currentUser === wochenchef || canEditSettings} onRewrite={rewriteRecipe} onAdjust={handleAdjustRecipe} allergieHinweise={adjustAllergieHinweise} offeneAllergene={getRecipeAllergenWarnings(selectedRezept(selectedMealName) ?? undefined)} onSaveToBook={onSaveToBook ? (r) => { void handleSaveToBook(r) } : undefined} savedToBook={savedToBookName === selectedMealName} saveToBookLoading={saveToBookLoading} />
+          <RecipeModal name={selectedMealName} rezept={selectedRezept(selectedMealName)} loading={recipeLoading === selectedMealName} errorReason={recipeLoading !== selectedMealName ? recipeErrorReason : null} onRetry={recipeContext?.source === 'current' ? () => { void openRecipe(selectedMealName, recipeContext?.emoji ?? '', recipeContext?.tag ?? '', recipeContext?.slot as WochenSlot) } : undefined} onClose={() => { setSelectedMealName(null); setRecipeContext(null); setRecipeErrorReason(null); setAdjustAllergieHinweise([]) }} canRewrite={currentUser === wochenchef || canEditSettings} onRewrite={rewriteRecipe} onAdjust={handleAdjustRecipe} allergieHinweise={adjustAllergieHinweise} offeneAllergene={getRecipeAllergenWarnings(selectedRezept(selectedMealName) ?? undefined)} onSaveToBook={onSaveToBook ? (r) => { void handleSaveToBook(r) } : undefined} savedToBook={savedToBookName === selectedMealName} saveToBookLoading={saveToBookLoading} />
         )}
         {restzutatenOverlay}
         {swapTarget && swapSource && (() => {

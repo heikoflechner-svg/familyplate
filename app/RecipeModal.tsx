@@ -6,6 +6,8 @@ export interface RecipeModalProps {
   name: string
   rezept: Rezept | null
   loading?: boolean
+  errorReason?: string | null
+  onRetry?: () => void
   onClose: () => void
   canRewrite?: boolean
   onRewrite?: () => void
@@ -23,7 +25,7 @@ export interface RecipeModalProps {
 }
 
 export default function RecipeModal({
-  name, rezept, loading, onClose, canRewrite, onRewrite, onAdjust,
+  name, rezept, loading, errorReason, onRetry, onClose, canRewrite, onRewrite, onAdjust,
   allergieHinweise, offeneAllergene,
   onSaveToBook, savedToBook, saveToBookLoading,
   isFavorit, onToggleFavorit, onDelete,
@@ -33,6 +35,12 @@ export default function RecipeModal({
   const [adjustMode, setAdjustMode] = useState(false)
   const [adjustText, setAdjustText] = useState('')
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [elapsed, setElapsed] = useState(0)
+  useEffect(() => {
+    if (!loading) { setElapsed(0); return }
+    const t = setInterval(() => setElapsed(s => s + 1), 1000)
+    return () => clearInterval(t)
+  }, [loading])
   useEffect(() => {
     if (loading) { setConfirmRewrite(false); setAdjustMode(false); setAdjustText('') }
   }, [loading])
@@ -64,7 +72,19 @@ export default function RecipeModal({
       <div className="content">
         {loading ? (
           <div style={{ textAlign: 'center', padding: '40px 0', color: '#888', fontSize: 13 }}>
-            🐀 Rémy schreibt das Rezept…
+            🐀 Rémy schreibt das Rezept…{elapsed > 0 ? ` (${elapsed} Sek.)` : ''}
+          </div>
+        ) : errorReason ? (
+          <div style={{ textAlign: 'center', padding: '40px 16px' }}>
+            <div style={{ fontSize: 13, color: '#888', marginBottom: 12 }}>
+              ⚠️ Rezept konnte nicht erstellt werden ({errorReason}).
+            </div>
+            {onRetry && (
+              <button onClick={onRetry}
+                style={{ padding: '9px 22px', background: '#1D9E75', color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+                Nochmal versuchen
+              </button>
+            )}
           </div>
         ) : !hatRezept ? (
           <div style={{ textAlign: 'center', padding: '40px 0', color: '#aaa', fontSize: 13 }}>

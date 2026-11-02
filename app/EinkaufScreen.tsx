@@ -586,25 +586,24 @@ export default function EinkaufScreen({
         )}
 
         {/* Missing recipes warning */}
-        {(() => {
-          const allMissing = [
-            ...weekPlan.filter(e => !isFullRecipe(mealsData[e.gericht]) && shoppingList.some(i => i.gericht === e.gericht)),
-            ...nwPlan.filter(e => !isFullRecipe(nwMeals[e.gericht]) && nwShoppingList.some(i => i.gericht === e.gericht)),
-          ]
-          if (allMissing.length === 0) return null
+        {(planConfirmed || nwConfirmed) && (() => {
+          const missingNames = [...new Set([
+            ...(planConfirmed ? weekPlan.filter(e => !isFullRecipe(mealsData[e.gericht])).map(e => e.gericht) : []),
+            ...(nwConfirmed ? nwPlan.filter(e => !isFullRecipe(nwMeals[e.gericht])).map(e => e.gericht) : []),
+          ])]
+          if (missingNames.length === 0) return null
           return (
-            <div style={{ background: '#FFFBEB', border: '1px solid #FCD34D', borderRadius: 10, padding: '10px 14px', marginBottom: 12 }}>
-              <div style={{ fontSize: 12, color: '#92400E', fontWeight: 600, marginBottom: 4 }}>
-                ⚠️ Fehlende Rezepte ({allMissing.length})
+            <div style={{ background: '#FFFBEB', border: '1px solid #FCD34D', borderRadius: 10, padding: '10px 14px', marginBottom: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+              <div style={{ fontSize: 12, color: '#92400E', fontWeight: 600 }}>
+                ⚠️ {missingNames.length} Gericht{missingNames.length > 1 ? 'e' : ''} ohne Rezept – Zutaten fehlen.
               </div>
-              <div style={{ fontSize: 11, color: '#555', marginBottom: 6 }}>
-                Für diese Gerichte fehlen Zutaten in der Einkaufsliste:
-              </div>
-              {allMissing.map(e => (
-                <div key={`${e.tag}-${e.slot}`} style={{ fontSize: 11, color: '#92400E', marginTop: 2 }}>
-                  {e.emoji} {e.gericht} · {e.tag} {e.slot === 'Mittag' ? '🌞' : '🌙'}
-                </div>
-              ))}
+              {!confirmNeu && (
+                <button
+                  onClick={() => setConfirmNeu(true)}
+                  style={{ fontSize: 12, color: '#92400E', background: '#FDE68A', border: 'none', borderRadius: 6, padding: '5px 12px', cursor: 'pointer', fontWeight: 600, flexShrink: 0 }}>
+                  Jetzt erstellen?
+                </button>
+              )}
             </div>
           )
         })()}

@@ -573,31 +573,25 @@ export async function generateRecipe(
   mahlzeitTyp?: 'leicht' | 'normal',
 ): Promise<Rezept | null> {
   _lastRecipeErrorCode = null
-  for (let attempt = 0; attempt < 2; attempt++) {
-    try {
-      const resp = await fetch('/api/recipe', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gericht, emoji, freezerList, pantryList, familyPrompt, personCount, familyMembersForCheck, mahlzeitTyp }),
-      })
-      if (!resp.ok) {
-        if (attempt === 0) continue
-        try {
-          const errData = await resp.json() as { code?: string }
-          _lastRecipeErrorCode = String(errData.code ?? resp.status)
-        } catch { _lastRecipeErrorCode = String(resp.status) }
-        return null
-      }
-      const data = await resp.json()
-      const rezept = (data.rezept as Rezept) ?? null
-      if (rezept) return rezept
-      if (attempt === 0) continue
-    } catch {
-      if (attempt === 0) continue
+  try {
+    const resp = await fetch('/api/recipe', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ gericht, emoji, freezerList, pantryList, familyPrompt, personCount, familyMembersForCheck, mahlzeitTyp }),
+    })
+    if (!resp.ok) {
+      try {
+        const errData = await resp.json() as { code?: string }
+        _lastRecipeErrorCode = String(errData.code ?? resp.status)
+      } catch { _lastRecipeErrorCode = String(resp.status) }
       return null
     }
+    const data = await resp.json()
+    return (data.rezept as Rezept) ?? null
+  } catch {
+    _lastRecipeErrorCode = 'network'
+    return null
   }
-  return null
 }
 
 // Returns null on failure so callers skip saving — old personenAnzahl is preserved → retry on next open.
