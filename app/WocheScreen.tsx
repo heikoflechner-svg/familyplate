@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, useRef, useMemo } from 'react'
-import { generateWeekPlan, getRemySuggestions, generateRecipe, rescaleRecipe, adjustRecipe, loadMissingRecipes, getPersonCountForSlot, saveLastDishes, isFullRecipe, getMondayIso, getNextMondayIso, applySwap, checkAllergiesForSwap, checkFreshnessWarning, loadHistoryDishes, fetchFreshMealsData, saveMealsDataOnly, mergeRecipeToDb } from '../lib/mealLogic'
+import { generateWeekPlan, getRemySuggestions, generateRecipe, rescaleRecipe, adjustRecipe, loadMissingRecipes, getPersonCountForSlot, saveLastDishes, isFullRecipe, getLastRecipeErrorCode, getMondayIso, getNextMondayIso, applySwap, checkAllergiesForSwap, checkFreshnessWarning, loadHistoryDishes, fetchFreshMealsData, saveMealsDataOnly, mergeRecipeToDb } from '../lib/mealLogic'
 import { checkAllergens, formatAllergenWarningsCard } from '../lib/allergenCheck'
 import { rescaleShoppingListMengen, rewriteShoppingItemsForDish, swapShoppingItemsTags, generateShoppingList, removeShoppingItemsForDish, moveShoppingItemsForDish, generateItemsForEntry } from '../lib/shoppingLogic'
 import { getFreezerListString, getPantryListString, addFreezerItem, deleteFreezerItem, addPantryItem } from '../lib/freezerLogic'
@@ -2629,6 +2629,8 @@ export default function WocheScreen({
           const cleaned = { ...freshRaw }
           delete cleaned[lockKey]
           await saveMealsDataOnly(cleaned)
+          const code = getLastRecipeErrorCode()
+          setError(`Rémy konnte das Rezept nicht erstellen${code ? ` (Fehler ${code})` : ''} – bitte später erneut versuchen.`)
         }
       } catch {
         try {
@@ -2662,6 +2664,9 @@ export default function WocheScreen({
             ...prev,
             [gericht]: { ...rezept, personenAnzahl: personCount, ersetzteZutaten: rezept.ersetzteZutaten?.length ? rezept.ersetzteZutaten : (prev[gericht]?.ersetzteZutaten ?? []) },
           }))
+        } else {
+          const code = getLastRecipeErrorCode()
+          setError(`Rémy konnte das Rezept nicht erstellen${code ? ` (Fehler ${code})` : ''} – bitte später erneut versuchen.`)
         }
       }
     } finally {
@@ -2688,6 +2693,9 @@ export default function WocheScreen({
             ...prev,
             [gericht]: { ...rezept, personenAnzahl: personCount, ersetzteZutaten: rezept.ersetzteZutaten?.length ? rezept.ersetzteZutaten : (prev[gericht]?.ersetzteZutaten ?? []) },
           }))
+        } else {
+          const code = getLastRecipeErrorCode()
+          setError(`Rémy konnte das Rezept nicht erstellen${code ? ` (Fehler ${code})` : ''} – bitte später erneut versuchen.`)
         }
       }
     } finally {
@@ -2724,6 +2732,9 @@ export default function WocheScreen({
         if (rezept) {
           const merged: Rezept = { ...rezept, personenAnzahl: personCount, ersetzteZutaten: rezept.ersetzteZutaten?.length ? rezept.ersetzteZutaten : (existing?.ersetzteZutaten ?? []) }
           await onNextWeekDataChange({ mealsData: { ...(nextWeekData?.mealsData ?? {}), [gericht]: merged, [mealsKey(tag, slot)]: merged } }, nextMonday)
+        } else {
+          const code = getLastRecipeErrorCode()
+          setError(`Rémy konnte das Rezept nicht erstellen${code ? ` (Fehler ${code})` : ''} – bitte später erneut versuchen.`)
         }
       }
     } finally {
@@ -2760,7 +2771,11 @@ export default function WocheScreen({
     setRecipeLoading(selectedMealName)
     try {
       const rezept = await generateRecipe(selectedMealName, emoji, getFreezerListString(freezerItems), getPantryListString(pantryItems), familyPrompt, personCount, allergenCheckMembers)
-      if (!rezept) return
+      if (!rezept) {
+        const code = getLastRecipeErrorCode()
+        setError(`Rémy konnte das Rezept nicht erstellen${code ? ` (Fehler ${code})` : ''} – bitte später erneut versuchen.`)
+        return
+      }
       const merged: Rezept = { ...rezept, personenAnzahl: personCount, ersetzteZutaten: rezept.ersetzteZutaten?.length ? rezept.ersetzteZutaten : [] }
       if (source === 'current') {
         const slotK = mealsKey(tag, slot)

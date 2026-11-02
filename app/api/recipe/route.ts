@@ -37,6 +37,10 @@ async function callClaude(apiKey: string, prompt: string, maxTokens = 2000, mode
     headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
     body: JSON.stringify({ model, max_tokens: maxTokens, messages: [{ role: 'user', content: prompt }] }),
   })
+  if (!resp.ok) {
+    console.error('[callClaude] API error', resp.status, await resp.text())
+    throw new Error(`API_${resp.status}`)
+  }
   const data = await resp.json()
   // Find the first text block explicitly (guards against thinking blocks appearing first)
   const textBlock = (data?.content as { type: string; text?: string }[] | undefined)?.find(b => b.type === 'text')
@@ -217,7 +221,9 @@ Antworte NUR als reines JSON ohne Markdown.`
     }
 
     return NextResponse.json({ rezept: { ...parsed, rezeptVersion: 2 } })
-  } catch {
-    return NextResponse.json({ rezept: { ...FALLBACK, name: gericht || FALLBACK.name, emoji: emoji || '🍗' } })
+  } catch (err) {
+    console.error('[recipe API] generation failed', err)
+    const code = err instanceof Error && err.message.startsWith('API_') ? err.message.slice(4) : 'gen'
+    return NextResponse.json({ error: 'generation_failed', code }, { status: 500 })
   }
 }

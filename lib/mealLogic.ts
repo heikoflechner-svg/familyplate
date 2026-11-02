@@ -480,6 +480,7 @@ export async function generateWeekPlan(params: {
 // behandelt und beim nächsten Antippen/Neu-Klick automatisch neu geladen.
 export function isFullRecipe(r?: Rezept | null): boolean {
   if (!r || r.schritte.length === 0) return false
+  if (r.name === 'Hähnchen-Pasta' && r.schritte[0]?.startsWith('Hähnchen auftauen')) return false
   return r.zutaten.length > 4 || r.zutaten.some(z => z.typ === 'grundvorrat')
 }
 
@@ -558,6 +559,9 @@ export async function getRemySuggestions(params: {
   return (data.vorschlaege as RemyVorschlag[]) ?? []
 }
 
+let _lastRecipeErrorCode: string | null = null
+export function getLastRecipeErrorCode(): string | null { return _lastRecipeErrorCode }
+
 export async function generateRecipe(
   gericht: string,
   emoji: string,
@@ -568,6 +572,7 @@ export async function generateRecipe(
   familyMembersForCheck?: { name: string; allergien: string[] }[],
   mahlzeitTyp?: 'leicht' | 'normal',
 ): Promise<Rezept | null> {
+  _lastRecipeErrorCode = null
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
       const resp = await fetch('/api/recipe', {
@@ -577,6 +582,10 @@ export async function generateRecipe(
       })
       if (!resp.ok) {
         if (attempt === 0) continue
+        try {
+          const errData = await resp.json() as { code?: string }
+          _lastRecipeErrorCode = String(errData.code ?? resp.status)
+        } catch { _lastRecipeErrorCode = String(resp.status) }
         return null
       }
       const data = await resp.json()
