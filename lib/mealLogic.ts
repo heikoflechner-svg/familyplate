@@ -527,7 +527,7 @@ export async function mergeRecipeToDb(
   const existingInDb = freshClean[gericht] ?? freshClean[slotKey]
   const merged = isFullRecipe(existingInDb as Rezept | undefined)
     ? freshClean  // DB already has a recipe (another device saved it) — use theirs
-    : { ...freshClean, [gericht]: rezept, [slotKey]: rezept }
+    : { ...freshClean, [gericht]: rezept, [slotKey]: { ...rezept, fuerGericht: gericht } }
   const toSave = { ...fresh, ...merged }
   delete toSave[lockKey]
   await saveMealsDataOnly(toSave)

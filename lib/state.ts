@@ -106,6 +106,7 @@ export interface Rezept {
   quelle?: string
   quelleUrl?: string
   notizen?: string
+  fuerGericht?: string  // slot-key entries: planned dish name this recipe was generated for
 }
 
 export interface RezeptbewertungEintrag {
