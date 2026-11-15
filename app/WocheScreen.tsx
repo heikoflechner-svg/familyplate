@@ -48,6 +48,39 @@ function getTagDate(mondayIso: string, tag: string): string {
 }
 
 
+// Extrahiert eindeutige Personennamen aus ersetzteZutaten-Einträgen wie "1 Packung ... (für Heiko)"
+function extractPersonNames(arr: string[]): string {
+  const names: string[] = []
+  const seen = new Set<string>()
+  for (const entry of arr) {
+    const m = entry.match(/\(für ([^)]+)\)/)
+    if (m?.[1] && !seen.has(m[1])) { seen.add(m[1]); names.push(m[1]) }
+  }
+  return names.length > 0 ? names.join(', ') : 'Familie'
+}
+
+// Kompaktformat: "für Heiko: glutenfreier Pizzateig, laktosefreier Käse · für Tim: vegane Bratwurst"
+function formatErsetzteZutatenKurz(arr: string[]): string {
+  const byPerson: Record<string, string[]> = {}
+  const noPerson: string[] = []
+  for (const entry of arr) {
+    const personMatch = entry.match(/\(für ([^)]+)\)\s*$/)
+    const person = personMatch?.[1] ?? null
+    let ingredient = entry.replace(/\s*\(für [^)]+\)\s*$/, '').trim()
+    // Führende Mengenangabe entfernen (z.B. "1 Packung ", "200g ", "2 EL ")
+    ingredient = ingredient.replace(/^\d+[\d,.]*\s*(g|ml|kg|l|cl|EL|TL|Stk\.?|Packung|Pck\.?|Dose|Glas|Scheiben?|Stück|Prisen?|x)?\s+/i, '').trim()
+    if (person) {
+      byPerson[person] = byPerson[person] ?? []
+      byPerson[person].push(ingredient)
+    } else {
+      noPerson.push(ingredient)
+    }
+  }
+  const parts = Object.entries(byPerson).map(([p, items]) => `für ${p}: ${items.join(', ')}`)
+  if (noPerson.length > 0) parts.push(noPerson.join(', '))
+  return parts.join(' · ')
+}
+
 function todayGerman(): string {
   return WOCHENTAGE[(new Date().getDay() + 6) % 7]
 }
@@ -116,11 +149,12 @@ function gerichtAendernPanel(c: GAPCfg) {
       <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
         <button onClick={() => { if (!dis && !c.remyBusy) c.onRemy() }} disabled={dis}
           style={{ flex: 1, padding: '6px 4px', border: '1px solid #ddd', borderRadius: 8, background: 'white', cursor: (dis || c.remyBusy) ? 'default' : 'pointer', fontSize: 11, color: c.remyBusy ? '#085041' : '#555', minWidth: 60, opacity: dis ? 0.4 : 1 }}>
-          {c.remyBusy ? '⏳…' : '🐀 Rémy fragen'}
+          {c.remyBusy ? '⏳…' : (<><div>🐀 Rémy schlägt vor</div><div style={{ fontSize: 11, color: '#8899aa' }}>neues Gericht</div></>)}
         </button>
         <button onClick={() => toggle('manual')}
           style={{ flex: 1, padding: '6px 4px', border: `1px solid ${c.subMode === 'manual' ? '#1D9E75' : '#ddd'}`, borderRadius: 8, background: c.subMode === 'manual' ? '#E1F5EE' : 'white', cursor: 'pointer', fontSize: 11, color: c.subMode === 'manual' ? '#0F6E56' : '#555', minWidth: 60 }}>
-          🔄 Anderes Gericht
+          <div>💡 Meine Idee</div>
+          <div style={{ fontSize: 11, color: c.subMode === 'manual' ? '#0F6E56' : '#8899aa' }}>Rémy plant</div>
         </button>
         <button onClick={() => toggle('pantry')}
           style={{ flex: 1, padding: '6px 4px', border: `1px solid ${c.subMode === 'pantry' ? '#1D9E75' : '#ddd'}`, borderRadius: 8, background: c.subMode === 'pantry' ? '#E1F5EE' : 'white', cursor: 'pointer', fontSize: 11, color: c.subMode === 'pantry' ? '#0F6E56' : '#555', minWidth: 60 }}>
@@ -128,7 +162,8 @@ function gerichtAendernPanel(c: GAPCfg) {
         </button>
         <button onClick={() => toggle('ergaenzung')}
           style={{ flex: 1, padding: '6px 4px', border: `1px solid ${c.subMode === 'ergaenzung' ? '#1D9E75' : '#ddd'}`, borderRadius: 8, background: c.subMode === 'ergaenzung' ? '#E1F5EE' : 'white', cursor: 'pointer', fontSize: 11, color: c.subMode === 'ergaenzung' ? '#0F6E56' : '#555', minWidth: 60 }}>
-          ➕ Zutat hinzufügen
+          <div>✏️ Anpassen</div>
+          <div style={{ fontSize: 11, color: c.subMode === 'ergaenzung' ? '#0F6E56' : '#8899aa' }}>z.B. ohne Oliven</div>
         </button>
         <button onClick={() => { if (!dis) c.onOpenRezeptbuch?.() }}
           style={{ flex: 1, padding: '6px 4px', border: '1px solid #ddd', borderRadius: 8, background: 'white', cursor: dis ? 'default' : 'pointer', fontSize: 11, color: '#555', minWidth: 60, opacity: dis ? 0.4 : 1 }}>
@@ -144,7 +179,7 @@ function gerichtAendernPanel(c: GAPCfg) {
           <div style={{ display: 'flex', gap: 6 }}>
             <input type="text" value={c.textInput} onChange={ev => c.setTextInput(ev.target.value)}
               onKeyDown={ev => ev.key === 'Enter' && !!c.textInput.trim() && c.onApplyManual(c.textInput, c.manualTyp ?? undefined)}
-              placeholder="Gerichtsname…" autoFocus
+              placeholder="z.B. Lasagne mit Rinderhack…" autoFocus
               style={{ flex: 1, fontSize: 12, padding: '6px 10px', border: '1px solid #ddd', borderRadius: 6, outline: 'none' }} />
             <button onClick={() => c.onApplyManual(c.textInput, c.manualTyp ?? undefined)} disabled={!c.textInput.trim()}
               style={{ padding: '6px 12px', border: 'none', borderRadius: 6, background: '#1D9E75', color: 'white', fontSize: 12, fontWeight: 600, cursor: c.textInput.trim() ? 'pointer' : 'default', opacity: c.textInput.trim() ? 1 : 0.4 }}>✓</button>
@@ -461,6 +496,7 @@ export default function WocheScreen({
   const planTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const planStartRef = useRef(0)
   const [showWeekHint, setShowWeekHint] = useState(false)
+  const [expandedAllergenKeys, setExpandedAllergenKeys] = useState<Set<string>>(() => new Set())
   const planViewRef = useRef<HTMLDivElement>(null)
 
   // sessionStorage: Vorschlag bei Reload wiederherstellen
@@ -3314,7 +3350,7 @@ export default function WocheScreen({
               <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
                 <input type="text" value={manualDishInput} onChange={ev => setManualDishInput(ev.target.value)}
                   onKeyDown={ev => ev.key === 'Enter' && !!manualDishInput.trim() && applyNewManualDish(tag, slot, manualDishInput)}
-                  placeholder="Gerichtsname…" autoFocus
+                  placeholder="z.B. Lasagne mit Rinderhack…" autoFocus
                   style={{ flex: 1, fontSize: 12, padding: '6px 10px', border: '1px solid #ddd', borderRadius: 6, outline: 'none' }} />
                 <button onClick={() => applyNewManualDish(tag, slot, manualDishInput)} disabled={!manualDishInput.trim()}
                   style={{ padding: '6px 12px', border: 'none', borderRadius: 6, background: '#1D9E75', color: 'white', fontSize: 12, fontWeight: 600, cursor: manualDishInput.trim() ? 'pointer' : 'default', opacity: manualDishInput.trim() ? 1 : 0.4 }}>✓</button>
@@ -3658,12 +3694,28 @@ export default function WocheScreen({
                               )}
                               {(() => { const w = getErnährungsWarnung(e, pendingPlan); return w ? <span style={{ fontSize: 9, background: '#FEF3C7', color: '#D97706', borderRadius: 4, padding: '1px 5px', fontWeight: 600, flexShrink: 0 }}>{w}</span> : null })()}
                             </div>
-                            {(pendingPlanMeals[e.gericht]?.ersetzteZutaten?.length ?? 0) > 0 && (
-                              <div style={{ fontSize: 10, color: '#DC2626', marginTop: 1 }}>⚠️ {pendingPlanMeals[e.gericht]!.ersetzteZutaten!.join(' · ')}</div>
-                            )}
-                            {getRecipeAllergenWarnings(pendingPlanMeals[e.gericht]).length > 0 && (
-                              <div style={{ fontSize: 10, color: '#991B1B', marginTop: 1 }}>⚠️ Prüfen: {getRecipeAllergenWarnings(pendingPlanMeals[e.gericht]).join(' · ')}</div>
-                            )}
+                            {(() => {
+                              const rezept = pendingPlanMeals[e.gericht]
+                              const ersetzt = rezept?.ersetzteZutaten ?? []
+                              const warnings = getRecipeAllergenWarnings(rezept)
+                              const eKey = `pending-${e.tag}-${e.slot}`
+                              const isExp = expandedAllergenKeys.has(eKey)
+                              return (
+                                <>
+                                  {warnings.length > 0 && (
+                                    <div style={{ fontSize: 10, color: '#991B1B', marginTop: 1 }}>⚠️ ungelöst: {warnings.join(' · ')}</div>
+                                  )}
+                                  {ersetzt.length > 0 && (
+                                    <div style={{ marginTop: 1 }}>
+                                      <span role="button" onClick={ev => { ev.stopPropagation(); setExpandedAllergenKeys(prev => { const n = new Set(prev); if (n.has(eKey)) n.delete(eKey); else n.add(eKey); return n }) }} style={{ fontSize: 10, color: '#D97706', cursor: 'pointer' }}>
+                                        🔸 angepasst für {extractPersonNames(ersetzt)} {isExp ? '▾' : '▸'}
+                                      </span>
+                                      {isExp && <div style={{ fontSize: 10, color: '#888', marginTop: 1 }}>{formatErsetzteZutatenKurz(ersetzt)}</div>}
+                                    </div>
+                                  )}
+                                </>
+                              )
+                            })()}
                             {(() => {
                               const ergs = wishes.filter((w): w is Extract<Wish, { type: 'ergaenzung' }> => w.type === 'ergaenzung' && w.tag === e.tag && w.slot === e.slot)
                               if (!ergs.length) return null
@@ -4399,12 +4451,28 @@ export default function WocheScreen({
                               )}
                               {(() => { const w = getErnährungsWarnung(e, weekPlan); return w ? <span style={{ fontSize: 9, background: '#FEF3C7', color: '#D97706', borderRadius: 4, padding: '1px 5px', fontWeight: 600, flexShrink: 0 }}>{w}</span> : null })()}
                             </div>
-                            {(getMeal(mealsData, e.tag, e.slot, e.gericht)?.ersetzteZutaten?.length ?? 0) > 0 && (
-                              <div style={{ fontSize: 10, color: '#DC2626', marginTop: 1 }}>⚠️ {getMeal(mealsData, e.tag, e.slot, e.gericht)!.ersetzteZutaten!.join(' · ')}</div>
-                            )}
-                            {getRecipeAllergenWarningsForEntry(getMeal(mealsData, e.tag, e.slot, e.gericht), e).length > 0 && (
-                              <div style={{ fontSize: 10, color: '#991B1B', marginTop: 1 }}>⚠️ Prüfen: {getRecipeAllergenWarningsForEntry(getMeal(mealsData, e.tag, e.slot, e.gericht), e).join(' · ')}</div>
-                            )}
+                            {(() => {
+                              const rezept = getMeal(mealsData, e.tag, e.slot, e.gericht)
+                              const ersetzt = rezept?.ersetzteZutaten ?? []
+                              const warnings = getRecipeAllergenWarningsForEntry(rezept, e)
+                              const eKey = `confirmed-${e.tag}-${e.slot}`
+                              const isExp = expandedAllergenKeys.has(eKey)
+                              return (
+                                <>
+                                  {warnings.length > 0 && (
+                                    <div style={{ fontSize: 10, color: '#991B1B', marginTop: 1 }}>⚠️ ungelöst: {warnings.join(' · ')}</div>
+                                  )}
+                                  {ersetzt.length > 0 && (
+                                    <div style={{ marginTop: 1 }}>
+                                      <span role="button" onClick={ev => { ev.stopPropagation(); setExpandedAllergenKeys(prev => { const n = new Set(prev); if (n.has(eKey)) n.delete(eKey); else n.add(eKey); return n }) }} style={{ fontSize: 10, color: '#D97706', cursor: 'pointer' }}>
+                                        🔸 angepasst für {extractPersonNames(ersetzt)} {isExp ? '▾' : '▸'}
+                                      </span>
+                                      {isExp && <div style={{ fontSize: 10, color: '#888', marginTop: 1 }}>{formatErsetzteZutatenKurz(ersetzt)}</div>}
+                                    </div>
+                                  )}
+                                </>
+                              )
+                            })()}
                             {planSettings?.mahlzeitenBestaetigt && planSettings.mahlzeitenKonfig?.[tag] && (() => {
                               const k = planSettings.mahlzeitenKonfig![tag]
                               const erwartet = slot === 'Mittag' ? (k.mittag === 'kein' ? undefined : k.mittag) : k.abend
@@ -4812,9 +4880,28 @@ export default function WocheScreen({
                                                 <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 14, height: 14, borderRadius: '50%', background: '#EF4444', color: 'white', fontSize: 9, fontWeight: 700, flexShrink: 0 }}>!</span>
                                               )}
                                             </div>
-                                            {(nwPendingMeals[e!.gericht]?.ersetzteZutaten?.length ?? 0) > 0 && (
-                                              <div style={{ fontSize: 10, color: '#DC2626', marginTop: 1 }}>⚠️ {nwPendingMeals[e!.gericht]!.ersetzteZutaten!.join(' · ')}</div>
-                                            )}
+                                            {(() => {
+                                              const rezept = nwPendingMeals[e!.gericht]
+                                              const ersetzt = rezept?.ersetzteZutaten ?? []
+                                              const warnings = getRecipeAllergenWarnings(rezept)
+                                              const eKey = `nwpending-${e!.tag}-${e!.slot}`
+                                              const isExp = expandedAllergenKeys.has(eKey)
+                                              return (
+                                                <>
+                                                  {warnings.length > 0 && (
+                                                    <div style={{ fontSize: 10, color: '#991B1B', marginTop: 1 }}>⚠️ ungelöst: {warnings.join(' · ')}</div>
+                                                  )}
+                                                  {ersetzt.length > 0 && (
+                                                    <div style={{ marginTop: 1 }}>
+                                                      <span role="button" onClick={ev => { ev.stopPropagation(); setExpandedAllergenKeys(prev => { const n = new Set(prev); if (n.has(eKey)) n.delete(eKey); else n.add(eKey); return n }) }} style={{ fontSize: 10, color: '#D97706', cursor: 'pointer' }}>
+                                                        🔸 angepasst für {extractPersonNames(ersetzt)} {isExp ? '▾' : '▸'}
+                                                      </span>
+                                                      {isExp && <div style={{ fontSize: 10, color: '#888', marginTop: 1 }}>{formatErsetzteZutatenKurz(ersetzt)}</div>}
+                                                    </div>
+                                                  )}
+                                                </>
+                                              )
+                                            })()}
                                             {(() => {
                                               const prefix = `${e!.tag} ${e!.slot === 'Mittag' ? '☀️' : '🌙'}: `
                                               const ergs = (nextWeekData?.wishes ?? []).filter(w => w.text.startsWith(prefix))
