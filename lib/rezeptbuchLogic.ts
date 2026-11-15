@@ -82,7 +82,16 @@ export async function autoSaveRezeptToBook(gerName: string, rezept: Rezept, erst
     .eq('family_id', familyId)
     .ilike('rezept->>name', gerName)
     .maybeSingle()
-  if (existing) return null
+  if (existing) {
+    const { data, error } = await supabase
+      .from('recipe_book')
+      .update({ rezept, updated_at: new Date().toISOString() })
+      .eq('id', (existing as { id: string }).id)
+      .select('*')
+      .single()
+    if (error || !data) { console.error('[autoSaveRezeptToBook update]', error); return null }
+    return rowToEntry(data as Record<string, unknown>)
+  }
   let kategorie: string | null = null
   try {
     const resp = await fetch('/api/rezeptbuch/kategorisieren', {

@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, useRef, useMemo } from 'react'
-import { generateWeekPlan, getRemySuggestions, generateRecipe, rescaleRecipe, adjustRecipe, loadMissingRecipes, getPersonCountForSlot, saveLastDishes, isFullRecipe, getLastRecipeErrorCode, getMondayIso, getNextMondayIso, applySwap, checkAllergiesForSwap, checkFreshnessWarning, loadHistoryDishes, fetchFreshMealsData, saveMealsDataOnly, mergeRecipeToDb } from '../lib/mealLogic'
+import { generateWeekPlan, getRemySuggestions, generateRecipe, rescaleRecipeLocally, findInRezeptbuch, adjustRecipe, loadMissingRecipes, getPersonCountForSlot, saveLastDishes, isFullRecipe, getLastRecipeErrorCode, getMondayIso, getNextMondayIso, applySwap, checkAllergiesForSwap, checkFreshnessWarning, loadHistoryDishes, fetchFreshMealsData, saveMealsDataOnly, mergeRecipeToDb } from '../lib/mealLogic'
 import { checkAllergens, formatAllergenWarningsCard } from '../lib/allergenCheck'
 import { rescaleShoppingListMengen, rewriteShoppingItemsForDish, swapShoppingItemsTags, generateShoppingList, removeShoppingItemsForDish, moveShoppingItemsForDish, generateItemsForEntry, computeNextWeekCoverage } from '../lib/shoppingLogic'
 import { getFreezerListString, getPantryListString, addFreezerItem, deleteFreezerItem, addPantryItem } from '../lib/freezerLogic'
@@ -589,6 +589,7 @@ export default function WocheScreen({
   const [adjustAllergieHinweise, setAdjustAllergieHinweise] = useState<string[]>([])
   const [saveToBookLoading, setSaveToBookLoading] = useState(false)
   const [savedToBookName, setSavedToBookName] = useState<string | null>(null)
+  const [afterAdjustMealName, setAfterAdjustMealName] = useState<string | null>(null)
 
   const [chefAltSelection, setChefAltSelection] = useState<Record<string, string>>({})
   const [chefErgaenzungIds, setChefErgaenzungIds] = useState<string[]>([])
@@ -858,6 +859,17 @@ export default function WocheScreen({
     try {
       const historyDishes = await loadHistoryDishes(4)
       const mergedLastDishes = [...new Set([...historyDishes, ...lastDishes])].slice(0, 40)
+      const nwVermeidenList = rezeptbuchEntries.filter(e => e.vermeiden).map(e => e.rezept.name)
+      const nwRezeptbuchNamen = rezeptbuchEntries
+        .filter(e => !e.vermeiden)
+        .filter(e => !mergedLastDishes.some(d => d.toLowerCase() === e.rezept.name.toLowerCase()))
+        .sort((a, b) => {
+          const avgA = a.anzahlStimmen > 0 ? a.sterneSumme / a.anzahlStimmen : 0
+          const avgB = b.anzahlStimmen > 0 ? b.sterneSumme / b.anzahlStimmen : 0
+          return avgB - avgA
+        })
+        .slice(0, 30)
+        .map(e => e.rezept.name)
       const { plan: result, mealsData: newMeals } = await generateWeekPlan({
         mittagsloseTage: nwMtl,
         planWE: nwPw,
@@ -873,6 +885,8 @@ export default function WocheScreen({
         lastDishes: mergedLastDishes,
         mahlzeitenKonfig: defaultMealConfig,
         ernährungsHinweis,
+        vermeidenList: nwVermeidenList.length > 0 ? nwVermeidenList : undefined,
+        rezeptbuchNamen: nwRezeptbuchNamen.length > 0 ? nwRezeptbuchNamen : undefined,
       })
       setNwPlanProgress(100)
       setNwPendingPlan(result)
@@ -2349,18 +2363,14 @@ export default function WocheScreen({
       const rezept1 = getMeal(mealsData, t1, s1, e1.gericht)
       const rezept2 = getMeal(mealsData, t2, s2, e2.gericht)
       if (rezept1 && isFullRecipe(rezept1) && (rezept1.personenAnzahl ?? pc1) !== pc2) {
-        const rescaled = await rescaleRecipe(rezept1, pc2)
-        if (rescaled) {
-          newMealsData[e1.gericht] = rescaled
-          newShoppingList = rescaleShoppingListMengen(newShoppingList, e1.gericht, rescaled.zutaten)
-        }
+        const rescaled = rescaleRecipeLocally(rezept1, pc2)
+        newMealsData[e1.gericht] = rescaled
+        newShoppingList = rescaleShoppingListMengen(newShoppingList, e1.gericht, rescaled.zutaten)
       }
       if (rezept2 && isFullRecipe(rezept2) && (rezept2.personenAnzahl ?? pc2) !== pc1) {
-        const rescaled = await rescaleRecipe(rezept2, pc1)
-        if (rescaled) {
-          newMealsData[e2.gericht] = rescaled
-          newShoppingList = rescaleShoppingListMengen(newShoppingList, e2.gericht, rescaled.zutaten)
-        }
+        const rescaled = rescaleRecipeLocally(rezept2, pc1)
+        newMealsData[e2.gericht] = rescaled
+        newShoppingList = rescaleShoppingListMengen(newShoppingList, e2.gericht, rescaled.zutaten)
       }
     }
 
@@ -2461,18 +2471,14 @@ export default function WocheScreen({
       const rezept1 = nwMealsDataOrig[e1.gericht]
       const rezept2 = nwMealsDataOrig[e2.gericht]
       if (rezept1 && isFullRecipe(rezept1) && (rezept1.personenAnzahl ?? pc1) !== pc2) {
-        const rescaled = await rescaleRecipe(rezept1, pc2)
-        if (rescaled) {
-          newMealsData[e1.gericht] = rescaled
-          newShoppingList = rescaleShoppingListMengen(newShoppingList, e1.gericht, rescaled.zutaten)
-        }
+        const rescaled = rescaleRecipeLocally(rezept1, pc2)
+        newMealsData[e1.gericht] = rescaled
+        newShoppingList = rescaleShoppingListMengen(newShoppingList, e1.gericht, rescaled.zutaten)
       }
       if (rezept2 && isFullRecipe(rezept2) && (rezept2.personenAnzahl ?? pc2) !== pc1) {
-        const rescaled = await rescaleRecipe(rezept2, pc1)
-        if (rescaled) {
-          newMealsData[e2.gericht] = rescaled
-          newShoppingList = rescaleShoppingListMengen(newShoppingList, e2.gericht, rescaled.zutaten)
-        }
+        const rescaled = rescaleRecipeLocally(rezept2, pc1)
+        newMealsData[e2.gericht] = rescaled
+        newShoppingList = rescaleShoppingListMengen(newShoppingList, e2.gericht, rescaled.zutaten)
       }
     }
 
@@ -2810,16 +2816,27 @@ export default function WocheScreen({
           await onWeekPlanChange(weekPlan, { ...mealsData, ...fresh })
           return
         }
-        const rescaled = await rescaleRecipe(freshRecipe!, personCount)
-        if (rescaled) {
-          const withRescaled = { ...fresh, [gericht]: { ...rescaled, personenAnzahl: personCount }, [slotKey]: { ...rescaled, personenAnzahl: personCount } }
-          await onWeekPlanChange(weekPlan, withRescaled)
-          await onShoppingListChange(rescaleShoppingListMengen(shoppingList, gericht, rescaled.zutaten, false))
+        const rescaled = rescaleRecipeLocally(freshRecipe!, personCount)
+        const withRescaled = { ...fresh, [gericht]: { ...rescaled, personenAnzahl: personCount }, [slotKey]: { ...rescaled, personenAnzahl: personCount } }
+        await onWeekPlanChange(weekPlan, withRescaled)
+        await onShoppingListChange(rescaleShoppingListMengen(shoppingList, gericht, rescaled.zutaten, false))
+        return
+      }
+
+      // 1.9 Rezeptbuch prüfen (vor Lock / KI-Aufruf)
+      if (rezeptbuchEntries.length > 0) {
+        const bookEntry = findInRezeptbuch(gericht, rezeptbuchEntries)
+        if (bookEntry) {
+          const bookRecipe = { ...bookEntry.rezept, quelle: 'rezeptbuch' as string }
+          const toSave: Rezept = {
+            ...((bookRecipe.personenAnzahl ?? 4) !== personCount ? rescaleRecipeLocally(bookRecipe, personCount) : bookRecipe),
+            personenAnzahl: personCount,
+            ersetzteZutaten: bookRecipe.ersetzteZutaten?.length ? bookRecipe.ersetzteZutaten : (freshRecipe?.ersetzteZutaten ?? []),
+          }
+          const savedMeals = await mergeRecipeToDb(gericht, slotKey, toSave)
+          await onWeekPlanChange(weekPlan, { ...mealsData, ...savedMeals })
           return
         }
-        // Skalierung fehlgeschlagen → vorhandenes Rezept zeigen statt leer zurückgeben
-        await onWeekPlanChange(weekPlan, { ...mealsData, ...fresh })
-        return
       }
 
       // 2. Lock prüfen: läuft bereits eine Erstellung auf einem anderen Gerät?
@@ -2892,9 +2909,16 @@ export default function WocheScreen({
     setRecipeLoading(gericht)
     try {
       if (isFullRecipe(existing) && existing!.personenAnzahl !== undefined && existing!.personenAnzahl !== personCount) {
-        const rescaled = await rescaleRecipe(existing!, personCount)
-        if (rescaled) { setNwPendingMeals(prev => ({ ...prev, [gericht]: rescaled })); return }
-        // Skalierung fehlgeschlagen → bestehendes Rezept zeigen (kein weiterer KI-Aufruf)
+        const rescaled = rescaleRecipeLocally(existing!, personCount)
+        setNwPendingMeals(prev => ({ ...prev, [gericht]: rescaled }))
+        return
+      }
+      // Rezeptbuch prüfen vor KI-Aufruf
+      const bookEntry = rezeptbuchEntries.length > 0 ? findInRezeptbuch(gericht, rezeptbuchEntries) : undefined
+      if (bookEntry) {
+        const bookRecipe = { ...bookEntry.rezept, quelle: 'rezeptbuch' as string }
+        const rescaled = (bookRecipe.personenAnzahl ?? 4) !== personCount ? rescaleRecipeLocally(bookRecipe, personCount) : bookRecipe
+        setNwPendingMeals(prev => ({ ...prev, [gericht]: { ...rescaled, personenAnzahl: personCount } }))
         return
       }
       const rezept = await generateRecipe(gericht, emoji, getFreezerListString(freezerItems), getPantryListString(pantryItems), familyPrompt, personCount)
@@ -2925,8 +2949,16 @@ export default function WocheScreen({
     setRecipeLoading(gericht)
     try {
       if (isFullRecipe(existing) && existing!.personenAnzahl !== undefined && existing!.personenAnzahl !== personCount) {
-        const rescaled = await rescaleRecipe(existing!, personCount)
-        if (rescaled) { setPendingPlanMeals(prev => ({ ...prev, [gericht]: rescaled })); return }
+        const rescaled = rescaleRecipeLocally(existing!, personCount)
+        setPendingPlanMeals(prev => ({ ...prev, [gericht]: rescaled }))
+        return
+      }
+      // Rezeptbuch prüfen vor KI-Aufruf
+      const bookEntry = rezeptbuchEntries.length > 0 ? findInRezeptbuch(gericht, rezeptbuchEntries) : undefined
+      if (bookEntry) {
+        const bookRecipe = { ...bookEntry.rezept, quelle: 'rezeptbuch' as string }
+        const rescaled = (bookRecipe.personenAnzahl ?? 4) !== personCount ? rescaleRecipeLocally(bookRecipe, personCount) : bookRecipe
+        setPendingPlanMeals(prev => ({ ...prev, [gericht]: { ...rescaled, personenAnzahl: personCount } }))
         return
       }
       const pendingEntry = pendingPlan.find(e => e.tag === tag && e.slot === slot)
@@ -2960,19 +2992,26 @@ export default function WocheScreen({
     try {
       const nextMonday = nextWeekStart ?? getNextMondayIso()
       if (isFullRecipe(existing) && existing!.personenAnzahl !== undefined && existing!.personenAnzahl !== personCount) {
-        const rescaled = await rescaleRecipe(existing!, personCount)
-        if (rescaled) {
-          const nwList = nextWeekData?.shoppingList ?? []
-          await onNextWeekDataChange({
-            mealsData: { ...(nextWeekData?.mealsData ?? {}), [gericht]: rescaled, [mealsKey(tag, slot)]: { ...rescaled, fuerGericht: gericht } },
-            shoppingList: rescaleShoppingListMengen(nwList, gericht, rescaled.zutaten, false),
-          }, nextMonday)
-          if (shoppingList.some(i => i.gericht === gericht && !!i.nextWeek && !i.erledigt)) {
-            await onShoppingListChange(rescaleShoppingListMengen(shoppingList, gericht, rescaled.zutaten, true))
-          }
-          return
+        const rescaled = rescaleRecipeLocally(existing!, personCount)
+        const nwList = nextWeekData?.shoppingList ?? []
+        await onNextWeekDataChange({
+          mealsData: { ...(nextWeekData?.mealsData ?? {}), [gericht]: rescaled, [mealsKey(tag, slot)]: { ...rescaled, fuerGericht: gericht } },
+          shoppingList: rescaleShoppingListMengen(nwList, gericht, rescaled.zutaten, false),
+        }, nextMonday)
+        if (shoppingList.some(i => i.gericht === gericht && !!i.nextWeek && !i.erledigt)) {
+          await onShoppingListChange(rescaleShoppingListMengen(shoppingList, gericht, rescaled.zutaten, true))
         }
-        // Skalierung fehlgeschlagen → bestehendes Rezept zeigen
+        return
+      }
+      // Rezeptbuch prüfen vor KI-Aufruf
+      const bookEntry = rezeptbuchEntries.length > 0 ? findInRezeptbuch(gericht, rezeptbuchEntries) : undefined
+      if (bookEntry) {
+        const bookRecipe = { ...bookEntry.rezept, quelle: 'rezeptbuch' as string }
+        const rescaled = (bookRecipe.personenAnzahl ?? 4) !== personCount ? rescaleRecipeLocally(bookRecipe, personCount) : bookRecipe
+        const toSave = { ...rescaled, personenAnzahl: personCount }
+        await onNextWeekDataChange({
+          mealsData: { ...(nextWeekData?.mealsData ?? {}), [gericht]: toSave, [mealsKey(tag, slot)]: { ...toSave, fuerGericht: gericht } },
+        }, nextMonday)
         return
       }
       const rezept = await generateRecipe(gericht, emoji, getFreezerListString(freezerItems), getPantryListString(pantryItems), familyPrompt, personCount, allergenCheckMembers)
@@ -3068,6 +3107,7 @@ export default function WocheScreen({
       const { rezept, allergieHinweise } = result
       const merged: Rezept = { ...rezept, personenAnzahl: personCount, ersetzteZutaten: rezept.ersetzteZutaten?.length ? rezept.ersetzteZutaten : (existing.ersetzteZutaten ?? []) }
       if (allergieHinweise.length > 0) setAdjustAllergieHinweise(allergieHinweise)
+      setAfterAdjustMealName(selectedMealName)
       if (source === 'current') {
         const slotK = mealsKey(tag, slot)
         await onWeekPlanChange(weekPlan, { ...mealsData, [selectedMealName]: merged, [slotK]: { ...merged, fuerGericht: selectedMealName } })
@@ -3109,6 +3149,16 @@ export default function WocheScreen({
       const empfehlenList = rezeptbuchEntries
         .filter(e => { const avg = computeRatingAvg(dishRatings, e.rezept.name); return avg && avg.avg >= 4 && avg.count >= 2 })
         .map(e => e.rezept.name)
+      const rezeptbuchNamen = rezeptbuchEntries
+        .filter(e => !e.vermeiden)
+        .filter(e => !mergedLastDishes.some(d => d.toLowerCase() === e.rezept.name.toLowerCase()))
+        .sort((a, b) => {
+          const avgA = a.anzahlStimmen > 0 ? a.sterneSumme / a.anzahlStimmen : 0
+          const avgB = b.anzahlStimmen > 0 ? b.sterneSumme / b.anzahlStimmen : 0
+          return avgB - avgA
+        })
+        .slice(0, 30)
+        .map(e => e.rezept.name)
       const { plan: newPlan, mealsData: newMeals } = await generateWeekPlan({
         mittagsloseTage: effectiveMtl,
         planWE: effectivePlanWE,
@@ -3125,6 +3175,7 @@ export default function WocheScreen({
         vermeidenList: vermeidenList.length > 0 ? vermeidenList : undefined,
         empfehlenList: empfehlenList.length > 0 ? empfehlenList : undefined,
         ernährungsHinweis,
+        rezeptbuchNamen: rezeptbuchNamen.length > 0 ? rezeptbuchNamen : undefined,
       })
       setPendingPlan(newPlan)
       setPendingPlanMeals(newMeals)
@@ -3724,7 +3775,7 @@ export default function WocheScreen({
           </div>
         )}
         {selectedMealName && (
-          <RecipeModal name={selectedMealName} rezept={selectedRezept(selectedMealName)} loading={recipeLoading === selectedMealName} errorReason={recipeLoading !== selectedMealName ? recipeErrorReason : null} onRetry={recipeContext ? (() => { const { tag: rt, slot: rs, source: rsrc, emoji: re } = recipeContext; if (rsrc === 'current') void openRecipe(selectedMealName, re, rt, rs as WochenSlot); else if (rsrc === 'pending') void openPendingPlanRecipe(selectedMealName, re, rt, rs as WochenSlot); else if (rsrc === 'nwPending') void openNwPendingRecipe(selectedMealName, re, rt, rs as WochenSlot); else if (rsrc === 'nwSaved') void openNwSavedRecipe(selectedMealName, re, rt, rs as WochenSlot) }) : undefined} onClose={() => { setSelectedMealName(null); setRecipeContext(null); setRecipeErrorReason(null); setAdjustAllergieHinweise([]) }} canRewrite={currentUser === wochenchef || canEditSettings} onRewrite={rewriteRecipe} onAdjust={handleAdjustRecipe} allergieHinweise={adjustAllergieHinweise} offeneAllergene={getRecipeAllergenWarnings(selectedRezept(selectedMealName) ?? undefined)} onSaveToBook={onSaveToBook ? (r) => { void handleSaveToBook(r) } : undefined} savedToBook={savedToBookName === selectedMealName} saveToBookLoading={saveToBookLoading} />
+          <RecipeModal name={selectedMealName} rezept={selectedRezept(selectedMealName)} loading={recipeLoading === selectedMealName} errorReason={recipeLoading !== selectedMealName ? recipeErrorReason : null} onRetry={recipeContext ? (() => { const { tag: rt, slot: rs, source: rsrc, emoji: re } = recipeContext; if (rsrc === 'current') void openRecipe(selectedMealName, re, rt, rs as WochenSlot); else if (rsrc === 'pending') void openPendingPlanRecipe(selectedMealName, re, rt, rs as WochenSlot); else if (rsrc === 'nwPending') void openNwPendingRecipe(selectedMealName, re, rt, rs as WochenSlot); else if (rsrc === 'nwSaved') void openNwSavedRecipe(selectedMealName, re, rt, rs as WochenSlot) }) : undefined} onClose={() => { setSelectedMealName(null); setRecipeContext(null); setRecipeErrorReason(null); setAdjustAllergieHinweise([]); setAfterAdjustMealName(null) }} canRewrite={currentUser === wochenchef || canEditSettings} onRewrite={rewriteRecipe} onAdjust={handleAdjustRecipe} allergieHinweise={adjustAllergieHinweise} offeneAllergene={getRecipeAllergenWarnings(selectedRezept(selectedMealName) ?? undefined)} onSaveToBook={onSaveToBook ? (r) => { void handleSaveToBook(r) } : undefined} savedToBook={savedToBookName === selectedMealName} saveToBookLoading={saveToBookLoading} showSaveAfterAdjust={afterAdjustMealName === selectedMealName && recipeLoading !== selectedMealName} alreadyInBook={rezeptbuchEntries.some(e => e.rezept.name.toLowerCase().trim() === selectedMealName.toLowerCase().trim())} onSaveAfterAdjust={() => { const _r = selectedRezept(selectedMealName); if (_r) void handleSaveToBook(_r); setAfterAdjustMealName(null) }} onDismissAfterAdjust={() => setAfterAdjustMealName(null)} />
         )}
         {restzutatenOverlay}
         <div className="topbar">
@@ -3982,7 +4033,7 @@ export default function WocheScreen({
           </div>
         )}
         {selectedMealName && (
-          <RecipeModal name={selectedMealName} rezept={selectedRezept(selectedMealName)} loading={recipeLoading === selectedMealName} errorReason={recipeLoading !== selectedMealName ? recipeErrorReason : null} onRetry={recipeContext ? (() => { const { tag: rt, slot: rs, source: rsrc, emoji: re } = recipeContext; if (rsrc === 'current') void openRecipe(selectedMealName, re, rt, rs as WochenSlot); else if (rsrc === 'pending') void openPendingPlanRecipe(selectedMealName, re, rt, rs as WochenSlot); else if (rsrc === 'nwPending') void openNwPendingRecipe(selectedMealName, re, rt, rs as WochenSlot); else if (rsrc === 'nwSaved') void openNwSavedRecipe(selectedMealName, re, rt, rs as WochenSlot) }) : undefined} onClose={() => { setSelectedMealName(null); setRecipeContext(null); setRecipeErrorReason(null); setAdjustAllergieHinweise([]) }} canRewrite={currentUser === wochenchef || canEditSettings} onRewrite={rewriteRecipe} onAdjust={handleAdjustRecipe} allergieHinweise={adjustAllergieHinweise} offeneAllergene={getRecipeAllergenWarnings(selectedRezept(selectedMealName) ?? undefined)} onSaveToBook={onSaveToBook ? (r) => { void handleSaveToBook(r) } : undefined} savedToBook={savedToBookName === selectedMealName} saveToBookLoading={saveToBookLoading} />
+          <RecipeModal name={selectedMealName} rezept={selectedRezept(selectedMealName)} loading={recipeLoading === selectedMealName} errorReason={recipeLoading !== selectedMealName ? recipeErrorReason : null} onRetry={recipeContext ? (() => { const { tag: rt, slot: rs, source: rsrc, emoji: re } = recipeContext; if (rsrc === 'current') void openRecipe(selectedMealName, re, rt, rs as WochenSlot); else if (rsrc === 'pending') void openPendingPlanRecipe(selectedMealName, re, rt, rs as WochenSlot); else if (rsrc === 'nwPending') void openNwPendingRecipe(selectedMealName, re, rt, rs as WochenSlot); else if (rsrc === 'nwSaved') void openNwSavedRecipe(selectedMealName, re, rt, rs as WochenSlot) }) : undefined} onClose={() => { setSelectedMealName(null); setRecipeContext(null); setRecipeErrorReason(null); setAdjustAllergieHinweise([]); setAfterAdjustMealName(null) }} canRewrite={currentUser === wochenchef || canEditSettings} onRewrite={rewriteRecipe} onAdjust={handleAdjustRecipe} allergieHinweise={adjustAllergieHinweise} offeneAllergene={getRecipeAllergenWarnings(selectedRezept(selectedMealName) ?? undefined)} onSaveToBook={onSaveToBook ? (r) => { void handleSaveToBook(r) } : undefined} savedToBook={savedToBookName === selectedMealName} saveToBookLoading={saveToBookLoading} showSaveAfterAdjust={afterAdjustMealName === selectedMealName && recipeLoading !== selectedMealName} alreadyInBook={rezeptbuchEntries.some(e => e.rezept.name.toLowerCase().trim() === selectedMealName.toLowerCase().trim())} onSaveAfterAdjust={() => { const _r = selectedRezept(selectedMealName); if (_r) void handleSaveToBook(_r); setAfterAdjustMealName(null) }} onDismissAfterAdjust={() => setAfterAdjustMealName(null)} />
         )}
         {restzutatenOverlay}
         {swapTarget && swapSource && (() => {
@@ -5884,7 +5935,7 @@ export default function WocheScreen({
         </div>
       )}
       {selectedMealName && (
-        <RecipeModal name={selectedMealName} rezept={selectedRezept(selectedMealName)} loading={recipeLoading === selectedMealName} onClose={() => { setSelectedMealName(null); setRecipeContext(null); setAdjustAllergieHinweise([]) }} canRewrite={currentUser === wochenchef || canEditSettings} onRewrite={rewriteRecipe} onAdjust={handleAdjustRecipe} allergieHinweise={adjustAllergieHinweise} offeneAllergene={getRecipeAllergenWarnings(selectedRezept(selectedMealName) ?? undefined)} onSaveToBook={onSaveToBook ? (r) => { void handleSaveToBook(r) } : undefined} savedToBook={savedToBookName === selectedMealName} saveToBookLoading={saveToBookLoading} />
+        <RecipeModal name={selectedMealName} rezept={selectedRezept(selectedMealName)} loading={recipeLoading === selectedMealName} onClose={() => { setSelectedMealName(null); setRecipeContext(null); setAdjustAllergieHinweise([]); setAfterAdjustMealName(null) }} canRewrite={currentUser === wochenchef || canEditSettings} onRewrite={rewriteRecipe} onAdjust={handleAdjustRecipe} allergieHinweise={adjustAllergieHinweise} offeneAllergene={getRecipeAllergenWarnings(selectedRezept(selectedMealName) ?? undefined)} onSaveToBook={onSaveToBook ? (r) => { void handleSaveToBook(r) } : undefined} savedToBook={savedToBookName === selectedMealName} saveToBookLoading={saveToBookLoading} showSaveAfterAdjust={afterAdjustMealName === selectedMealName && recipeLoading !== selectedMealName} alreadyInBook={rezeptbuchEntries.some(e => e.rezept.name.toLowerCase().trim() === selectedMealName.toLowerCase().trim())} onSaveAfterAdjust={() => { const _r = selectedRezept(selectedMealName); if (_r) void handleSaveToBook(_r); setAfterAdjustMealName(null) }} onDismissAfterAdjust={() => setAfterAdjustMealName(null)} />
       )}
       {restzutatenOverlay}
       {swapTarget && swapSource && (() => {

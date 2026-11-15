@@ -20,7 +20,7 @@ import type { ConsolidatedItem } from '../lib/shoppingLogic'
 import { generateRecipe, isFullRecipe, getPersonCountForSlot, getMondayIso, getNextMondayIso, loadMissingRecipes } from '../lib/mealLogic'
 import { getFreezerListString, getPantryListString } from '../lib/freezerLogic'
 import { buildFamilyPrompt, DEFAULT_MEMBERS } from '../lib/familyLogic'
-import type { WeekPlanEntry, Rezept, ShoppingItem, Chef, NextWeekData, FreezerItem, PantryItem, FamilyMember, DayAttendance } from '../lib/state'
+import type { WeekPlanEntry, Rezept, ShoppingItem, Chef, NextWeekData, FreezerItem, PantryItem, FamilyMember, DayAttendance, RezeptbuchEntry } from '../lib/state'
 
 const WOCHENTAGE = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag']
 const SEL_KEY = 'einkauf-day-sel'
@@ -99,6 +99,7 @@ interface Props {
   weekStart?: string | null
   nextWeekStart?: string | null
   nwRecipeGenProgress?: { done: number; total: number } | null
+  rezeptbuchEntries?: RezeptbuchEntry[]
 }
 
 type ViewMode = 'tag' | 'zusammen' | 'laden'
@@ -111,7 +112,7 @@ export default function EinkaufScreen({
   canEditSettings, planConfirmed = false, attendance = [],
   shoppingDays = [], nextWeekData = null, freezerItems, pantryItems, members,
   onNextWeekDataChange, weekStart = null, nextWeekStart = null,
-  nwRecipeGenProgress = null,
+  nwRecipeGenProgress = null, rezeptbuchEntries = [],
 }: Props) {
   const [newName, setNewName] = useState('')
   const [newMenge, setNewMenge] = useState('')
@@ -241,6 +242,7 @@ export default function EinkaufScreen({
           nwPlanSnap, nwMealsSnap, freezerStr, pantryStr, fprompt,
           undefined, undefined,
           (d, t) => setNwAutoGenProgress({ done: d, total: t }),
+          rezeptbuchEntries,
         )
         const list = generateShoppingList(nwPlanSnap, updatedMeals, daysToInclude)
         const merged = mergeShoppingList(list, nwListSnap)
@@ -336,6 +338,7 @@ export default function EinkaufScreen({
           nwPlanSnap, nwMealsSnap, freezerStr, pantryStr, fprompt,
           undefined, undefined,
           totalMissing > 0 ? (d, t) => setNwAutoGenProgress({ done: d, total: t }) : undefined,
+          rezeptbuchEntries,
         )
         const list = generateShoppingList(nwPlanSnap, updatedMeals, daysToInclude)
         await onNextWeekDataChange({ shoppingList: list, mealsData: updatedMeals }, nextWeekStart ?? getNextMondayIso())

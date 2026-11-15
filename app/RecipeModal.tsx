@@ -22,6 +22,10 @@ export interface RecipeModalProps {
   onDelete?: () => void
   onUebernehmen?: () => void
   onEdit?: () => void
+  showSaveAfterAdjust?: boolean
+  alreadyInBook?: boolean
+  onSaveAfterAdjust?: () => void
+  onDismissAfterAdjust?: () => void
 }
 
 export default function RecipeModal({
@@ -30,6 +34,7 @@ export default function RecipeModal({
   onSaveToBook, savedToBook, saveToBookLoading,
   isFavorit, onToggleFavorit, onDelete,
   onUebernehmen, onEdit,
+  showSaveAfterAdjust, alreadyInBook, onSaveAfterAdjust, onDismissAfterAdjust,
 }: RecipeModalProps) {
   const [confirmRewrite, setConfirmRewrite] = useState(false)
   const [adjustMode, setAdjustMode] = useState(false)
@@ -189,6 +194,18 @@ export default function RecipeModal({
             {savedToBook && (
               <div style={{ marginTop: 16, padding: '10px 0', textAlign: 'center', fontSize: 13, color: '#0F6E56', fontWeight: 600 }}>
                 ✓ Im Rezeptbuch gespeichert
+              </div>
+            )}
+
+            {showSaveAfterAdjust && !savedToBook && (
+              <div style={{ marginTop: 16, padding: '12px 14px', background: '#F0FAF5', borderRadius: 10, border: '1px solid #B2DFCC' }}>
+                <div style={{ fontSize: 13, color: '#085041', marginBottom: 10 }}>
+                  {alreadyInBook ? 'Fassung im Rezeptbuch aktualisieren?' : 'Angepasste Fassung ins Rezeptbuch?'}
+                </div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button onClick={onSaveAfterAdjust} style={{ flex: 1, padding: '8px 0', background: '#1D9E75', color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Ja</button>
+                  <button onClick={onDismissAfterAdjust} style={{ flex: 1, padding: '8px 0', background: '#f0f0f0', color: '#555', border: 'none', borderRadius: 8, fontSize: 13, cursor: 'pointer' }}>Später</button>
+                </div>
               </div>
             )}
 

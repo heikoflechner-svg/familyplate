@@ -1,5 +1,5 @@
 import { supabase, getFamilyId } from './supabase'
-import type { WeekPlanEntry, Rezept, Wish, RemyVorschlag, WochenSlot, DayAttendance, Chef, ShoppingItem, ChangeProposal, NextWeekData, NextWeekWish, PlanSettings, FamilyMember, TagMahlzeitenKonfig } from './state'
+import type { WeekPlanEntry, Rezept, Wish, RemyVorschlag, WochenSlot, DayAttendance, Chef, ShoppingItem, ChangeProposal, NextWeekData, NextWeekWish, PlanSettings, FamilyMember, TagMahlzeitenKonfig, RezeptbuchEntry } from './state'
 
 function toLocalDateIso(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
@@ -440,6 +440,7 @@ export async function generateWeekPlan(params: {
   vermeidenList?: string[]
   empfehlenList?: string[]
   ernährungsHinweis?: string
+  rezeptbuchNamen?: string[]
 }): Promise<{ plan: WeekPlanEntry[]; mealsData: Record<string, Rezept> }> {
   const resp = await fetch('/api/week-plan', {
     method: 'POST',
@@ -631,6 +632,31 @@ export async function rescaleRecipe(existing: Rezept, newPersonCount: number): P
   }
 }
 
+export function rescaleRecipeLocally(recipe: Rezept, newPersonCount: number): Rezept {
+  const oldPersonCount = recipe.personenAnzahl ?? 4
+  if (oldPersonCount === newPersonCount) return { ...recipe, personenAnzahl: newPersonCount }
+  const factor = newPersonCount / oldPersonCount
+  const scaleAmount = (menge: string): string => {
+    const match = menge.match(/^(\d+([.,]\d+)?)/)
+    if (!match) return menge
+    const original = parseFloat(match[1].replace(',', '.'))
+    if (isNaN(original) || original === 0) return menge
+    const scaled = original * factor
+    const rounded = Math.abs(scaled - Math.round(scaled)) < 0.05 ? Math.round(scaled) : Math.round(scaled * 10) / 10
+    return String(rounded).replace('.', ',') + menge.slice(match[1].length)
+  }
+  return {
+    ...recipe,
+    personenAnzahl: newPersonCount,
+    zutaten: recipe.zutaten.map(z => ({ ...z, menge: scaleAmount(z.menge) })),
+  }
+}
+
+export function findInRezeptbuch(gerName: string, entries: RezeptbuchEntry[]): RezeptbuchEntry | undefined {
+  const normalized = gerName.toLowerCase().trim()
+  return entries.find(e => e.rezept.name.toLowerCase().trim() === normalized)
+}
+
 export async function adjustRecipe(
   existing: Rezept,
   wunsch: string,
@@ -719,6 +745,7 @@ export async function loadMissingRecipes(
   getPersonCount?: (tag: string, slot: WochenSlot) => number,
   familyMembersForCheck?: { name: string; allergien: string[] }[],
   onProgress?: (done: number, total: number) => void,
+  rezeptbuchEntries?: RezeptbuchEntry[],
 ): Promise<Record<string, Rezept>> {
   const result: Record<string, Rezept> = { ...store }
   const seen = new Set<string>()
@@ -734,6 +761,22 @@ export async function loadMissingRecipes(
     const batch = missing.slice(i, i + CONCURRENCY)
     await Promise.all(batch.map(async e => {
       const personCount = getPersonCount ? getPersonCount(e.tag, e.slot) : undefined
+      // Rezeptbuch zuerst prüfen – spart einen Sonnet-Aufruf
+      const bookEntry = rezeptbuchEntries?.length ? findInRezeptbuch(e.gericht, rezeptbuchEntries) : undefined
+      if (bookEntry) {
+        const bookRecipe = { ...bookEntry.rezept, quelle: 'rezeptbuch' as string }
+        const rescaled = personCount !== undefined && (bookRecipe.personenAnzahl ?? 4) !== personCount
+          ? rescaleRecipeLocally(bookRecipe, personCount)
+          : bookRecipe
+        result[e.gericht] = {
+          ...rescaled,
+          personenAnzahl: personCount ?? rescaled.personenAnzahl,
+          ersetzteZutaten: rescaled.ersetzteZutaten?.length ? rescaled.ersetzteZutaten : (store[e.gericht]?.ersetzteZutaten ?? []),
+        }
+        done++
+        onProgress?.(done, total)
+        return
+      }
       let r = await generateRecipe(e.gericht, e.emoji, freezerList, pantryList, familyPrompt, personCount, familyMembersForCheck, e.mahlzeitTyp as 'leicht' | 'normal' | undefined)
       if (!r) r = await generateRecipe(e.gericht, e.emoji, freezerList, pantryList, familyPrompt, personCount, familyMembersForCheck, e.mahlzeitTyp as 'leicht' | 'normal' | undefined)
       if (r) {
