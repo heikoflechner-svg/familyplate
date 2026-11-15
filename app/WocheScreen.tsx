@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { generateWeekPlan, getRemySuggestions, generateRecipe, rescaleRecipe, adjustRecipe, loadMissingRecipes, getPersonCountForSlot, saveLastDishes, isFullRecipe, getLastRecipeErrorCode, getMondayIso, getNextMondayIso, applySwap, checkAllergiesForSwap, checkFreshnessWarning, loadHistoryDishes, fetchFreshMealsData, saveMealsDataOnly, mergeRecipeToDb } from '../lib/mealLogic'
 import { checkAllergens, formatAllergenWarningsCard } from '../lib/allergenCheck'
-import { rescaleShoppingListMengen, rewriteShoppingItemsForDish, swapShoppingItemsTags, generateShoppingList, removeShoppingItemsForDish, moveShoppingItemsForDish, generateItemsForEntry } from '../lib/shoppingLogic'
+import { rescaleShoppingListMengen, rewriteShoppingItemsForDish, swapShoppingItemsTags, generateShoppingList, removeShoppingItemsForDish, moveShoppingItemsForDish, generateItemsForEntry, computeNextWeekCoverage } from '../lib/shoppingLogic'
 import { getFreezerListString, getPantryListString, addFreezerItem, deleteFreezerItem, addPantryItem } from '../lib/freezerLogic'
 import { buildFamilyPrompt, buildMemberCfg, DEFAULT_MEMBERS, buildErnährungsHinweis } from '../lib/familyLogic'
 import type { WeekPlanEntry, Rezept, FreezerItem, PantryItem, Wish, Chef, WochenSlot, FamilyMember, DayAttendance, ChangeProposal, ShoppingItem, RemyVorschlag, NextWeekData, NextWeekWish, PlanSettings, TagMahlzeitenKonfig, RezeptbuchEntry, ErnährungsVorgabe } from '../lib/state'
@@ -914,23 +914,32 @@ export default function WocheScreen({
     setNwSlotLoading(null)
   }
 
-  async function acceptNwPlan() {
+  async function festmachenNwPlan() {
     if (!nwPendingPlan || !onNextWeekDataChange) return
     setNwSaving(true)
     const nextMonday = nextWeekStart ?? getNextMondayIso()
     const migratedNwMeals = migrateMealsDataAddSlotKeys(nwPendingPlan, nwPendingMeals)
-    await onNextWeekDataChange({ plan: nwPendingPlan, mealsData: migratedNwMeals, planConfirmed: false, isDraft: false }, nextMonday)
+    const planSnapshot = [...nwPendingPlan]
+    const mealsSnapshot = { ...migratedNwMeals }
+    await onNextWeekDataChange({ plan: planSnapshot, mealsData: mealsSnapshot, planConfirmed: true, isDraft: false }, nextMonday)
     setNwPendingPlan(null)
     setNwPendingMeals({})
     setNwSaving(false)
-  }
-
-  async function confirmNwWeek() {
-    if (!onNextWeekDataChange) return
-    setNwSaving(true)
-    const nextMonday = nextWeekStart ?? getNextMondayIso()
-    await onNextWeekDataChange({ planConfirmed: true }, nextMonday)
-    setNwSaving(false)
+    // Rezepte im Hintergrund nachgenerieren und Einkaufsliste sofort erstellen
+    const mbs = members.length ? members : DEFAULT_MEMBERS
+    const pc = (tag: string, slot: WochenSlot) => getPersonCountForSlot(tag, slot, attendance, mbs)
+    const freezerStr = getFreezerListString(freezerItems)
+    const pantryStr = getPantryListString(pantryItems)
+    const mon = nextMonday
+    const saveChange = onNextWeekDataChange
+    void loadMissingRecipes(planSnapshot, mealsSnapshot, freezerStr, pantryStr, familyPrompt, pc, allergenCheckMembers)
+      .then(full => {
+        const fullMigrated = migrateMealsDataAddSlotKeys(planSnapshot, full)
+        const coverageDays = computeNextWeekCoverage(shoppingDays)
+        const listDays = WOCHENTAGE.filter(d => planSnapshot.some(e => e.tag === d) && !coverageDays.includes(d))
+        const list = generateShoppingList(planSnapshot, fullMigrated, listDays)
+        void saveChange({ mealsData: fullMigrated, shoppingList: list }, mon)
+      })
   }
 
   async function replanNwSlot(tag: string, slot: WochenSlot, forceTyp?: 'leicht' | 'normal') {
@@ -5003,74 +5012,14 @@ export default function WocheScreen({
                           )
                         })}
                         <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-                          <button className="btn primary" onClick={acceptNwPlan} disabled={nwSaving} style={{ fontSize: 12 }}>
-                            {nwSaving ? '⏳…' : '✅ Plan übernehmen'}
+                          <button className="btn primary" onClick={festmachenNwPlan} disabled={nwSaving} style={{ fontSize: 12 }}>
+                            {nwSaving ? '⏳…' : '✅ Plan festmachen'}
                           </button>
                           <button onClick={() => { setNwPendingPlan(null); setNwPendingMeals({}); const mon = nextWeekStart ?? getNextMondayIso(); void onNextWeekDataChange?.({ plan: [], mealsData: {}, isDraft: false }, mon) }} style={{ padding: '10px 14px', border: '1px solid #ddd', borderRadius: 8, background: 'white', fontSize: 12, cursor: 'pointer', color: '#666' }}>✕</button>
                         </div>
                       </div>
                     )}
 
-                    {/* Plan saved, not yet confirmed */}
-                    {!nwPlanLoading && !nwPendingPlan && nwPlan.length > 0 && !nwConfirmed && (
-                      <div style={{ padding: '8px 12px' }}>
-                        <div style={{ fontSize: 11, color: '#888', marginBottom: 8 }}>Plan vorhanden – noch nicht freigegeben</div>
-                        {(nwEffectivePlanWE ? WOCHENTAGE : WOCHENTAGE.slice(0, 5)).map(tag => {
-                          const mittag = nwPlan.find(e => e.tag === tag && e.slot === 'Mittag')
-                          const abend = nwPlan.find(e => e.tag === tag && e.slot === 'Abend')
-                          if (!mittag && !abend) return null
-                          return (
-                            <div key={tag} style={{ borderRadius: 8, border: '1px solid #e5e7eb', marginBottom: 6, overflow: 'hidden' }}>
-                              <div style={{ padding: '5px 10px', background: '#f9fafb', borderBottom: '1px solid #f0f0f0', fontSize: 10, fontWeight: 700, color: '#666', textTransform: 'uppercase', letterSpacing: '.5px' }}>{tag}<span style={{ textTransform: 'none', fontWeight: 400, letterSpacing: 0, color: '#aaa' }}>, {getTagDate(nextMonday, tag)}</span></div>
-                              {[mittag, abend].filter(Boolean).map(e => {
-                                const nwr = nextWeekData?.mealsData?.[e!.gericht]
-                                return (
-                                <div key={`${e!.slot}`} style={{ padding: '5px 10px', display: 'flex', alignItems: 'center', gap: 8, borderTop: '1px solid #f5f5f5' }}>
-                                  <SlotPill slot={e!.slot} />
-                                  <span style={{ fontSize: 15 }}>{e!.emoji}</span>
-                                  <div onClick={() => openNwSavedRecipe(e!.gericht, e!.emoji, e!.tag, e!.slot)} style={{ flex: 1, cursor: 'pointer' }}>
-                                    <div style={{ fontSize: 12, color: '#333', display: 'flex', alignItems: 'center', gap: 4 }}>
-                                      {e!.gericht}<span style={{ fontSize: 10, color: '#bbb' }}>›</span>
-                                      {e!.mahlzeitTyp === 'leicht' && <span style={{ fontSize: 9, background: '#EEF2FF', color: '#4338CA', borderRadius: 4, padding: '1px 5px', fontWeight: 600 }}>leicht</span>}
-                                      {getRecipeAllergenWarnings(nwr).length > 0 && (
-                                        <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 14, height: 14, borderRadius: '50%', background: '#EF4444', color: 'white', fontSize: 9, fontWeight: 700, flexShrink: 0 }}>!</span>
-                                      )}
-                                    </div>
-                                    {(nwr?.ersetzteZutaten?.length ?? 0) > 0 && (
-                                      <div style={{ fontSize: 10, color: '#DC2626', marginTop: 1 }}>⚠️ {nwr!.ersetzteZutaten!.join(' · ')}</div>
-                                    )}
-                                    {getRecipeAllergenWarnings(nwr).length > 0 && (
-                                      <div style={{ fontSize: 10, color: '#991B1B', marginTop: 1 }}>⚠️ Prüfen: {getRecipeAllergenWarnings(nwr).join(' · ')}</div>
-                                    )}
-                                    {(() => {
-                                      const prefix = `${e!.tag} ${e!.slot === 'Mittag' ? '☀️' : '🌙'}: `
-                                      const ergs = (nextWeekData?.wishes ?? []).filter(w => w.text.startsWith(prefix))
-                                      if (!ergs.length) return null
-                                      const txt = ergs.map(w => w.text.slice(prefix.length)).join(', ')
-                                      return <div style={{ fontSize: 10, color: '#6366F1', marginTop: 1 }}>✏️ angepasst: {txt.length > 35 ? txt.slice(0, 35) + '…' : txt}</div>
-                                    })()}
-                                  </div>
-                                  <span style={{ fontSize: 10, color: '#bbb' }}>{e!.minuten} min</span>
-                                </div>
-                                )
-                              })}
-                            </div>
-                          )
-                        })}
-                        <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-                          {isNwChef && (
-                            <button className="btn primary" onClick={confirmNwWeek} disabled={nwSaving} style={{ fontSize: 12 }}>
-                              {nwSaving ? '⏳…' : '✅ Woche freigeben'}
-                            </button>
-                          )}
-                          {isNwChef && (
-                            <button onClick={() => { if (!window.confirm('Bestehenden Plan wirklich verwerfen?')) return; void generateNwPlan() }} disabled={nwPlanLoading} style={{ padding: '10px 14px', border: '1px solid #ddd', borderRadius: 8, background: 'white', fontSize: 12, cursor: 'pointer', color: '#555' }}>
-                              🔄 Neu planen
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    )}
 
                     {/* After confirmation: NW swap proposals for nwChef */}
                     {!nwPlanLoading && !nwPendingPlan && nwConfirmed && isNwChef && (() => {
@@ -5299,6 +5248,13 @@ export default function WocheScreen({
                         <button onClick={generateNwPlan}
                           style={{ padding: '9px 12px', border: 'none', borderRadius: 8, background: '#1D9E75', color: 'white', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
                           🐀 Rémy fragen – Woche planen
+                        </button>
+                      )}
+                      {/* Re-plan after confirmation */}
+                      {!nwPlanLoading && !nwPendingPlan && nwConfirmed && isNwChef && (
+                        <button onClick={() => { if (!window.confirm('Bestehenden Plan wirklich verwerfen?')) return; void generateNwPlan() }} disabled={nwPlanLoading}
+                          style={{ padding: '8px 12px', border: '1px solid #ddd', borderRadius: 8, background: 'white', fontSize: 12, cursor: 'pointer', color: '#555' }}>
+                          🔄 Neu planen
                         </button>
                       )}
                       {/* Context for non-chefs when no plan exists yet */}
