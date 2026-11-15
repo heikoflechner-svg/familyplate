@@ -113,7 +113,7 @@ function getSlot(weekPlan: WeekPlanEntry[], tag: string, slot: 'Mittag' | 'Abend
 }
 
 // ── Shared "Gericht ändern" button panel ──────────────────────────────────────
-type SubMode = 'manual' | 'pantry' | 'ergaenzung'
+type SubMode = 'manual' | 'pantry' | 'ergaenzung' | 'eigen'
 type GAPCfg = {
   subMode: SubMode | null
   setSubMode: (m: SubMode | null) => void
@@ -138,12 +138,21 @@ type GAPCfg = {
   removeConfirmNode?: React.ReactNode
   bookConfirm?: { bookEntry: RezeptbuchEntry; onConfirmWithBook: () => void; onConfirmWithRemy: () => void } | null
   rezeptbuchEntries?: RezeptbuchEntry[]
+  eigenMembers?: { id: string; name: string }[]
+  eigenNorm?: Record<string, string>
+  eigenSelectedPerson?: string | null
+  setEigenSelectedPerson?: (p: string | null) => void
+  eigenAddToList?: boolean
+  setEigenAddToList?: (v: boolean) => void
+  onApplyEigen?: (personId: string, text: string, addToList: boolean) => void
+  onClearEigen?: (personId: string) => void
 }
 function gerichtAendernPanel(c: GAPCfg) {
   function toggle(mode: SubMode) {
     c.setSubMode(c.subMode === mode ? null : mode)
     c.setTextInput('')
     if (mode !== 'manual') c.setManualTyp(null)
+    c.setEigenSelectedPerson?.(null)
   }
   const dis = c.anyBusy
   return (
@@ -171,6 +180,13 @@ function gerichtAendernPanel(c: GAPCfg) {
           style={{ flex: 1, padding: '6px 4px', border: '1px solid #ddd', borderRadius: 8, background: 'white', cursor: dis ? 'default' : 'pointer', fontSize: 11, color: '#555', minWidth: 60, opacity: dis ? 0.4 : 1 }}>
           📖 Aus Rezepten
         </button>
+        {c.eigenMembers && c.eigenMembers.length > 0 && (
+          <button onClick={() => toggle('eigen')}
+            style={{ flex: 1, padding: '6px 4px', border: `1px solid ${c.subMode === 'eigen' ? '#D97706' : '#ddd'}`, borderRadius: 8, background: c.subMode === 'eigen' ? '#FEF3C7' : 'white', cursor: 'pointer', fontSize: 11, color: c.subMode === 'eigen' ? '#92400E' : '#555', minWidth: 60 }}>
+            <div>🙋 Eigenes</div>
+            <div style={{ fontSize: 11, color: c.subMode === 'eigen' ? '#92400E' : '#8899aa' }}>Essen</div>
+          </button>
+        )}
         <button onClick={() => { if (!dis) c.onTypToggle() }} disabled={dis}
           style={{ flex: 1, padding: '6px 4px', border: '1px solid #ddd', borderRadius: 8, background: 'white', cursor: dis ? 'default' : 'pointer', fontSize: 11, color: '#555', minWidth: 60, opacity: dis ? 0.4 : 1 }}>
           {c.currentTyp === 'leicht' ? '🍲 lieber Hauptmahlzeit' : '🥗 lieber leicht'}
@@ -240,6 +256,59 @@ function gerichtAendernPanel(c: GAPCfg) {
             style={{ flex: 1, fontSize: 12, padding: '6px 10px', border: '1px solid #ddd', borderRadius: 6, outline: 'none' }} />
           <button onClick={() => c.onApplyErgaenzung(c.textInput)} disabled={!c.textInput.trim()}
             style={{ padding: '6px 12px', border: 'none', borderRadius: 6, background: '#1D9E75', color: 'white', fontSize: 12, fontWeight: 600, cursor: c.textInput.trim() ? 'pointer' : 'default', opacity: c.textInput.trim() ? 1 : 0.4 }}>✓</button>
+        </div>
+      )}
+      {c.subMode === 'eigen' && c.eigenMembers && c.eigenMembers.length > 0 && (
+        <div style={{ marginTop: 4 }}>
+          {c.eigenNorm && Object.keys(c.eigenNorm).length > 0 && (
+            <div style={{ marginBottom: 6 }}>
+              {Object.entries(c.eigenNorm).map(([pid, t]) => {
+                const m = c.eigenMembers!.find(m => m.id === pid)
+                return (
+                  <div key={pid} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
+                    <span style={{ flex: 1, fontSize: 11, color: '#444' }}>🙋 {m?.name ?? pid}{t ? `: ${t}` : ''}</span>
+                    <button onClick={() => c.onClearEigen?.(pid)}
+                      style={{ flexShrink: 0, padding: '2px 6px', border: '1px solid #FECACA', borderRadius: 6, background: '#FEF2F2', color: '#DC2626', fontSize: 11, cursor: 'pointer', lineHeight: 1.2 }}>✕</button>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 4 }}>
+            {c.eigenMembers.map(m => {
+              const hasOwn = !!(c.eigenNorm ?? {})[m.id]
+              const isSelected = c.eigenSelectedPerson === m.id
+              return (
+                <button key={m.id}
+                  onClick={() => { c.setEigenSelectedPerson?.(isSelected ? null : m.id); c.setTextInput('') }}
+                  style={{ padding: '5px 9px', border: `1px solid ${isSelected ? '#D97706' : hasOwn ? '#1D9E75' : '#e5e7eb'}`, borderRadius: 8, background: isSelected ? '#FEF3C7' : hasOwn ? '#E1F5EE' : 'white', color: isSelected ? '#92400E' : hasOwn ? '#0F6E56' : '#444', fontSize: 11, cursor: 'pointer', fontWeight: isSelected ? 700 : 400 }}>
+                  {m.name || m.id}
+                </button>
+              )
+            })}
+          </div>
+          {c.eigenSelectedPerson && (
+            <div>
+              <div style={{ display: 'flex', gap: 6, marginBottom: 4 }}>
+                <input
+                  value={c.textInput}
+                  onChange={ev => c.setTextInput(ev.target.value)}
+                  placeholder="Was isst du? (optional)"
+                  autoFocus
+                  style={{ flex: 1, padding: '6px 10px', border: '1px solid #ddd', borderRadius: 8, fontSize: 11 }}
+                />
+                <button
+                  onClick={() => c.onApplyEigen?.(c.eigenSelectedPerson!, c.textInput.trim(), c.eigenAddToList ?? false)}
+                  style={{ padding: '6px 12px', border: '1px solid #D97706', borderRadius: 8, background: '#FFFBEB', color: '#92400E', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>🙋 OK</button>
+              </div>
+              {c.textInput.trim() && c.setEigenAddToList && (
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10, color: '#555', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={c.eigenAddToList ?? false} onChange={ev => c.setEigenAddToList?.(ev.target.checked)} />
+                  Auf die Einkaufsliste setzen
+                </label>
+              )}
+            </div>
+          )}
         </div>
       )}
       {c.subMode === 'pantry' && (
@@ -812,6 +881,8 @@ export default function WocheScreen({
   const [nwGerichtEditKey, setNwGerichtEditKey] = useState<string | null>(null)
   const [nwMealSubMode, setNwMealSubMode] = useState<SubMode | null>(null)
   const [nwMealErgSaved, setNwMealErgSaved] = useState(false)
+  const [nwMealEigenPerson, setNwMealEigenPerson] = useState<string | null>(null)
+  const [nwMealEigenAddToList, setNwMealEigenAddToList] = useState(false)
   const [nwManualDish, setNwManualDish] = useState('')
   const [nwSaving, setNwSaving] = useState(false)
   const [nwPlanProgress, setNwPlanProgress] = useState(0)
@@ -1336,6 +1407,8 @@ export default function WocheScreen({
   const [editMealKey, setEditMealKey] = useState<string | null>(null)
   const [mealSubMode, setMealSubMode] = useState<SubMode | null>(null)
   const [mealErgSaved, setMealErgSaved] = useState(false)
+  const [mealEigenPerson, setMealEigenPerson] = useState<string | null>(null)
+  const [mealEigenAddToList, setMealEigenAddToList] = useState(false)
   const [manualDishInput, setManualDishInput] = useState('')
   const [manualDishTyp, setManualDishTyp] = useState<'leicht' | 'normal' | null>(null)
   const [attendanceEditKey, setAttendanceEditKey] = useState<string | null>(null)
@@ -1438,6 +1511,8 @@ export default function WocheScreen({
     setSchnellEigenPerson(null)
     setSchnellEigenAddToList(false)
     setSchnellEigenText('')
+    setMealEigenPerson(null)
+    setMealEigenAddToList(false)
   }
 
   function toggleEditMeal(key: string) {
@@ -2291,6 +2366,98 @@ export default function WocheScreen({
     closeMealPanel()
   }
 
+  function applyPlanEigen(tag: string, slot: WochenSlot, personId: string, text: string) {
+    const e = pendingPlan.find(e => e.tag === tag && e.slot === slot)
+    if (!e) return
+    const eigenNorm = normalizeEigenesEssen(e.eigenesEssen)
+    setPendingPlan(prev => prev.map(p => p.tag === tag && p.slot === slot
+      ? { ...p, eigenesEssen: { ...eigenNorm, [personId]: text } } : p))
+    setMealEigenPerson(null); closeMealPanel()
+  }
+
+  function clearPlanEigen(tag: string, slot: WochenSlot, personId: string) {
+    const e = pendingPlan.find(e => e.tag === tag && e.slot === slot)
+    if (!e) return
+    const eigenNorm = normalizeEigenesEssen(e.eigenesEssen)
+    const next = { ...eigenNorm }; delete next[personId]
+    setPendingPlan(prev => prev.map(p => p.tag === tag && p.slot === slot
+      ? { ...p, eigenesEssen: Object.keys(next).length ? next : undefined } : p))
+  }
+
+  function applyNwPendingEigen(tag: string, slot: WochenSlot, personId: string, text: string) {
+    if (!nwPendingPlan) return
+    const e = nwPendingPlan.find(e => e.tag === tag && e.slot === slot)
+    if (!e) return
+    const eigenNorm = normalizeEigenesEssen(e.eigenesEssen)
+    setNwPendingPlan(prev => prev ? prev.map(p => p.tag === tag && p.slot === slot
+      ? { ...p, eigenesEssen: { ...eigenNorm, [personId]: text } } : p) : null)
+    setNwMealEigenPerson(null); setNwGerichtEditKey(null); setNwMealSubMode(null); setNwManualDish('')
+  }
+
+  function clearNwPendingEigen(tag: string, slot: WochenSlot, personId: string) {
+    if (!nwPendingPlan) return
+    const e = nwPendingPlan.find(e => e.tag === tag && e.slot === slot)
+    if (!e) return
+    const eigenNorm = normalizeEigenesEssen(e.eigenesEssen)
+    const next = { ...eigenNorm }; delete next[personId]
+    setNwPendingPlan(prev => prev ? prev.map(p => p.tag === tag && p.slot === slot
+      ? { ...p, eigenesEssen: Object.keys(next).length ? next : undefined } : p) : null)
+  }
+
+  function applyNwEigen(tag: string, slot: WochenSlot, personId: string, text: string) {
+    if (!onNextWeekDataChange || !nextWeekData?.plan) return
+    const e = nextWeekData.plan.find(e => e.tag === tag && e.slot === slot)
+    if (!e) return
+    const eigenNorm = normalizeEigenesEssen(e.eigenesEssen)
+    const nextMonday = nextWeekStart ?? getNextMondayIso()
+    const newPlan = nextWeekData.plan.map(p => p.tag === tag && p.slot === slot
+      ? { ...p, eigenesEssen: { ...eigenNorm, [personId]: text } } : p)
+    void onNextWeekDataChange({ plan: newPlan, mealsData: nextWeekData.mealsData ?? {} }, nextMonday)
+    setNwMealEigenPerson(null); setNwGerichtEditKey(null); setNwMealSubMode(null); setNwManualDish('')
+  }
+
+  function clearNwEigen(tag: string, slot: WochenSlot, personId: string) {
+    if (!onNextWeekDataChange || !nextWeekData?.plan) return
+    const e = nextWeekData.plan.find(e => e.tag === tag && e.slot === slot)
+    if (!e) return
+    const eigenNorm = normalizeEigenesEssen(e.eigenesEssen)
+    const next = { ...eigenNorm }; delete next[personId]
+    const nextMonday = nextWeekStart ?? getNextMondayIso()
+    const newPlan = nextWeekData.plan.map(p => p.tag === tag && p.slot === slot
+      ? { ...p, eigenesEssen: Object.keys(next).length ? next : undefined } : p)
+    void onNextWeekDataChange({ plan: newPlan, mealsData: nextWeekData.mealsData ?? {} }, nextMonday)
+  }
+
+  async function applyActiveEigen(tag: string, slot: WochenSlot, personId: string, text: string, addToList: boolean) {
+    const e = weekPlan.find(e => e.tag === tag && e.slot === slot)
+    if (!e) return
+    const eigenNorm = normalizeEigenesEssen(e.eigenesEssen)
+    await updateEntryWithShoppingRescale(tag, slot, { eigenesEssen: { ...eigenNorm, [personId]: text } })
+    if (addToList && text) {
+      const pn = personNames[personId] ?? personId
+      const newItem: import('../lib/state').ShoppingItem = {
+        id: crypto.randomUUID(), name: text, menge: '1', kategorie: 'Sonstiges', erledigt: false,
+        tag, slot, fuer: pn,
+      }
+      void onShoppingListChange([...shoppingList, newItem])
+    }
+    setMealEigenPerson(null); closeMealPanel()
+  }
+
+  async function clearActiveEigen(tag: string, slot: WochenSlot, personId: string) {
+    const e = weekPlan.find(e => e.tag === tag && e.slot === slot)
+    if (!e) return
+    const eigenNorm = normalizeEigenesEssen(e.eigenesEssen)
+    const text = eigenNorm[personId]
+    const next = { ...eigenNorm }; delete next[personId]
+    await updateEntryWithShoppingRescale(tag, slot, { eigenesEssen: Object.keys(next).length ? next : undefined })
+    if (text) {
+      const pn = personNames[personId] ?? personId
+      const nl = shoppingList.filter(i => !(i.tag === tag && i.slot === slot && !i.gericht && i.fuer === pn && i.name === text && !i.erledigt))
+      if (nl.length !== shoppingList.length) void onShoppingListChange(nl)
+    }
+  }
+
   function applyStockItem(tag: string, slot: WochenSlot, name: string, emoji: string) {
     setPendingPlan(prev => prev.map(e =>
       e.tag === tag && e.slot === slot ? { ...e, gericht: name, emoji } : e
@@ -2837,6 +3004,13 @@ export default function WocheScreen({
     if (!moveSource) return
     const { tag: srcTag, slot: srcSlot, entry: srcEntry } = moveSource
     if (currentUser === wochenchef || canEditSettings) {
+      if (!dstNextWeek) {
+        const dstEntry = weekPlan.find(e => e.tag === dstTag && e.slot === dstSlot)
+        if (dstEntry) {
+          await executeSwap(srcTag, srcSlot, srcEntry, dstTag, dstSlot, dstEntry)
+          return
+        }
+      }
       await executeMove(srcTag, srcSlot, srcEntry, dstTag, dstSlot, dstNextWeek)
     } else {
       await onProposalsChange([...proposals, {
@@ -4100,6 +4274,12 @@ export default function WocheScreen({
                               onApplyManual: (name, typ?) => applyManualDish(tag, slot, name, typ),
                               bookConfirm: pendingBookConfirm,
                               rezeptbuchEntries,
+                              eigenMembers: slotAnwesend.map(id => ({ id, name: personNames[id] ?? id })),
+                              eigenNorm: normalizeEigenesEssen(e.eigenesEssen),
+                              eigenSelectedPerson: mealEigenPerson,
+                              setEigenSelectedPerson: setMealEigenPerson,
+                              onApplyEigen: (personId, text) => applyPlanEigen(tag, slot, personId, text),
+                              onClearEigen: (personId) => clearPlanEigen(tag, slot, personId),
                               onApplyStock: (name, emoji) => applyStockItem(tag, slot, name, emoji),
                               onApplyErgaenzung: (text) => {
                                 void handleWishSubmit({ id: crypto.randomUUID(), person: currentUser!, tag, slot, type: 'ergaenzung', text, postConfirm: false })
@@ -4562,6 +4742,14 @@ export default function WocheScreen({
                                     onApplyManual: (name, typ?) => applyActiveManualDish(tag, slot, name, typ),
                                     bookConfirm: pendingBookConfirm,
                                     rezeptbuchEntries,
+                                    eigenMembers: slotAnwesend.map(id => ({ id, name: personNames[id] ?? id })),
+                                    eigenNorm: normalizeEigenesEssen(e.eigenesEssen),
+                                    eigenSelectedPerson: mealEigenPerson,
+                                    setEigenSelectedPerson: setMealEigenPerson,
+                                    eigenAddToList: mealEigenAddToList,
+                                    setEigenAddToList: setMealEigenAddToList,
+                                    onApplyEigen: (personId, text, addToList) => { void applyActiveEigen(tag, slot, personId, text, addToList) },
+                                    onClearEigen: (personId) => { void clearActiveEigen(tag, slot, personId) },
                                     onApplyStock: (name, emoji) => applyActiveStockItem(tag, slot, name, emoji),
                                     onApplyErgaenzung: (text) => {
                                       void handleWishSubmit({ id: crypto.randomUUID(), person: currentUser!, tag, slot, type: 'ergaenzung', text, postConfirm: false })
@@ -4731,9 +4919,10 @@ export default function WocheScreen({
                                   const tgt = movePendingTarget.isNextWeek
                                     ? nextWeekData?.plan?.find(en => en.tag === movePendingTarget.tag && en.slot === movePendingTarget.slot)
                                     : weekPlan.find(en => en.tag === movePendingTarget.tag && en.slot === movePendingTarget.slot)
+                                  const willSwap = !!tgt && !movePendingTarget.isNextWeek
                                   return tgt ? (
                                     <div style={{ fontSize: 11, color: '#92400E', background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 6, padding: '4px 8px', marginBottom: 6 }}>
-                                      ⚠️ {tgt.emoji} {tgt.gericht} wird ersetzt
+                                      {willSwap ? `↔ ${tgt.emoji} ${tgt.gericht} wird getauscht` : `⚠️ ${tgt.emoji} ${tgt.gericht} wird ersetzt`}
                                     </div>
                                   ) : null
                                 })()}
@@ -4743,7 +4932,7 @@ export default function WocheScreen({
                                     disabled={moveSaving}
                                     style={{ flex: 2, padding: '7px', background: '#1D9E75', color: 'white', border: 'none', borderRadius: 7, fontSize: 11, fontWeight: 600, cursor: moveSaving ? 'default' : 'pointer', opacity: moveSaving ? 0.6 : 1 }}
                                   >
-                                    {moveSaving ? '⏳…' : currentUser === wochenchef || canEditSettings ? '✓ Verschieben' : '📤 Vorschlagen'}
+                                    {moveSaving ? '⏳…' : currentUser === wochenchef || canEditSettings ? ((() => { const tgt = weekPlan.find(en => en.tag === movePendingTarget.tag && en.slot === movePendingTarget.slot); return !movePendingTarget.isNextWeek && tgt ? '↔ Tauschen' : '✓ Verschieben' })()) : '📤 Vorschlagen'}
                                   </button>
                                   <button onClick={() => setMovePendingTarget(null)} style={{ flex: 1, padding: '7px', background: 'white', border: '1px solid #ddd', borderRadius: 7, fontSize: 11, cursor: 'pointer', color: '#555' }}>Zurück</button>
                                 </div>
@@ -5350,6 +5539,12 @@ export default function WocheScreen({
                                           onApplyManual: (name, typ?) => applyNwPendingManualDish(e!.tag, e!.slot, name),
                                           bookConfirm: pendingBookConfirm,
                                           rezeptbuchEntries,
+                                          eigenMembers: activeMembers.map(m => ({ id: m.id, name: m.name })),
+                                          eigenNorm: normalizeEigenesEssen(e!.eigenesEssen),
+                                          eigenSelectedPerson: nwMealEigenPerson,
+                                          setEigenSelectedPerson: setNwMealEigenPerson,
+                                          onApplyEigen: (personId, text) => applyNwPendingEigen(e!.tag, e!.slot, personId, text),
+                                          onClearEigen: (personId) => clearNwPendingEigen(e!.tag, e!.slot, personId),
                                           onApplyStock: (name, emoji) => applyNwPendingStockItem(e!.tag, e!.slot, name, emoji),
                                           onApplyErgaenzung: (text) => { void applyNwErgaenzung(e!.tag, e!.slot, text); setNwMealErgSaved(true); setTimeout(() => setNwMealErgSaved(false), 2500) },
                                           flash: nwMealErgSaved,
@@ -5491,6 +5686,12 @@ export default function WocheScreen({
                                             onApplyManual: (name, typ?) => applyNwManualDish(tag, slot, name, typ),
                                             bookConfirm: pendingBookConfirm,
                                             rezeptbuchEntries,
+                                            eigenMembers: activeMembers.map(m => ({ id: m.id, name: m.name })),
+                                            eigenNorm: normalizeEigenesEssen(e.eigenesEssen),
+                                            eigenSelectedPerson: nwMealEigenPerson,
+                                            setEigenSelectedPerson: setNwMealEigenPerson,
+                                            onApplyEigen: (personId, text) => applyNwEigen(tag, slot, personId, text),
+                                            onClearEigen: (personId) => clearNwEigen(tag, slot, personId),
                                             onApplyStock: (name, emoji) => applyNwStockItem(tag, slot, name, emoji),
                                             onApplyErgaenzung: (text) => { void applyNwErgaenzung(tag, slot, text); setNwMealErgSaved(true); setTimeout(() => setNwMealErgSaved(false), 2500) },
                                             flash: nwMealErgSaved,
@@ -5774,6 +5975,14 @@ export default function WocheScreen({
                     onApplyManual: (name, typ?) => applyActiveManualDish(tag, slot, name, typ),
                     bookConfirm: pendingBookConfirm,
                     rezeptbuchEntries,
+                    eigenMembers: slotAnwesend.map(id => ({ id, name: personNames[id] ?? id })),
+                    eigenNorm: normalizeEigenesEssen(entry.eigenesEssen),
+                    eigenSelectedPerson: mealEigenPerson,
+                    setEigenSelectedPerson: setMealEigenPerson,
+                    eigenAddToList: mealEigenAddToList,
+                    setEigenAddToList: setMealEigenAddToList,
+                    onApplyEigen: (personId, text, addToList) => { void applyActiveEigen(tag, slot, personId, text, addToList) },
+                    onClearEigen: (personId) => { void clearActiveEigen(tag, slot, personId) },
                     onApplyStock: (name, emoji) => applyActiveStockItem(tag, slot, name, emoji),
                     onApplyErgaenzung: (text) => {
                       void handleWishSubmit({ id: crypto.randomUUID(), person: currentUser!, tag, slot, type: 'ergaenzung', text, postConfirm: false })
