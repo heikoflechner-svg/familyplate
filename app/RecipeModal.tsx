@@ -116,14 +116,15 @@ export default function RecipeModal({
             <div style={{ marginBottom: 20 }}>
               {rezept.zutaten.map((z, i) => {
                 const isGrundvorrat = z.typ === 'grundvorrat'
-                const isAllergie = !!z.fuer
+                const isFuerZutat = !!z.fuer
+                const isOffeneAllergie = isFuerZutat && (offeneAllergene ?? []).some(w => w.includes(z.name))
                 return (
-                  <div key={i} style={{ display: 'flex', alignItems: 'baseline', gap: 8, padding: '6px 0', borderBottom: '1px solid #f5f5f5', opacity: isGrundvorrat ? 0.55 : 1, ...(isAllergie ? { background: '#FFFBEB', borderRadius: 6, padding: '5px 6px', margin: '2px 0' } : {}) }}>
-                    {isAllergie && <span style={{ fontSize: 12, flexShrink: 0 }}>⚠️</span>}
+                  <div key={i} style={{ display: 'flex', alignItems: 'baseline', gap: 8, padding: '6px 0', borderBottom: '1px solid #f5f5f5', opacity: isGrundvorrat ? 0.55 : 1, ...(isFuerZutat ? { background: '#FFFBEB', borderRadius: 6, padding: '5px 6px', margin: '2px 0' } : {}) }}>
+                    {isFuerZutat && <span style={{ fontSize: 12, flexShrink: 0 }}>{isOffeneAllergie ? '⚠️' : '👤'}</span>}
                     <span style={{ fontSize: 12, color: '#aaa', minWidth: 70, flexShrink: 0 }}>{z.menge}</span>
                     <span style={{ fontSize: 13, color: isGrundvorrat ? '#888' : '#111', fontStyle: isGrundvorrat ? 'italic' : 'normal', flex: 1 }}>
                       {z.name}{isGrundvorrat ? ' (im Haushalt vorhanden)' : ''}
-                      {isAllergie && <span style={{ color: '#92400E', fontSize: 11 }}>{' · für '}{z.fuer}</span>}
+                      {isFuerZutat && <span style={{ color: '#92400E', fontSize: 11 }}>{' · für '}{z.fuer}</span>}
                     </span>
                   </div>
                 )

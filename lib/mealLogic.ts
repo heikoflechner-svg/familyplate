@@ -654,7 +654,7 @@ export function rescaleRecipeLocally(recipe: Rezept, newPersonCount: number): Re
   }
 }
 
-function normalizeForMatch(s: string): string {
+export function normalizeForMatch(s: string): string {
   return s
     .toLowerCase()
     .replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/ß/g, 'ss')
@@ -664,12 +664,8 @@ function normalizeForMatch(s: string): string {
 export function findInRezeptbuch(gerName: string, entries: RezeptbuchEntry[]): RezeptbuchEntry | undefined {
   const normTarget = normalizeForMatch(gerName)
   if (!normTarget) return undefined
-  console.log('[findInRezeptbuch] Suche:', JSON.stringify(gerName), '→ normalisiert:', normTarget, '| Buch:', entries.length, 'Einträge')
   const exact = entries.find(e => normalizeForMatch(e.rezept.name) === normTarget)
-  if (exact) {
-    console.log('[findInRezeptbuch] Exakter Treffer:', exact.rezept.name)
-    return exact
-  }
+  if (exact) return exact
   const containsMatches = entries.filter(e => {
     const normBook = normalizeForMatch(e.rezept.name)
     if (!normBook) return false
@@ -677,17 +673,12 @@ export function findInRezeptbuch(gerName: string, entries: RezeptbuchEntry[]): R
     if (shorter.length < 8) return false
     return normBook.includes(normTarget) || normTarget.includes(normBook)
   })
-  if (containsMatches.length === 0) {
-    console.log('[findInRezeptbuch] Kein Treffer. Ersten 5 Buch-Namen norm.:', entries.slice(0, 5).map(e => `"${e.rezept.name}" → ${normalizeForMatch(e.rezept.name)}`).join(', '))
-    return undefined
-  }
-  const best = containsMatches.length === 1 ? containsMatches[0] : containsMatches.reduce((b, cur) => {
+  if (containsMatches.length === 0) return undefined
+  return containsMatches.length === 1 ? containsMatches[0] : containsMatches.reduce((b, cur) => {
     const bd = Math.abs(normalizeForMatch(b.rezept.name).length - normTarget.length)
     const cd = Math.abs(normalizeForMatch(cur.rezept.name).length - normTarget.length)
     return cd < bd ? cur : b
   })
-  console.log('[findInRezeptbuch] Enthaltungs-Treffer:', best.rezept.name, '(von', containsMatches.length, 'Kandidaten)')
-  return best
 }
 
 export async function adjustRecipe(
@@ -727,10 +718,6 @@ export async function getRecipeForDish(
   rezeptbuchEntries?: RezeptbuchEntry[],
 ): Promise<Rezept | null> {
   const bookEntry = rezeptbuchEntries?.length ? findInRezeptbuch(gericht, rezeptbuchEntries) : undefined
-  if (!bookEntry) {
-    if (!rezeptbuchEntries?.length) console.log('[getRecipeForDish] Rezeptbuch nicht geladen für:', gericht)
-    else console.log('[getRecipeForDish] Kein Treffer für:', gericht, '– Buch:', rezeptbuchEntries.length, 'Einträge:', rezeptbuchEntries.slice(0, 5).map(e => e.rezept.name).join(', '))
-  }
   if (bookEntry) {
     const bookRecipe = { ...bookEntry.rezept, quelle: 'rezeptbuch' as string }
     const rescaled = personCount !== undefined && (bookRecipe.personenAnzahl ?? 4) !== personCount

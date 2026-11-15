@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, useRef, useMemo } from 'react'
-import { generateWeekPlan, getRemySuggestions, generateRecipe, getRecipeForDish, rescaleRecipeLocally, findInRezeptbuch, adjustRecipe, loadMissingRecipes, getPersonCountForSlot, saveLastDishes, isFullRecipe, getLastRecipeErrorCode, getMondayIso, getNextMondayIso, applySwap, checkAllergiesForSwap, checkFreshnessWarning, loadHistoryDishes, fetchFreshMealsData, saveMealsDataOnly, mergeRecipeToDb } from '../lib/mealLogic'
+import { generateWeekPlan, getRemySuggestions, generateRecipe, getRecipeForDish, rescaleRecipeLocally, findInRezeptbuch, normalizeForMatch, adjustRecipe, loadMissingRecipes, getPersonCountForSlot, saveLastDishes, isFullRecipe, getLastRecipeErrorCode, getMondayIso, getNextMondayIso, applySwap, checkAllergiesForSwap, checkFreshnessWarning, loadHistoryDishes, fetchFreshMealsData, saveMealsDataOnly, mergeRecipeToDb } from '../lib/mealLogic'
 import { checkAllergens, formatAllergenWarningsCard } from '../lib/allergenCheck'
 import { rescaleShoppingListMengen, rewriteShoppingItemsForDish, swapShoppingItemsTags, generateShoppingList, removeShoppingItemsForDish, moveShoppingItemsForDish, generateItemsForEntry, computeNextWeekCoverage } from '../lib/shoppingLogic'
 import { getFreezerListString, getPantryListString, addFreezerItem, deleteFreezerItem, addPantryItem } from '../lib/freezerLogic'
@@ -136,6 +136,8 @@ type GAPCfg = {
   onMoveClick?: () => void
   onRemoveClick?: () => void
   removeConfirmNode?: React.ReactNode
+  bookConfirm?: { bookEntry: RezeptbuchEntry; onConfirmWithBook: () => void; onConfirmWithRemy: () => void } | null
+  rezeptbuchEntries?: RezeptbuchEntry[]
 }
 function gerichtAendernPanel(c: GAPCfg) {
   function toggle(mode: SubMode) {
@@ -194,6 +196,40 @@ function gerichtAendernPanel(c: GAPCfg) {
               🍲 normal
             </button>
           </div>
+          {c.rezeptbuchEntries && c.textInput.length >= 2 && !c.bookConfirm && (() => {
+            const normIn = normalizeForMatch(c.textInput)
+            const suggs = normIn.length < 2 ? [] : c.rezeptbuchEntries.filter(e => {
+              const n = normalizeForMatch(e.rezept.name)
+              return n.length >= 2 && (n.includes(normIn) || normIn.includes(n))
+            }).slice(0, 5)
+            return suggs.length > 0 ? (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 2 }}>
+                {suggs.map(e => (
+                  <button key={e.rezept.name}
+                    onClick={() => { c.setTextInput(e.rezept.name); c.onApplyManual(e.rezept.name, c.manualTyp ?? undefined) }}
+                    style={{ padding: '3px 8px', border: '1px solid #B2DFCC', borderRadius: 12, background: '#E1F5EE', fontSize: 11, color: '#0F6E56', cursor: 'pointer' }}>
+                    📖 {e.rezept.name}
+                  </button>
+                ))}
+              </div>
+            ) : null
+          })()}
+          {c.bookConfirm && (
+            <div style={{ marginTop: 6, background: '#F0FAF5', border: '1px solid #B2DFCC', borderRadius: 10, padding: '12px 14px' }}>
+              <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4, color: '#111' }}>📖 Rezept aus dem Buch verwenden?</div>
+              <div style={{ fontSize: 12, color: '#444', marginBottom: 10 }}>„{c.bookConfirm.bookEntry.rezept.name}" ist bereits im Rezeptbuch gespeichert.</div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button onClick={c.bookConfirm.onConfirmWithRemy}
+                  style={{ flex: 1, padding: '9px 8px', border: '1px solid #ddd', borderRadius: 8, background: 'white', fontSize: 12, cursor: 'pointer', color: '#555' }}>
+                  Nein, Rémy neu
+                </button>
+                <button onClick={c.bookConfirm.onConfirmWithBook}
+                  style={{ flex: 1, padding: '9px 8px', border: 'none', borderRadius: 8, background: '#1D9E75', fontSize: 12, fontWeight: 700, cursor: 'pointer', color: 'white' }}>
+                  Ja, aus dem Buch 📖
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
       {c.subMode === 'ergaenzung' && (
@@ -1012,7 +1048,6 @@ export default function WocheScreen({
 
   function applyNwManualDish(tag: string, slot: WochenSlot, name: string, typ?: 'leicht' | 'normal') {
     if (!name.trim() || !onNextWeekDataChange || !nextWeekData?.plan) return
-    console.log('[applyNwManualDish] name:', JSON.stringify(name.trim()), 'entries:', rezeptbuchEntries.length)
     const bookEntry = rezeptbuchEntries.length ? findInRezeptbuch(name.trim(), rezeptbuchEntries) : undefined
     if (bookEntry) {
       const bookRezept: Rezept = { ...bookEntry.rezept, quelle: 'rezeptbuch' }
@@ -1063,7 +1098,6 @@ export default function WocheScreen({
 
   function applyNwPendingManualDish(tag: string, slot: WochenSlot, name: string) {
     if (!name.trim() || !nwPendingPlan) return
-    console.log('[applyNwPendingManualDish] name:', JSON.stringify(name.trim()), 'entries:', rezeptbuchEntries.length)
     const bookEntry = rezeptbuchEntries.length ? findInRezeptbuch(name.trim(), rezeptbuchEntries) : undefined
     if (bookEntry) {
       const bookName = bookEntry.rezept.name
@@ -1176,7 +1210,6 @@ export default function WocheScreen({
 
   function applyActiveManualDish(tag: string, slot: WochenSlot, name: string, typ?: 'leicht' | 'normal') {
     if (!name.trim()) return
-    console.log('[applyActiveManualDish] name:', JSON.stringify(name.trim()), 'entries:', rezeptbuchEntries.length)
     const bookEntry = rezeptbuchEntries.length ? findInRezeptbuch(name.trim(), rezeptbuchEntries) : undefined
     if (bookEntry) {
       const bookRezept: Rezept = { ...bookEntry.rezept, quelle: 'rezeptbuch' }
@@ -2230,7 +2263,6 @@ export default function WocheScreen({
 
   function applyManualDish(tag: string, slot: WochenSlot, name: string, typ?: 'leicht' | 'normal') {
     if (!name.trim()) return
-    console.log('[applyManualDish] name:', JSON.stringify(name.trim()), 'entries:', rezeptbuchEntries.length)
     const bookEntry = rezeptbuchEntries.length ? findInRezeptbuch(name.trim(), rezeptbuchEntries) : undefined
     if (bookEntry) {
       const bookRezept: Rezept = { ...bookEntry.rezept, quelle: 'rezeptbuch' }
@@ -3726,24 +3758,6 @@ export default function WocheScreen({
     </div>
   ) : null
 
-  const bookConfirmDialog = pendingBookConfirm ? (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }} onClick={() => setPendingBookConfirm(null)}>
-      <div style={{ background: 'white', borderRadius: '16px 16px 0 0', padding: '20px 20px 32px', width: '100%', maxWidth: 480 }} onClick={e => e.stopPropagation()}>
-        <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 6, color: '#111' }}>📖 Rezept aus dem Buch verwenden?</div>
-        <div style={{ fontSize: 13, color: '#444', marginBottom: 18 }}>„{pendingBookConfirm.bookEntry.rezept.name}" ist bereits im Rezeptbuch gespeichert.</div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button onClick={pendingBookConfirm.onConfirmWithRemy}
-            style={{ flex: 1, padding: '11px 8px', border: '1px solid #ddd', borderRadius: 8, background: 'white', fontSize: 13, cursor: 'pointer', color: '#555' }}>
-            Nein, Rémy neu
-          </button>
-          <button onClick={pendingBookConfirm.onConfirmWithBook}
-            style={{ flex: 1, padding: '11px 8px', border: 'none', borderRadius: 8, background: '#1D9E75', fontSize: 13, fontWeight: 700, cursor: 'pointer', color: 'white' }}>
-            Ja, aus dem Buch 📖
-          </button>
-        </div>
-      </div>
-    </div>
-  ) : null
 
   // ── Attendance view ────────────────────────────────────────────────────────
   if (view === 'attendance') {
@@ -3878,7 +3892,6 @@ export default function WocheScreen({
   if (view === 'plan') {
     return (
       <div ref={planViewRef} className="screen active" style={{ position: 'relative' }}>
-        {bookConfirmDialog}
         {rezeptbuchSelect && (
           <div style={{ position: 'absolute', inset: 0, zIndex: 150, background: 'white', display: 'flex', flexDirection: 'column' }}>
             <RezeptbuchScreen
@@ -4085,6 +4098,8 @@ export default function WocheScreen({
                               onRemy: () => replanPendingSlot(tag, slot),
                               onTypToggle: () => replanPendingSlot(tag, slot, e.mahlzeitTyp === 'leicht' ? 'normal' : 'leicht'),
                               onApplyManual: (name, typ?) => applyManualDish(tag, slot, name, typ),
+                              bookConfirm: pendingBookConfirm,
+                              rezeptbuchEntries,
                               onApplyStock: (name, emoji) => applyStockItem(tag, slot, name, emoji),
                               onApplyErgaenzung: (text) => {
                                 void handleWishSubmit({ id: crypto.randomUUID(), person: currentUser!, tag, slot, type: 'ergaenzung', text, postConfirm: false })
@@ -4133,7 +4148,6 @@ export default function WocheScreen({
   if (view === 'week') {
     return (
       <div className="screen active" style={{ position: 'relative' }}>
-        {bookConfirmDialog}
         {rezeptbuchSelect && (
           <div style={{ position: 'absolute', inset: 0, zIndex: 150, background: 'white', display: 'flex', flexDirection: 'column' }}>
             <RezeptbuchScreen
@@ -4546,6 +4560,8 @@ export default function WocheScreen({
                                     onRemy: () => replanSlot(tag, slot),
                                     onTypToggle: () => replanSlot(tag, slot, e.mahlzeitTyp === 'leicht' ? 'normal' : 'leicht'),
                                     onApplyManual: (name, typ?) => applyActiveManualDish(tag, slot, name, typ),
+                                    bookConfirm: pendingBookConfirm,
+                                    rezeptbuchEntries,
                                     onApplyStock: (name, emoji) => applyActiveStockItem(tag, slot, name, emoji),
                                     onApplyErgaenzung: (text) => {
                                       void handleWishSubmit({ id: crypto.randomUUID(), person: currentUser!, tag, slot, type: 'ergaenzung', text, postConfirm: false })
@@ -5332,6 +5348,8 @@ export default function WocheScreen({
                                           onRemy: () => replanNwPendingSlot(e!.tag, e!.slot),
                                           onTypToggle: () => replanNwPendingSlot(e!.tag, e!.slot, e!.mahlzeitTyp === 'leicht' ? 'normal' : 'leicht'),
                                           onApplyManual: (name, typ?) => applyNwPendingManualDish(e!.tag, e!.slot, name),
+                                          bookConfirm: pendingBookConfirm,
+                                          rezeptbuchEntries,
                                           onApplyStock: (name, emoji) => applyNwPendingStockItem(e!.tag, e!.slot, name, emoji),
                                           onApplyErgaenzung: (text) => { void applyNwErgaenzung(e!.tag, e!.slot, text); setNwMealErgSaved(true); setTimeout(() => setNwMealErgSaved(false), 2500) },
                                           flash: nwMealErgSaved,
@@ -5471,6 +5489,8 @@ export default function WocheScreen({
                                             onRemy: () => replanNwSlot(tag, slot),
                                             onTypToggle: () => replanNwSlot(tag, slot, e.mahlzeitTyp === 'leicht' ? 'normal' : 'leicht'),
                                             onApplyManual: (name, typ?) => applyNwManualDish(tag, slot, name, typ),
+                                            bookConfirm: pendingBookConfirm,
+                                            rezeptbuchEntries,
                                             onApplyStock: (name, emoji) => applyNwStockItem(tag, slot, name, emoji),
                                             onApplyErgaenzung: (text) => { void applyNwErgaenzung(tag, slot, text); setNwMealErgSaved(true); setTimeout(() => setNwMealErgSaved(false), 2500) },
                                             flash: nwMealErgSaved,
@@ -5752,6 +5772,8 @@ export default function WocheScreen({
                     onRemy: () => replanSlot(tag, slot),
                     onTypToggle: () => replanSlot(tag, slot, entry.mahlzeitTyp === 'leicht' ? 'normal' : 'leicht'),
                     onApplyManual: (name, typ?) => applyActiveManualDish(tag, slot, name, typ),
+                    bookConfirm: pendingBookConfirm,
+                    rezeptbuchEntries,
                     onApplyStock: (name, emoji) => applyActiveStockItem(tag, slot, name, emoji),
                     onApplyErgaenzung: (text) => {
                       void handleWishSubmit({ id: crypto.randomUUID(), person: currentUser!, tag, slot, type: 'ergaenzung', text, postConfirm: false })
@@ -6043,7 +6065,6 @@ export default function WocheScreen({
 
   return (
     <div className="screen active" style={{ position: 'relative' }}>
-      {bookConfirmDialog}
       {rezeptbuchSelect && (
         <div style={{ position: 'absolute', inset: 0, zIndex: 150, background: 'white', display: 'flex', flexDirection: 'column' }}>
           <RezeptbuchScreen

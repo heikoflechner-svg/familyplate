@@ -333,8 +333,10 @@ export default function MehrScreen({
 
         </div>
         {(process.env.NEXT_PUBLIC_BUILD_DATE || process.env.NEXT_PUBLIC_BUILD_COMMIT) && (
-          <div style={{ textAlign: 'center', fontSize: 10, color: '#ccc', padding: '10px 0 4px' }}>
-            {[process.env.NEXT_PUBLIC_BUILD_COMMIT, process.env.NEXT_PUBLIC_BUILD_DATE].filter(Boolean).join(' · ')}
+          <div style={{ textAlign: 'center', fontSize: 12, color: '#888', padding: '10px 0 4px' }}>
+            <span style={{ background: '#F3F4F6', borderRadius: 6, padding: '4px 10px', display: 'inline-block' }}>
+              {[process.env.NEXT_PUBLIC_BUILD_COMMIT, process.env.NEXT_PUBLIC_BUILD_DATE].filter(Boolean).join(' · ')}
+            </span>
           </div>
         )}
       </div>
