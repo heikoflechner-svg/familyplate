@@ -181,7 +181,14 @@ export default function FamilyPlateApp() {
 
       // Auto-activate next week when the stored weekStart is from a past week
       if (loaded.weekStart && loaded.weekStart < getMondayIso()) {
-        await activateNextWeek()
+        const { nextWeekData: activatedNwd } = await activateNextWeek()
+        // Entwurf in localStorage retten → wird in WocheScreen als pendingPlan wiederhergestellt
+        if (activatedNwd?.isDraft === true && activatedNwd.plan?.length) {
+          try {
+            localStorage.setItem('fp_pendingPlan', JSON.stringify(activatedNwd.plan))
+            localStorage.setItem('fp_pendingPlanMeals', JSON.stringify(activatedNwd.mealsData ?? {}))
+          } catch {}
+        }
         if (latestProfile && loaded.wochenchef && (latestProfile.members ?? []).some(m => m.id === loaded.wochenchef)) {
           const inc = await incrementWochenchefStat(loaded.wochenchef as Chef, loaded.weekStart, latestProfile).catch(() => null)
           if (inc) latestProfile = inc
@@ -798,6 +805,13 @@ export default function FamilyPlateApp() {
 
   async function handleActivateNextWeek() {
     const { weekStart: newWs, nextWeekData: nwd } = await activateNextWeek()
+    // Entwurf in localStorage retten → wird in WocheScreen als pendingPlan wiederhergestellt
+    if (nwd?.isDraft === true && nwd.plan?.length) {
+      try {
+        localStorage.setItem('fp_pendingPlan', JSON.stringify(nwd.plan))
+        localStorage.setItem('fp_pendingPlanMeals', JSON.stringify(nwd.mealsData ?? {}))
+      } catch {}
+    }
     // Reload full state from DB
     const loaded = await loadWeekPlan()
     let att = loaded.attendance

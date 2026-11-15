@@ -152,17 +152,19 @@ export async function activateNextWeek(): Promise<{ weekStart: string | null; ne
   const nwList = nextData?.shoppingList ?? []
   const newShoppingList: ShoppingItem[] = [...carryOver, ...nwList]
 
+  // isDraft: Entwurf nicht als bestätigten Plan übernehmen – nur Wochenbeginn und Basisdaten setzen
+  const promotePlan = !nextData?.isDraft
   const { error: updateError } = await supabase.from('week_plans').update({
     week_start: nextStart ?? getMondayIso(),
     wochenchef: nextData?.wochenchef ?? '',
-    plan_data: nextData?.plan ?? [],
-    meals_data: nextData?.mealsData ?? {},
+    plan_data: promotePlan ? (nextData?.plan ?? []) : [],
+    meals_data: promotePlan ? (nextData?.mealsData ?? {}) : {},
     wishes: (nextData?.wishes ?? []) as unknown as NextWeekWish[],
     proposals: [],
     attendance: nextData?.attendance
       ? { v: 2, days: nextData.attendance, confirmed: nextData.attendanceConfirmed ?? [] }
       : [],
-    plan_confirmed: nextData?.planConfirmed ?? false,
+    plan_confirmed: promotePlan ? (nextData?.planConfirmed ?? false) : false,
     shopping_list: newShoppingList,
     shopping_done: false,
     shopping_day: null,

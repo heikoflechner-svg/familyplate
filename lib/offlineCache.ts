@@ -97,5 +97,7 @@ export function clearAllOfflineData(): void {
     localStorage.removeItem(KEY_CACHE)
     localStorage.removeItem(KEY_PENDING)
     localStorage.removeItem(KEY_DELETED)
+    localStorage.removeItem('fp_pendingPlan')
+    localStorage.removeItem('fp_pendingPlanMeals')
   } catch {}
 }

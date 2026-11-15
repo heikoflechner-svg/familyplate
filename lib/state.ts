@@ -177,6 +177,7 @@ export interface NextWeekData {
   planSettings?: PlanSettings
   wochenchefAutoAssigned?: boolean
   shoppingList?: ShoppingItem[]
+  isDraft?: boolean
 }
 
 export interface ChefStat {

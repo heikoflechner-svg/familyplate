@@ -471,6 +471,7 @@ export default function WocheScreen({
   const nwPlanSettings = (nextWeekData as NextWeekData | null)?.planSettings ?? null
   // Hinweis: NW-Plan noch nicht freigegeben, aber Einkaufsfrist nähert sich
   const nwPlanChef = nextWeekData?.wochenchef ?? wochenchef
+  const canSeeDraft = currentUser === nwPlanChef || canEditSettings
   const nwAlertDeadline = (
     shoppingDays.length > 0 &&
     currentUser === nwPlanChef &&
@@ -499,11 +500,11 @@ export default function WocheScreen({
   const [expandedAllergenKeys, setExpandedAllergenKeys] = useState<Set<string>>(() => new Set())
   const planViewRef = useRef<HTMLDivElement>(null)
 
-  // sessionStorage: Vorschlag bei Reload wiederherstellen
+  // localStorage: Vorschlag bei Reload wiederherstellen
   useEffect(() => {
     try {
-      const savedPlan = sessionStorage.getItem('fp_pendingPlan')
-      const savedMeals = sessionStorage.getItem('fp_pendingPlanMeals')
+      const savedPlan = localStorage.getItem('fp_pendingPlan')
+      const savedMeals = localStorage.getItem('fp_pendingPlanMeals')
       if (savedPlan && savedMeals) {
         const plan = JSON.parse(savedPlan) as WeekPlanEntry[]
         if (plan.length > 0) {
@@ -514,18 +515,18 @@ export default function WocheScreen({
         }
       }
     } catch {
-      sessionStorage.removeItem('fp_pendingPlan')
-      sessionStorage.removeItem('fp_pendingPlanMeals')
+      localStorage.removeItem('fp_pendingPlan')
+      localStorage.removeItem('fp_pendingPlanMeals')
     }
   }, [])
 
   useEffect(() => {
     if (pendingPlan.length > 0) {
-      sessionStorage.setItem('fp_pendingPlan', JSON.stringify(pendingPlan))
-      sessionStorage.setItem('fp_pendingPlanMeals', JSON.stringify(pendingPlanMeals))
+      localStorage.setItem('fp_pendingPlan', JSON.stringify(pendingPlan))
+      localStorage.setItem('fp_pendingPlanMeals', JSON.stringify(pendingPlanMeals))
     } else {
-      sessionStorage.removeItem('fp_pendingPlan')
-      sessionStorage.removeItem('fp_pendingPlanMeals')
+      localStorage.removeItem('fp_pendingPlan')
+      localStorage.removeItem('fp_pendingPlanMeals')
     }
   }, [pendingPlan, pendingPlanMeals])
   useEffect(() => {
@@ -771,6 +772,33 @@ export default function WocheScreen({
   const [nwPlanError, setNwPlanError] = useState(false)
   const nwPlanStartRef = useRef(0)
   const nwPlanTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const nwDraftRestoredRef = useRef(false)
+  const nwDraftSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // NW-Entwurf aus Supabase wiederherstellen (nur für Berechtigte)
+  useEffect(() => {
+    if (nextWeekData?.isDraft === true && nextWeekData.plan?.length && canSeeDraft && !nwDraftRestoredRef.current) {
+      nwDraftRestoredRef.current = true
+      setNwPendingPlan(nextWeekData.plan)
+      setNwPendingMeals(nextWeekData.mealsData ?? {})
+      setNwExpanded(true)
+    }
+  }, [nextWeekData?.isDraft, canSeeDraft]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // NW-Entwurf debounced in Supabase speichern
+  useEffect(() => {
+    if (!nwPendingPlan || !onNextWeekDataChange) return
+    if (nwDraftSaveTimerRef.current) clearTimeout(nwDraftSaveTimerRef.current)
+    const plan = nwPendingPlan
+    const meals = nwPendingMeals
+    const mon = nextWeekStart ?? getNextMondayIso()
+    const saveChange = onNextWeekDataChange
+    nwDraftSaveTimerRef.current = setTimeout(() => {
+      void saveChange({ plan, mealsData: meals, isDraft: true }, mon)
+    }, 2000)
+    return () => { if (nwDraftSaveTimerRef.current) clearTimeout(nwDraftSaveTimerRef.current) }
+  }, [nwPendingPlan, nwPendingMeals]) // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     if (nwPlanLoading) {
       setNwPlanProgress(0)
@@ -891,7 +919,7 @@ export default function WocheScreen({
     setNwSaving(true)
     const nextMonday = nextWeekStart ?? getNextMondayIso()
     const migratedNwMeals = migrateMealsDataAddSlotKeys(nwPendingPlan, nwPendingMeals)
-    await onNextWeekDataChange({ plan: nwPendingPlan, mealsData: migratedNwMeals, planConfirmed: false }, nextMonday)
+    await onNextWeekDataChange({ plan: nwPendingPlan, mealsData: migratedNwMeals, planConfirmed: false, isDraft: false }, nextMonday)
     setNwPendingPlan(null)
     setNwPendingMeals({})
     setNwSaving(false)
@@ -4846,6 +4874,13 @@ export default function WocheScreen({
                       </div>
                     )}
 
+                    {/* Entwurf-Hinweis für nicht-berechtigte Nutzer */}
+                    {!nwPlanLoading && !nwPendingPlan && nextWeekData?.isDraft === true && !canSeeDraft && (
+                      <div style={{ padding: '10px 12px', fontSize: 11, color: '#6B7280', fontStyle: 'italic' }}>
+                        📝 Nächste Woche wird gerade geplant
+                      </div>
+                    )}
+
                     {/* Pending plan (Rémy's suggestion) */}
                     {!nwPlanLoading && nwPendingPlan && (
                       <div style={{ padding: '10px 12px' }}>
@@ -4971,7 +5006,7 @@ export default function WocheScreen({
                           <button className="btn primary" onClick={acceptNwPlan} disabled={nwSaving} style={{ fontSize: 12 }}>
                             {nwSaving ? '⏳…' : '✅ Plan übernehmen'}
                           </button>
-                          <button onClick={() => { setNwPendingPlan(null); setNwPendingMeals({}) }} style={{ padding: '10px 14px', border: '1px solid #ddd', borderRadius: 8, background: 'white', fontSize: 12, cursor: 'pointer', color: '#666' }}>✕</button>
+                          <button onClick={() => { setNwPendingPlan(null); setNwPendingMeals({}); const mon = nextWeekStart ?? getNextMondayIso(); void onNextWeekDataChange?.({ plan: [], mealsData: {}, isDraft: false }, mon) }} style={{ padding: '10px 14px', border: '1px solid #ddd', borderRadius: 8, background: 'white', fontSize: 12, cursor: 'pointer', color: '#666' }}>✕</button>
                         </div>
                       </div>
                     )}
