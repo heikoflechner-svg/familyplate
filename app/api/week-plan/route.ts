@@ -2,31 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 
 export const maxDuration = 60
 
-const FB_MITTAG = [
-  { e: '🥗', g: 'Reste vom Vortag', m: 10, q: 'kuehlschrank' },
-  { e: '🥪', g: 'Belegte Brote', m: 10, q: 'frisch' },
-  { e: '🍜', g: 'Nudelsuppe', m: 15, q: 'speisekammer' },
-  { e: '🥙', g: 'Wraps', m: 15, q: 'frisch' },
-  { e: '🥗', g: 'Salat', m: 10, q: 'frisch' },
-  { e: '🍳', g: 'Eierspeise', m: 10, q: 'frisch' },
-  { e: '🥣', g: 'Eintopf aufgewärmt', m: 10, q: 'kuehlschrank' },
-]
-const FB_ABEND = [
-  { e: '🥗', g: 'Lasagne', m: 15, q: 'gefriertruhe' },
-  { e: '🍗', g: 'Hähnchen-Pasta', m: 30, q: 'gefriertruhe' },
-  { e: '🍲', g: 'Gemüsecurry', m: 15, q: 'gefriertruhe' },
-  { e: '🍕', g: 'Selbstgemachte Pizza', m: 40, q: 'frisch' },
-  { e: '🐟', g: 'Lachs mit Reis', m: 25, q: 'gefriertruhe' },
-  { e: '🌮', g: 'Tacos', m: 25, q: 'frisch' },
-  { e: '🍝', g: 'Spaghetti Bolognese', m: 35, q: 'frisch' },
-]
-
-
 type WishJSON = { person: string; tag: string; slot: string; type: string; text?: string; dishName?: string; emoji?: string }
 
 // Findet das erste vollständige {…}-Objekt im Text (Klammer-Tiefenzähler).
-// Robuster als indexOf/lastIndexOf: stoppt sobald die Tiefe wieder 0 erreicht,
-// ignoriert damit Denktext der NACH dem JSON erscheint.
 function extractFirstJson(raw: string): string | null {
   const start = raw.indexOf('{')
   if (start === -1) return null
@@ -50,6 +28,11 @@ export async function POST(req: NextRequest) {
 
   const apiKey = process.env.ANTHROPIC_API_KEY
   console.log('[week-plan] apiKey present:', !!apiKey, '| length:', apiKey?.length ?? 0)
+
+  if (!apiKey) {
+    console.error('[week-plan] Kein API-Key konfiguriert')
+    return NextResponse.json({ error: 'no_api_key', message: 'Kein API-Schlüssel konfiguriert.' }, { status: 500 })
+  }
 
   const tage = planWE
     ? ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag']
@@ -89,20 +72,6 @@ export async function POST(req: NextRequest) {
   const chefRota: string[] = (Array.isArray(memberIds) && memberIds.length > 0)
     ? memberIds
     : ['A', 'B', 'C']
-
-  if (!apiKey) {
-    const fallback: object[] = []
-    planTage.forEach((t: string, i: number) => {
-      if (hasMittag(t)) {
-        const fm = FB_MITTAG[i % FB_MITTAG.length]
-        fallback.push({ tag: t, slot: 'Mittag', emoji: fm.e, gericht: fm.g, minuten: fm.m, quelle: fm.q, chef: chefRota[i % chefRota.length] })
-      }
-      const fa = FB_ABEND[i % FB_ABEND.length]
-      fallback.push({ tag: t, slot: 'Abend', emoji: fa.e, gericht: fa.g, minuten: fa.m, quelle: fa.q, chef: chefRota[(i + 1) % chefRota.length] })
-    })
-    const result = [...(behaltene || []), ...fallback]
-    return NextResponse.json({ woche: result, allergie: {} })
-  }
 
   const getTyp = (t: string, slot: 'Mittag' | 'Abend'): string => {
     const k = konfig[t]
@@ -151,12 +120,12 @@ export async function POST(req: NextRequest) {
   const abneigungHinweis = ' Abneigungen (im Profil als "mag nicht" vermerkt): Plant ein Gericht, bei dem eine abgelehnte Zutat die Hauptzutat ist (z.B. Pilzrisotto wenn jemand keine Pilze mag), dieses Gericht NICHT ein – wähle stattdessen ein anderes. Ist die Zutat nur Beiwerk, ist das Gericht trotzdem erlaubt.'
   const prompt = `Du bist Rémy. Plane ${slotHinweis} für ${planTage.join(', ')} für die Familie. Profil: ${familienProfil}.${wishHinweis}${historyHinweis}${vermeidenHinweis}${empfehlenHinweis}${behalteneHinweis}${gaesteHinweis}${ernährungsHinweisStr} Gefriertruhe: ${freezerList}. Speisekammer: ${pantryList}. Nutze Gefriertruhe/Speisekammer wenn sinnvoll – Artikel mit [DRINGEND] müssen diese Woche eingeplant werden, Artikel mit [BALD VERBRAUCHEN] möglichst diese Woche verwenden. Weise pro Tag+Slot Küchenchef zu (${chefRota.join(' ')}) nach Fairness.${leichtDef}${abneigungHinweis} SCHRITT 1 – Gerichtsauswahl: Wähle immer normale, typische Familiengerichte für die ganze Familie – niemals vorsorglich glutenfreie, laktosefreie oder anderweitig angepasste Varianten, auch wenn Unverträglichkeiten im Profil stehen. Das normale Gericht wird für alle gekocht. Nenne im Gerichtsnamen immer die wichtigste Zutat (v.a. Fleisch/Fisch/Hülsenfrüchte): "Salat mit Hähnchenbrust" statt "Bunter Salat", "Pasta mit Lachs" statt "Nudelgericht" – generische Namen wie "Bunter Salat" oder "Gemüsegericht" sind nicht erlaubt. Ändere Gerichtsnamen nie. ${allergenCheck} Setze mahlzeitTyp exakt so wie im JSON-Beispiel vorgegeben. Antworte NUR als reines JSON ohne Markdown-Codeblock: {"woche":[${beispiele.join(',')}],"allergie":{"GerichtName":["Menge Ersatz (für Person)"],"GerichtName2":[]}} — allergie enthält für JEDES Gericht in woche einen Eintrag (leeres Array wenn keine Anpassung nötig).`
 
-  try {
+  async function attemptGeneration(): Promise<{ woche: object[]; allergie: Record<string, string[]> }> {
     const resp = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': apiKey,
+        'x-api-key': apiKey!,
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
@@ -165,36 +134,60 @@ export async function POST(req: NextRequest) {
         messages: [{ role: 'user', content: prompt }],
       }),
     })
-    const data = await resp.json()
-    console.log('[week-plan] API status:', resp.status, '| stop_reason:', data?.stop_reason, '| error:', data?.error?.type)
-    if (!data?.content?.[0]?.text) {
-      console.error('[week-plan] Unexpected API response:', JSON.stringify(data).slice(0, 300))
-      throw new Error('No content in response')
-    }
-    const raw = data.content[0].text as string
-    console.log('[week-plan] raw response (first 600):', raw.slice(0, 600))
-    const jsonStr = extractFirstJson(raw)
-    if (!jsonStr) throw new Error('No JSON object found in response')
-    const parsed = JSON.parse(jsonStr)
 
-    const woche = (parsed.woche as Array<Record<string, unknown>>).map(entry => ({
+    let data: Record<string, unknown>
+    try {
+      data = await resp.json()
+    } catch {
+      throw new Error(`HTTP_${resp.status}: Antwort kein JSON`)
+    }
+
+    console.log('[week-plan] API status:', resp.status, '| stop_reason:', (data as Record<string, unknown>)?.stop_reason, '| error:', (data as Record<string, Record<string, unknown>>)?.error?.type)
+
+    if (!resp.ok) {
+      const errMsg = ((data as Record<string, Record<string, unknown>>)?.error?.message as string) ?? `HTTP ${resp.status}`
+      throw new Error(`API_${resp.status}: ${errMsg}`)
+    }
+
+    if ((data as Record<string, unknown>)?.stop_reason === 'max_tokens') {
+      throw new Error('max_tokens: Antwort wurde abgeschnitten – zu viele Tage/Slots')
+    }
+
+    const rawText = ((data as Record<string, Array<Record<string, unknown>>>)?.content?.[0]?.text) as string | undefined
+    if (!rawText) {
+      console.error('[week-plan] Unerwartete API-Antwort:', JSON.stringify(data).slice(0, 300))
+      throw new Error('Leere Antwort von der KI')
+    }
+
+    console.log('[week-plan] raw response (first 600):', rawText.slice(0, 600))
+    const jsonStr = extractFirstJson(rawText)
+    if (!jsonStr) throw new Error('Kein JSON-Objekt in der Antwort gefunden')
+
+    const parsed = JSON.parse(jsonStr) as { woche: Array<Record<string, unknown>>; allergie?: Record<string, string[]> }
+
+    const woche = parsed.woche.map(entry => ({
       ...entry,
       mahlzeitTyp: getTyp(entry.tag as string, entry.slot as 'Mittag' | 'Abend'),
     }))
     const allergie = (parsed.allergie ?? {}) as Record<string, string[]>
-    const result = [...(behaltene || []), ...woche]
-    return NextResponse.json({ woche: result, allergie })
-  } catch (e) {
-    console.error('[week-plan] Caught error, returning fallback:', e instanceof Error ? e.message : String(e))
-    const fallback: object[] = []
-    planTage.forEach((t: string, i: number) => {
-      if (hasMittag(t)) {
-        const fm = FB_MITTAG[i % FB_MITTAG.length]
-        fallback.push({ tag: t, slot: 'Mittag', emoji: fm.e, gericht: fm.g, minuten: fm.m, quelle: fm.q, chef: chefRota[i % chefRota.length] })
-      }
-      const fa = FB_ABEND[i % FB_ABEND.length]
-      fallback.push({ tag: t, slot: 'Abend', emoji: fa.e, gericht: fa.g, minuten: fa.m, quelle: fa.q, chef: chefRota[(i + 1) % chefRota.length] })
-    })
-    return NextResponse.json({ woche: [...(behaltene || []), ...fallback], allergie: {} })
+    return { woche: [...(behaltene || []), ...woche], allergie }
   }
+
+  for (let n = 1; n <= 2; n++) {
+    try {
+      const result = await attemptGeneration()
+      if (n > 1) console.log('[week-plan] Versuch', n, 'erfolgreich')
+      return NextResponse.json(result)
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      console.error(`[week-plan] Versuch ${n} fehlgeschlagen:`, msg)
+      if (n === 2) {
+        return NextResponse.json({ error: 'generation_failed', message: msg }, { status: 500 })
+      }
+      console.log('[week-plan] Wiederhole Versuch ...')
+    }
+  }
+
+  // Dieser Pfad wird nie erreicht (Loop endet mit return), aber TypeScript braucht es
+  return NextResponse.json({ error: 'generation_failed', message: 'Unbekannter Fehler' }, { status: 500 })
 }

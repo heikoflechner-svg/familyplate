@@ -16,10 +16,13 @@ export function getMeal(
       // fuerGericht present: exact check
       return slotRecipe.fuerGericht === gerName ? slotRecipe : mealsData[gerName]
     }
-    // fuerGericht absent (old entry): tolerant contains-check to handle Rémy elaborating the name
+    // fuerGericht absent (old entry): tolerant check — nur wenn der Slot-Rezept-Name den
+    // Gericht-Namen enthält (Rémy-Elaboration, z.B. "Pasta" → "Pasta mit Lachs").
+    // Umkehrrichtung (b.includes(a)) absichtlich entfernt: zu viele False-Positives
+    // (z.B. "Eintopf aufgewärmt".includes("Eintopf") würde falsches Rezept zurückgeben).
     const a = slotRecipe.name.toLowerCase()
     const b = gerName.toLowerCase()
-    if (a.includes(b) || b.includes(a)) return slotRecipe
+    if (a.includes(b)) return slotRecipe
     return mealsData[gerName]
   }
   return slotRecipe ?? (gerName ? mealsData[gerName] : undefined)

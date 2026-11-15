@@ -444,6 +444,11 @@ export async function generateWeekPlan(params: {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(params),
   })
+  if (!resp.ok) {
+    const errData = await resp.json().catch(() => ({})) as { error?: string; message?: string }
+    const msg = errData?.message ?? `HTTP ${resp.status}`
+    throw new Error(msg)
+  }
   const data = await resp.json()
   const plan = (data.woche as WeekPlanEntry[]) ?? []
   const allergie = (data.allergie as Record<string, string[]>) ?? {}

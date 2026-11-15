@@ -460,6 +460,8 @@ export default function WocheScreen({
   const [planStep, setPlanStep] = useState('')
   const planTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const planStartRef = useRef(0)
+  const [showWeekHint, setShowWeekHint] = useState(false)
+  const planViewRef = useRef<HTMLDivElement>(null)
 
   // sessionStorage: Vorschlag bei Reload wiederherstellen
   useEffect(() => {
@@ -2724,6 +2726,7 @@ export default function WocheScreen({
 
   // Plan-Vorschau (aktuelle Woche, noch nicht übernommen): Rezept lazy nachladen
   async function openPendingPlanRecipe(gericht: string, emoji: string, tag: string, slot: WochenSlot) {
+    planViewRef.current?.scrollTo({ top: 0, behavior: 'smooth' })
     setSelectedMealName(gericht)
     setRecipeContext({ tag, slot, source: 'pending', emoji })
     setRecipeErrorReason(null)
@@ -2737,7 +2740,8 @@ export default function WocheScreen({
         if (rescaled) { setPendingPlanMeals(prev => ({ ...prev, [gericht]: rescaled })); return }
         return
       }
-      const rezept = await generateRecipe(gericht, emoji, getFreezerListString(freezerItems), getPantryListString(pantryItems), familyPrompt, personCount)
+      const pendingEntry = pendingPlan.find(e => e.tag === tag && e.slot === slot)
+      const rezept = await generateRecipe(gericht, emoji, getFreezerListString(freezerItems), getPantryListString(pantryItems), familyPrompt, personCount, allergenCheckMembers, pendingEntry?.mahlzeitTyp as 'leicht' | 'normal' | undefined)
       if (rezept) {
         setPendingPlanMeals(prev => ({
           ...prev,
@@ -2903,8 +2907,9 @@ export default function WocheScreen({
     }
   }
 
-  async function startPlanning() {
+  async function startPlanning(neuTageOverride?: string[]) {
     if (weekPlan.length > 0 && !window.confirm('Bestehenden Plan wirklich verwerfen?')) return
+    setShowWeekHint(false)
     setView('plan')
     setPlanState('loading')
     setError('')
@@ -2921,7 +2926,7 @@ export default function WocheScreen({
         freezerList: getFreezerListString(freezerItems),
         pantryList: getPantryListString(pantryItems),
         behaltene: [],
-        neuTage: activeDays,
+        neuTage: neuTageOverride ?? activeDays,
         wishes,
         familyPrompt,
         memberIds,
@@ -2936,8 +2941,9 @@ export default function WocheScreen({
       setPendingPlanMeals(newMeals)
       closeMealPanel()
       setPlanState('results')
-    } catch {
-      setError('Rémy konnte nicht planen. Bitte erneut versuchen.')
+    } catch (err) {
+      const msg = err instanceof Error && err.message ? err.message : 'Bitte erneut versuchen.'
+      setError(`Rémy konnte nicht planen. ${msg}`)
       setView('home')
     }
   }
@@ -3509,7 +3515,7 @@ export default function WocheScreen({
   // ── Plan view ─────────────────────────────────────────────────────────────
   if (view === 'plan') {
     return (
-      <div className="screen active" style={{ position: 'relative' }}>
+      <div ref={planViewRef} className="screen active" style={{ position: 'relative' }}>
         {rezeptbuchSelect && (
           <div style={{ position: 'absolute', inset: 0, zIndex: 150, background: 'white', display: 'flex', flexDirection: 'column' }}>
             <RezeptbuchScreen
@@ -4563,7 +4569,7 @@ export default function WocheScreen({
             </>
           )}
           {currentUser === wochenchef && !planConfirmed && (
-            <button className="btn soft" style={{ marginTop: 8 }} onClick={startPlanning}>
+            <button className="btn soft" style={{ marginTop: 8 }} onClick={() => startPlanning()}>
               🔄 {weekPlan.length > 0 ? 'Neu planen' : 'Woche planen'}
             </button>
           )}
@@ -5538,9 +5544,28 @@ export default function WocheScreen({
                   Wochenchef: <strong style={{ color: '#555' }}>{personNames[wochenchef]}</strong>
                 </div>
               )}
-              <button className="btn primary" onClick={startPlanning}>
+              <button className="btn primary" onClick={
+                todayWocheIdx > 0 && futureActiveDays.length > 0
+                  ? () => setShowWeekHint(h => !h)
+                  : () => startPlanning()
+              }>
                 🐀 Woche planen
               </button>
+              {showWeekHint && todayWocheIdx > 0 && futureActiveDays.length > 0 && (
+                <div style={{ marginTop: 10, padding: '10px 12px', background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 10, fontSize: 13, color: '#92400E' }}>
+                  <div style={{ marginBottom: 8 }}>
+                    Diese Woche läuft schon – Rémy plant nur noch {futureActiveDays.length === 1 ? futureActiveDays[0] : futureActiveDays.slice(0, -1).join(', ') + ' und ' + futureActiveDays[futureActiveDays.length - 1]}. Oder gleich die nächste Woche (KW{getKW(nextWeekStart || getNextMondayIso())}) planen?
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    <button className="btn secondary" style={{ fontSize: 12 }} onClick={() => { void startPlanning(futureActiveDays) }}>
+                      📅 Restwoche planen
+                    </button>
+                    <button className="btn secondary" style={{ fontSize: 12 }} onClick={() => { setNwExpanded(true); void generateNwPlan() }}>
+                      ➡️ Nächste Woche planen
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -5891,7 +5916,7 @@ export default function WocheScreen({
       </div>
       {currentUser === wochenchef && !planConfirmed && (
         <div style={{ padding: '0 20px 16px' }}>
-          <button className="btn soft" onClick={startPlanning}>🔄 Neu planen</button>
+          <button className="btn soft" onClick={() => startPlanning()}>🔄 Neu planen</button>
         </div>
       )}
     </div>
