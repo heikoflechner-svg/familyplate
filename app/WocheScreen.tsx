@@ -1012,6 +1012,7 @@ export default function WocheScreen({
 
   function applyNwManualDish(tag: string, slot: WochenSlot, name: string, typ?: 'leicht' | 'normal') {
     if (!name.trim() || !onNextWeekDataChange || !nextWeekData?.plan) return
+    console.log('[applyNwManualDish] name:', JSON.stringify(name.trim()), 'entries:', rezeptbuchEntries.length)
     const bookEntry = rezeptbuchEntries.length ? findInRezeptbuch(name.trim(), rezeptbuchEntries) : undefined
     if (bookEntry) {
       const bookRezept: Rezept = { ...bookEntry.rezept, quelle: 'rezeptbuch' }
@@ -1062,6 +1063,7 @@ export default function WocheScreen({
 
   function applyNwPendingManualDish(tag: string, slot: WochenSlot, name: string) {
     if (!name.trim() || !nwPendingPlan) return
+    console.log('[applyNwPendingManualDish] name:', JSON.stringify(name.trim()), 'entries:', rezeptbuchEntries.length)
     const bookEntry = rezeptbuchEntries.length ? findInRezeptbuch(name.trim(), rezeptbuchEntries) : undefined
     if (bookEntry) {
       const bookName = bookEntry.rezept.name
@@ -1174,6 +1176,7 @@ export default function WocheScreen({
 
   function applyActiveManualDish(tag: string, slot: WochenSlot, name: string, typ?: 'leicht' | 'normal') {
     if (!name.trim()) return
+    console.log('[applyActiveManualDish] name:', JSON.stringify(name.trim()), 'entries:', rezeptbuchEntries.length)
     const bookEntry = rezeptbuchEntries.length ? findInRezeptbuch(name.trim(), rezeptbuchEntries) : undefined
     if (bookEntry) {
       const bookRezept: Rezept = { ...bookEntry.rezept, quelle: 'rezeptbuch' }
@@ -2227,6 +2230,7 @@ export default function WocheScreen({
 
   function applyManualDish(tag: string, slot: WochenSlot, name: string, typ?: 'leicht' | 'normal') {
     if (!name.trim()) return
+    console.log('[applyManualDish] name:', JSON.stringify(name.trim()), 'entries:', rezeptbuchEntries.length)
     const bookEntry = rezeptbuchEntries.length ? findInRezeptbuch(name.trim(), rezeptbuchEntries) : undefined
     if (bookEntry) {
       const bookRezept: Rezept = { ...bookEntry.rezept, quelle: 'rezeptbuch' }

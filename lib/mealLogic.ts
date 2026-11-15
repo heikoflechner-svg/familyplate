@@ -664,19 +664,30 @@ function normalizeForMatch(s: string): string {
 export function findInRezeptbuch(gerName: string, entries: RezeptbuchEntry[]): RezeptbuchEntry | undefined {
   const normTarget = normalizeForMatch(gerName)
   if (!normTarget) return undefined
+  console.log('[findInRezeptbuch] Suche:', JSON.stringify(gerName), '→ normalisiert:', normTarget, '| Buch:', entries.length, 'Einträge')
   const exact = entries.find(e => normalizeForMatch(e.rezept.name) === normTarget)
-  if (exact) return exact
+  if (exact) {
+    console.log('[findInRezeptbuch] Exakter Treffer:', exact.rezept.name)
+    return exact
+  }
   const containsMatches = entries.filter(e => {
     const normBook = normalizeForMatch(e.rezept.name)
-    return normBook.length > 0 && (normBook.includes(normTarget) || normTarget.includes(normBook))
+    if (!normBook) return false
+    const shorter = normBook.length <= normTarget.length ? normBook : normTarget
+    if (shorter.length < 8) return false
+    return normBook.includes(normTarget) || normTarget.includes(normBook)
   })
-  if (containsMatches.length === 0) return undefined
-  if (containsMatches.length === 1) return containsMatches[0]
-  return containsMatches.reduce((best, cur) => {
-    const bestDiff = Math.abs(normalizeForMatch(best.rezept.name).length - normTarget.length)
-    const curDiff = Math.abs(normalizeForMatch(cur.rezept.name).length - normTarget.length)
-    return curDiff < bestDiff ? cur : best
+  if (containsMatches.length === 0) {
+    console.log('[findInRezeptbuch] Kein Treffer. Ersten 5 Buch-Namen norm.:', entries.slice(0, 5).map(e => `"${e.rezept.name}" → ${normalizeForMatch(e.rezept.name)}`).join(', '))
+    return undefined
+  }
+  const best = containsMatches.length === 1 ? containsMatches[0] : containsMatches.reduce((b, cur) => {
+    const bd = Math.abs(normalizeForMatch(b.rezept.name).length - normTarget.length)
+    const cd = Math.abs(normalizeForMatch(cur.rezept.name).length - normTarget.length)
+    return cd < bd ? cur : b
   })
+  console.log('[findInRezeptbuch] Enthaltungs-Treffer:', best.rezept.name, '(von', containsMatches.length, 'Kandidaten)')
+  return best
 }
 
 export async function adjustRecipe(
