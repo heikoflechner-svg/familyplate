@@ -26,6 +26,7 @@ export interface RecipeModalProps {
   alreadyInBook?: boolean
   onSaveAfterAdjust?: () => void
   onDismissAfterAdjust?: () => void
+  recipeSourceNote?: string | null
 }
 
 export default function RecipeModal({
@@ -35,6 +36,7 @@ export default function RecipeModal({
   isFavorit, onToggleFavorit, onDelete,
   onUebernehmen, onEdit,
   showSaveAfterAdjust, alreadyInBook, onSaveAfterAdjust, onDismissAfterAdjust,
+  recipeSourceNote,
 }: RecipeModalProps) {
   const [confirmRewrite, setConfirmRewrite] = useState(false)
   const [adjustMode, setAdjustMode] = useState(false)
@@ -105,6 +107,11 @@ export default function RecipeModal({
               {rezept.personenAnzahl && <span style={{ fontSize: 11, background: '#f0f0f0', borderRadius: 6, padding: '3px 8px', color: '#666' }}>👥 {rezept.personenAnzahl} Person{rezept.personenAnzahl === 1 ? '' : 'en'}</span>}
             </div>
 
+            {recipeSourceNote && (
+              <div style={{ fontSize: 11, color: '#888', marginBottom: 10, marginTop: -8 }}>
+                Quelle: {recipeSourceNote}
+              </div>
+            )}
             <div className="lbl">Zutaten</div>
             <div style={{ marginBottom: 20 }}>
               {rezept.zutaten.map((z, i) => {

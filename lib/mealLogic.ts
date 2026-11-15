@@ -524,17 +524,18 @@ export async function saveMealsDataOnly(mealsData: Record<string, Rezept>): Prom
 }
 
 // Reads fresh DB state, writes recipe only if not already present, clears lock, returns cleaned mealsData.
+// force=true: always write (used for book recipes intentionally chosen by user).
 export async function mergeRecipeToDb(
   gericht: string,
   slotKey: string,
   rezept: Rezept,
+  force = false,
 ): Promise<Record<string, Rezept>> {
   const fresh = await fetchFreshMealsData()
   const lockKey = `__gen:${gericht}`
   const freshClean = filterLockKeys(fresh)
-  // Only write recipe if not already present in DB
   const existingInDb = freshClean[gericht] ?? freshClean[slotKey]
-  const merged = isFullRecipe(existingInDb as Rezept | undefined)
+  const merged = (!force && isFullRecipe(existingInDb as Rezept | undefined))
     ? freshClean  // DB already has a recipe (another device saved it) — use theirs
     : { ...freshClean, [gericht]: rezept, [slotKey]: { ...rezept, fuerGericht: gericht } }
   const toSave = { ...fresh, ...merged }
@@ -695,6 +696,10 @@ export async function getRecipeForDish(
   rezeptbuchEntries?: RezeptbuchEntry[],
 ): Promise<Rezept | null> {
   const bookEntry = rezeptbuchEntries?.length ? findInRezeptbuch(gericht, rezeptbuchEntries) : undefined
+  if (!bookEntry) {
+    if (!rezeptbuchEntries?.length) console.log('[getRecipeForDish] Rezeptbuch nicht geladen für:', gericht)
+    else console.log('[getRecipeForDish] Kein Treffer für:', gericht, '– Buch:', rezeptbuchEntries.length, 'Einträge:', rezeptbuchEntries.slice(0, 5).map(e => e.rezept.name).join(', '))
+  }
   if (bookEntry) {
     const bookRecipe = { ...bookEntry.rezept, quelle: 'rezeptbuch' as string }
     const rescaled = personCount !== undefined && (bookRecipe.personenAnzahl ?? 4) !== personCount
