@@ -108,8 +108,8 @@ export default function RecipeModal({
             </div>
 
             {recipeSourceNote && (
-              <div style={{ fontSize: 11, color: '#888', marginBottom: 10, marginTop: -8 }}>
-                Quelle: {recipeSourceNote}
+              <div style={{ fontSize: 12, color: '#1D9E75', fontWeight: 600, marginBottom: 12, padding: '4px 8px', background: '#F0FAF5', borderRadius: 6, display: 'inline-block' }}>
+                {recipeSourceNote}
               </div>
             )}
             <div className="lbl">Zutaten</div>

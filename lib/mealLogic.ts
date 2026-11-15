@@ -654,9 +654,29 @@ export function rescaleRecipeLocally(recipe: Rezept, newPersonCount: number): Re
   }
 }
 
+function normalizeForMatch(s: string): string {
+  return s
+    .toLowerCase()
+    .replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/ß/g, 'ss')
+    .replace(/[^a-z0-9]/g, '')
+}
+
 export function findInRezeptbuch(gerName: string, entries: RezeptbuchEntry[]): RezeptbuchEntry | undefined {
-  const normalized = gerName.toLowerCase().trim()
-  return entries.find(e => e.rezept.name.toLowerCase().trim() === normalized)
+  const normTarget = normalizeForMatch(gerName)
+  if (!normTarget) return undefined
+  const exact = entries.find(e => normalizeForMatch(e.rezept.name) === normTarget)
+  if (exact) return exact
+  const containsMatches = entries.filter(e => {
+    const normBook = normalizeForMatch(e.rezept.name)
+    return normBook.length > 0 && (normBook.includes(normTarget) || normTarget.includes(normBook))
+  })
+  if (containsMatches.length === 0) return undefined
+  if (containsMatches.length === 1) return containsMatches[0]
+  return containsMatches.reduce((best, cur) => {
+    const bestDiff = Math.abs(normalizeForMatch(best.rezept.name).length - normTarget.length)
+    const curDiff = Math.abs(normalizeForMatch(cur.rezept.name).length - normTarget.length)
+    return curDiff < bestDiff ? cur : best
+  })
 }
 
 export async function adjustRecipe(

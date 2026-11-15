@@ -591,6 +591,11 @@ export default function WocheScreen({
   const [savedToBookName, setSavedToBookName] = useState<string | null>(null)
   const [afterAdjustMealName, setAfterAdjustMealName] = useState<string | null>(null)
   const [recipeSourceNote, setRecipeSourceNote] = useState<string | null>(null)
+  const [pendingBookConfirm, setPendingBookConfirm] = useState<{
+    bookEntry: RezeptbuchEntry
+    onConfirmWithBook: () => void
+    onConfirmWithRemy: () => void
+  } | null>(null)
 
   const [chefAltSelection, setChefAltSelection] = useState<Record<string, string>>({})
   const [chefErgaenzungIds, setChefErgaenzungIds] = useState<string[]>([])
@@ -1007,6 +1012,37 @@ export default function WocheScreen({
 
   function applyNwManualDish(tag: string, slot: WochenSlot, name: string, typ?: 'leicht' | 'normal') {
     if (!name.trim() || !onNextWeekDataChange || !nextWeekData?.plan) return
+    const bookEntry = rezeptbuchEntries.length ? findInRezeptbuch(name.trim(), rezeptbuchEntries) : undefined
+    if (bookEntry) {
+      const bookRezept: Rezept = { ...bookEntry.rezept, quelle: 'rezeptbuch' }
+      const bookName = bookEntry.rezept.name
+      const nextMonday = nextWeekStart ?? getNextMondayIso()
+      setPendingBookConfirm({
+        bookEntry,
+        onConfirmWithBook: () => {
+          const newPlan = nextWeekData.plan!.map(e =>
+            e.tag === tag && e.slot === slot ? { ...e, gericht: bookName, emoji: bookEntry.rezept.emoji ?? '🍽️', quelle: 'manuell', ...(typ ? { mahlzeitTyp: typ } : {}) } : e
+          )
+          const newMeals = { ...(nextWeekData.mealsData ?? {}), [bookName]: bookRezept, [mealsKey(tag, slot)]: { ...bookRezept, fuerGericht: bookName } }
+          void onNextWeekDataChange({ plan: newPlan, mealsData: newMeals }, nextMonday)
+          setNwEditMealKey(null); setNwMealSubMode(null); setNwManualDish(''); setNwManualDishTyp(null); setPendingBookConfirm(null)
+        },
+        onConfirmWithRemy: () => {
+          const oldEntry = nextWeekData.plan!.find(e => e.tag === tag && e.slot === slot)
+          const newPlan = nextWeekData.plan!.map(e =>
+            e.tag === tag && e.slot === slot ? { ...e, gericht: name.trim(), emoji: '🍽️', quelle: 'manuell', ...(typ ? { mahlzeitTyp: typ } : {}) } : e
+          )
+          let newMealsData = nextWeekData.mealsData ?? {}
+          if (!oldEntry || oldEntry.gericht !== name.trim()) {
+            const { [mealsKey(tag, slot)]: _dropped, ...rest } = newMealsData
+            newMealsData = rest
+          }
+          void onNextWeekDataChange({ plan: newPlan, mealsData: newMealsData }, nextMonday)
+          setNwEditMealKey(null); setNwMealSubMode(null); setNwManualDish(''); setNwManualDishTyp(null); setPendingBookConfirm(null)
+        },
+      })
+      return
+    }
     const nextMonday = nextWeekStart ?? getNextMondayIso()
     const oldEntry = nextWeekData.plan.find(e => e.tag === tag && e.slot === slot)
     const newPlan = nextWeekData.plan.map(e =>
@@ -1026,6 +1062,26 @@ export default function WocheScreen({
 
   function applyNwPendingManualDish(tag: string, slot: WochenSlot, name: string) {
     if (!name.trim() || !nwPendingPlan) return
+    const bookEntry = rezeptbuchEntries.length ? findInRezeptbuch(name.trim(), rezeptbuchEntries) : undefined
+    if (bookEntry) {
+      const bookName = bookEntry.rezept.name
+      setPendingBookConfirm({
+        bookEntry,
+        onConfirmWithBook: () => {
+          setNwPendingPlan(prev => prev!.map(e =>
+            e.tag === tag && e.slot === slot ? { ...e, gericht: bookName, emoji: bookEntry.rezept.emoji ?? '🍽️', quelle: 'manuell', ...(nwManualDishTyp ? { mahlzeitTyp: nwManualDishTyp } : {}) } : e
+          ))
+          setNwGerichtEditKey(null); setNwMealSubMode(null); setNwManualDish(''); setNwManualDishTyp(null); setPendingBookConfirm(null)
+        },
+        onConfirmWithRemy: () => {
+          setNwPendingPlan(prev => prev!.map(e =>
+            e.tag === tag && e.slot === slot ? { ...e, gericht: name.trim(), emoji: '🍽️', quelle: 'manuell', ...(nwManualDishTyp ? { mahlzeitTyp: nwManualDishTyp } : {}) } : e
+          ))
+          setNwGerichtEditKey(null); setNwMealSubMode(null); setNwManualDish(''); setNwManualDishTyp(null); setPendingBookConfirm(null)
+        },
+      })
+      return
+    }
     setNwPendingPlan(prev => prev!.map(e =>
       e.tag === tag && e.slot === slot ? { ...e, gericht: name.trim(), emoji: '🍽️', quelle: 'manuell', ...(nwManualDishTyp ? { mahlzeitTyp: nwManualDishTyp } : {}) } : e
     ))
@@ -1118,6 +1174,46 @@ export default function WocheScreen({
 
   function applyActiveManualDish(tag: string, slot: WochenSlot, name: string, typ?: 'leicht' | 'normal') {
     if (!name.trim()) return
+    const bookEntry = rezeptbuchEntries.length ? findInRezeptbuch(name.trim(), rezeptbuchEntries) : undefined
+    if (bookEntry) {
+      const bookRezept: Rezept = { ...bookEntry.rezept, quelle: 'rezeptbuch' }
+      const bookName = bookEntry.rezept.name
+      setPendingBookConfirm({
+        bookEntry,
+        onConfirmWithBook: () => {
+          const newPlan = weekPlan.map(e =>
+            e.tag === tag && e.slot === slot ? { ...e, gericht: bookName, emoji: bookEntry.rezept.emoji ?? '🍽️', quelle: 'manuell', ...(typ ? { mahlzeitTyp: typ } : {}) } : e
+          )
+          const newMeals = { ...mealsData, [bookName]: bookRezept, [mealsKey(tag, slot)]: { ...bookRezept, fuerGericht: bookName } }
+          onWeekPlanChange(newPlan, newMeals).catch(() => {
+            setSaveFeedback('Speichern fehlgeschlagen – bitte Seite neu laden.')
+            setTimeout(() => setSaveFeedback(null), 5000)
+          })
+          setPendingBookConfirm(null); closeMealPanel(); if (tag === today) setShopWarningKey(`${tag}-${slot}`)
+        },
+        onConfirmWithRemy: () => {
+          const oldEntry = weekPlan.find(e => e.tag === tag && e.slot === slot)
+          const newPlan = weekPlan.map(e =>
+            e.tag === tag && e.slot === slot ? { ...e, gericht: name.trim(), emoji: '🍽️', quelle: 'manuell', ...(typ ? { mahlzeitTyp: typ } : {}) } : e
+          )
+          let newMeals = mealsData
+          if (!oldEntry || oldEntry.gericht !== name.trim()) {
+            const { [mealsKey(tag, slot)]: _slotDrop, ...rest } = newMeals
+            newMeals = rest
+          }
+          if (oldEntry && oldEntry.gericht !== name.trim() && !weekPlan.some(e => !(e.tag === tag && e.slot === slot) && e.gericht === oldEntry.gericht)) {
+            const { [oldEntry.gericht]: _dropped, ...rest } = newMeals
+            newMeals = rest
+          }
+          onWeekPlanChange(newPlan, newMeals).catch(() => {
+            setSaveFeedback('Speichern fehlgeschlagen – bitte Seite neu laden.')
+            setTimeout(() => setSaveFeedback(null), 5000)
+          })
+          setPendingBookConfirm(null); closeMealPanel(); if (tag === today) setShopWarningKey(`${tag}-${slot}`)
+        },
+      })
+      return
+    }
     const oldEntry = weekPlan.find(e => e.tag === tag && e.slot === slot)
     const newPlan = weekPlan.map(e =>
       e.tag === tag && e.slot === slot ? { ...e, gericht: name.trim(), emoji: '🍽️', quelle: 'manuell', ...(typ ? { mahlzeitTyp: typ } : {}) } : e
@@ -2131,6 +2227,28 @@ export default function WocheScreen({
 
   function applyManualDish(tag: string, slot: WochenSlot, name: string, typ?: 'leicht' | 'normal') {
     if (!name.trim()) return
+    const bookEntry = rezeptbuchEntries.length ? findInRezeptbuch(name.trim(), rezeptbuchEntries) : undefined
+    if (bookEntry) {
+      const bookRezept: Rezept = { ...bookEntry.rezept, quelle: 'rezeptbuch' }
+      const bookName = bookEntry.rezept.name
+      setPendingBookConfirm({
+        bookEntry,
+        onConfirmWithBook: () => {
+          setPendingPlan(prev => prev.map(e =>
+            e.tag === tag && e.slot === slot ? { ...e, gericht: bookName, emoji: bookEntry.rezept.emoji ?? '🍽', ...(typ ? { mahlzeitTyp: typ } : {}) } : e
+          ))
+          void onWeekPlanChange(weekPlan, { ...mealsData, [bookName]: bookRezept, [mealsKey(tag, slot)]: { ...bookRezept, fuerGericht: bookName } }).catch(() => {})
+          setPendingBookConfirm(null); closeMealPanel()
+        },
+        onConfirmWithRemy: () => {
+          setPendingPlan(prev => prev.map(e =>
+            e.tag === tag && e.slot === slot ? { ...e, gericht: name.trim(), emoji: '🍽', ...(typ ? { mahlzeitTyp: typ } : {}) } : e
+          ))
+          setPendingBookConfirm(null); closeMealPanel()
+        },
+      })
+      return
+    }
     setPendingPlan(prev => prev.map(e =>
       e.tag === tag && e.slot === slot ? { ...e, gericht: name.trim(), emoji: '🍽', ...(typ ? { mahlzeitTyp: typ } : {}) } : e
     ))
@@ -3604,6 +3722,25 @@ export default function WocheScreen({
     </div>
   ) : null
 
+  const bookConfirmDialog = pendingBookConfirm ? (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }} onClick={() => setPendingBookConfirm(null)}>
+      <div style={{ background: 'white', borderRadius: '16px 16px 0 0', padding: '20px 20px 32px', width: '100%', maxWidth: 480 }} onClick={e => e.stopPropagation()}>
+        <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 6, color: '#111' }}>📖 Rezept aus dem Buch verwenden?</div>
+        <div style={{ fontSize: 13, color: '#444', marginBottom: 18 }}>„{pendingBookConfirm.bookEntry.rezept.name}" ist bereits im Rezeptbuch gespeichert.</div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={pendingBookConfirm.onConfirmWithRemy}
+            style={{ flex: 1, padding: '11px 8px', border: '1px solid #ddd', borderRadius: 8, background: 'white', fontSize: 13, cursor: 'pointer', color: '#555' }}>
+            Nein, Rémy neu
+          </button>
+          <button onClick={pendingBookConfirm.onConfirmWithBook}
+            style={{ flex: 1, padding: '11px 8px', border: 'none', borderRadius: 8, background: '#1D9E75', fontSize: 13, fontWeight: 700, cursor: 'pointer', color: 'white' }}>
+            Ja, aus dem Buch 📖
+          </button>
+        </div>
+      </div>
+    </div>
+  ) : null
+
   // ── Attendance view ────────────────────────────────────────────────────────
   if (view === 'attendance') {
     const confirmedCount = attendanceConfirmed.filter(c => allChefIds.includes(c)).length
@@ -3737,6 +3874,7 @@ export default function WocheScreen({
   if (view === 'plan') {
     return (
       <div ref={planViewRef} className="screen active" style={{ position: 'relative' }}>
+        {bookConfirmDialog}
         {rezeptbuchSelect && (
           <div style={{ position: 'absolute', inset: 0, zIndex: 150, background: 'white', display: 'flex', flexDirection: 'column' }}>
             <RezeptbuchScreen
@@ -3991,6 +4129,7 @@ export default function WocheScreen({
   if (view === 'week') {
     return (
       <div className="screen active" style={{ position: 'relative' }}>
+        {bookConfirmDialog}
         {rezeptbuchSelect && (
           <div style={{ position: 'absolute', inset: 0, zIndex: 150, background: 'white', display: 'flex', flexDirection: 'column' }}>
             <RezeptbuchScreen
@@ -5900,6 +6039,7 @@ export default function WocheScreen({
 
   return (
     <div className="screen active" style={{ position: 'relative' }}>
+      {bookConfirmDialog}
       {rezeptbuchSelect && (
         <div style={{ position: 'absolute', inset: 0, zIndex: 150, background: 'white', display: 'flex', flexDirection: 'column' }}>
           <RezeptbuchScreen
