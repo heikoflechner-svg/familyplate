@@ -56,6 +56,7 @@ export default function FamilyPlateApp() {
   const [wocheInitView, setWocheInitView] = useState<'home' | 'attendance'>('home')
   const [rezeptbuchEntries, setRezeptbuchEntries] = useState<RezeptbuchEntry[]>([])
   const [dishRatings, setDishRatings] = useState<DishRating[]>([])
+  const [nwRecipeGenProgress, setNwRecipeGenProgress] = useState<{ done: number; total: number } | null>(null)
   const [activeTab, setActiveTab] = useState<Tab>('woche')
   const [authView, setAuthView] = useState<'login' | 'register'>('login')
   const [profileSaveError, setProfileSaveError] = useState<string | null>(null)
@@ -1029,6 +1030,7 @@ export default function FamilyPlateApp() {
             dishRatings={dishRatings}
             onRateGericht={handleRateGericht}
             ernährungsVorgabe={familyProfile?.ernährungsVorgabe}
+            onNwRecipeGenUpdate={setNwRecipeGenProgress}
           />
         </div>
         {activeTab === 'gefriertruhe' && (
@@ -1068,6 +1070,7 @@ export default function FamilyPlateApp() {
             onNextWeekDataChange={handleNextWeekDataChange}
             weekStart={weekStart}
             nextWeekStart={nextWeekStart}
+            nwRecipeGenProgress={nwRecipeGenProgress}
           />
         )}
         {activeTab === 'rezepte' && (

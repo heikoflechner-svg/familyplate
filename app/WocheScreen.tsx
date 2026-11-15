@@ -299,6 +299,7 @@ interface Props {
   dishRatings?: DishRating[]
   onRateGericht?: (gerName: string, sterne: number, member?: Chef, rezept?: Rezept) => void
   ernährungsVorgabe?: ErnährungsVorgabe
+  onNwRecipeGenUpdate?: (progress: { done: number; total: number } | null) => void
 }
 
 type View = 'home' | 'week' | 'plan' | 'attendance'
@@ -376,6 +377,7 @@ export default function WocheScreen({
   dishRatings = [],
   onRateGericht,
   ernährungsVorgabe,
+  onNwRecipeGenUpdate,
 }: Props) {
   const hasMittag = (tag: string) => !mittagsloseTage.includes(tag)
   const personNames: Record<Chef, string> = Object.fromEntries(
@@ -932,14 +934,25 @@ export default function WocheScreen({
     const pantryStr = getPantryListString(pantryItems)
     const mon = nextMonday
     const saveChange = onNextWeekDataChange
-    void loadMissingRecipes(planSnapshot, mealsSnapshot, freezerStr, pantryStr, familyPrompt, pc, allergenCheckMembers)
-      .then(full => {
+    const genUpdate = onNwRecipeGenUpdate
+    const seenG = new Set<string>()
+    const missingCount = planSnapshot.filter(e => {
+      if (seenG.has(e.gericht) || isFullRecipe(mealsSnapshot[e.gericht])) return false
+      seenG.add(e.gericht); return true
+    }).length
+    if (missingCount > 0) genUpdate?.({ done: 0, total: missingCount })
+    void loadMissingRecipes(
+      planSnapshot, mealsSnapshot, freezerStr, pantryStr, familyPrompt, pc, allergenCheckMembers,
+      missingCount > 0 ? (d, t) => genUpdate?.({ done: d, total: t }) : undefined,
+    ).then(full => {
+        if (missingCount > 0) genUpdate?.(null)
         const fullMigrated = migrateMealsDataAddSlotKeys(planSnapshot, full)
         const coverageDays = computeNextWeekCoverage(shoppingDays)
         const listDays = WOCHENTAGE.filter(d => planSnapshot.some(e => e.tag === d) && !coverageDays.includes(d))
         const list = generateShoppingList(planSnapshot, fullMigrated, listDays)
         void saveChange({ mealsData: fullMigrated, shoppingList: list }, mon)
       })
+      .catch(() => { if (missingCount > 0) genUpdate?.(null) })
   }
 
   async function replanNwSlot(tag: string, slot: WochenSlot, forceTyp?: 'leicht' | 'normal') {

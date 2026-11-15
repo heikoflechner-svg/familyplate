@@ -718,6 +718,7 @@ export async function loadMissingRecipes(
   familyPrompt: string,
   getPersonCount?: (tag: string, slot: WochenSlot) => number,
   familyMembersForCheck?: { name: string; allergien: string[] }[],
+  onProgress?: (done: number, total: number) => void,
 ): Promise<Record<string, Rezept>> {
   const result: Record<string, Rezept> = { ...store }
   const seen = new Set<string>()
@@ -726,16 +727,25 @@ export async function loadMissingRecipes(
     seen.add(e.gericht)
     return true
   })
-  await Promise.all(missing.map(async e => {
-    const personCount = getPersonCount ? getPersonCount(e.tag, e.slot) : undefined
-    const r = await generateRecipe(e.gericht, e.emoji, freezerList, pantryList, familyPrompt, personCount, familyMembersForCheck, e.mahlzeitTyp as 'leicht' | 'normal' | undefined)
-    if (r) {
-      result[e.gericht] = {
-        ...r,
-        personenAnzahl: personCount,
-        ersetzteZutaten: r.ersetzteZutaten?.length ? r.ersetzteZutaten : (store[e.gericht]?.ersetzteZutaten ?? []),
+  const total = missing.length
+  let done = 0
+  const CONCURRENCY = 3
+  for (let i = 0; i < missing.length; i += CONCURRENCY) {
+    const batch = missing.slice(i, i + CONCURRENCY)
+    await Promise.all(batch.map(async e => {
+      const personCount = getPersonCount ? getPersonCount(e.tag, e.slot) : undefined
+      let r = await generateRecipe(e.gericht, e.emoji, freezerList, pantryList, familyPrompt, personCount, familyMembersForCheck, e.mahlzeitTyp as 'leicht' | 'normal' | undefined)
+      if (!r) r = await generateRecipe(e.gericht, e.emoji, freezerList, pantryList, familyPrompt, personCount, familyMembersForCheck, e.mahlzeitTyp as 'leicht' | 'normal' | undefined)
+      if (r) {
+        result[e.gericht] = {
+          ...r,
+          personenAnzahl: personCount,
+          ersetzteZutaten: r.ersetzteZutaten?.length ? r.ersetzteZutaten : (store[e.gericht]?.ersetzteZutaten ?? []),
+        }
       }
-    }
-  }))
+      done++
+      onProgress?.(done, total)
+    }))
+  }
   return result
 }
