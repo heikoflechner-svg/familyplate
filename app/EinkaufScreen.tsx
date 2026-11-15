@@ -17,7 +17,7 @@ import {
   parseMengeStück,
 } from '../lib/shoppingLogic'
 import type { ConsolidatedItem } from '../lib/shoppingLogic'
-import { generateRecipe, isFullRecipe, getPersonCountForSlot, getMondayIso, getNextMondayIso, loadMissingRecipes } from '../lib/mealLogic'
+import { getRecipeForDish, isFullRecipe, getPersonCountForSlot, getMondayIso, getNextMondayIso, loadMissingRecipes } from '../lib/mealLogic'
 import { getFreezerListString, getPantryListString } from '../lib/freezerLogic'
 import { buildFamilyPrompt, DEFAULT_MEMBERS } from '../lib/familyLogic'
 import type { WeekPlanEntry, Rezept, ShoppingItem, Chef, NextWeekData, FreezerItem, PantryItem, FamilyMember, DayAttendance, RezeptbuchEntry } from '../lib/state'
@@ -273,7 +273,7 @@ export default function EinkaufScreen({
     })
     void Promise.all(missing.map(async e => {
       const personCount = getPersonCountForSlot(e.tag, e.slot, attendance, mbs)
-      const r = await generateRecipe(e.gericht, e.emoji, freezerStr, pantryStr, familyPrompt, personCount)
+      const r = await getRecipeForDish(e.gericht, e.emoji, freezerStr, pantryStr, familyPrompt, personCount, undefined, undefined, rezeptbuchEntries)
       if (r) store[e.gericht] = { ...r, personenAnzahl: personCount, ersetzteZutaten: r.ersetzteZutaten?.length ? r.ersetzteZutaten : (store[e.gericht]?.ersetzteZutaten ?? []) }
     })).then(() => onMealsDataChange(store))
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -401,7 +401,7 @@ export default function EinkaufScreen({
           return true
         })
         await Promise.all(missing.map(async e => {
-          const r = await generateRecipe(e.gericht, e.emoji, freezerStr, pantryStr, familyPrompt)
+          const r = await getRecipeForDish(e.gericht, e.emoji, freezerStr, pantryStr, familyPrompt, undefined, undefined, undefined, rezeptbuchEntries)
           if (r) store[e.gericht] = { ...r, ersetzteZutaten: r.ersetzteZutaten?.length ? r.ersetzteZutaten : (store[e.gericht]?.ersetzteZutaten ?? []) }
         }))
       }

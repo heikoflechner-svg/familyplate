@@ -1,5 +1,6 @@
 import { supabase, getFamilyId } from './supabase'
 import type { WeekPlanEntry, Rezept, Wish, RemyVorschlag, WochenSlot, DayAttendance, Chef, ShoppingItem, ChangeProposal, NextWeekData, NextWeekWish, PlanSettings, FamilyMember, TagMahlzeitenKonfig, RezeptbuchEntry } from './state'
+import { checkAllergens } from './allergenCheck'
 
 function toLocalDateIso(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
@@ -682,6 +683,37 @@ export async function adjustRecipe(
   }
 }
 
+export async function getRecipeForDish(
+  gericht: string,
+  emoji: string,
+  freezerList: string,
+  pantryList: string,
+  familyPrompt?: string,
+  personCount?: number,
+  familyMembersForCheck?: { name: string; allergien: string[] }[],
+  mahlzeitTyp?: 'leicht' | 'normal',
+  rezeptbuchEntries?: RezeptbuchEntry[],
+): Promise<Rezept | null> {
+  const bookEntry = rezeptbuchEntries?.length ? findInRezeptbuch(gericht, rezeptbuchEntries) : undefined
+  if (bookEntry) {
+    const bookRecipe = { ...bookEntry.rezept, quelle: 'rezeptbuch' as string }
+    const rescaled = personCount !== undefined && (bookRecipe.personenAnzahl ?? 4) !== personCount
+      ? rescaleRecipeLocally(bookRecipe, personCount)
+      : bookRecipe
+    const withPc: Rezept = { ...rescaled, personenAnzahl: personCount ?? rescaled.personenAnzahl }
+    if (familyMembersForCheck?.length) {
+      const issues = checkAllergens(withPc, familyMembersForCheck)
+      if (issues.length > 0) {
+        const wunsch = `Passe das Rezept an: ${issues.map(i => `${i.person}: ${i.allergen} (Zutat: ${i.zutat})`).join(', ')}`
+        const result = await adjustRecipe(withPc, wunsch, personCount ?? (withPc.personenAnzahl ?? 4), freezerList, pantryList, familyPrompt, familyMembersForCheck)
+        if (result) return { ...result.rezept, personenAnzahl: personCount ?? withPc.personenAnzahl, quelle: 'rezeptbuch' as string }
+      }
+    }
+    return withPc
+  }
+  return generateRecipe(gericht, emoji, freezerList, pantryList, familyPrompt, personCount, familyMembersForCheck, mahlzeitTyp)
+}
+
 const WOCHENTAGE_ORDER = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag']
 const FRESHNESS_PATTERNS = ['fisch', 'hack', 'mett', 'tatar', 'petersilie', 'basilikum', 'schnittlauch', 'dill', 'koriander', 'minze']
 
@@ -761,29 +793,24 @@ export async function loadMissingRecipes(
     const batch = missing.slice(i, i + CONCURRENCY)
     await Promise.all(batch.map(async e => {
       const personCount = getPersonCount ? getPersonCount(e.tag, e.slot) : undefined
-      // Rezeptbuch zuerst prüfen – spart einen Sonnet-Aufruf
-      const bookEntry = rezeptbuchEntries?.length ? findInRezeptbuch(e.gericht, rezeptbuchEntries) : undefined
-      if (bookEntry) {
-        const bookRecipe = { ...bookEntry.rezept, quelle: 'rezeptbuch' as string }
-        const rescaled = personCount !== undefined && (bookRecipe.personenAnzahl ?? 4) !== personCount
-          ? rescaleRecipeLocally(bookRecipe, personCount)
-          : bookRecipe
+      const r = await getRecipeForDish(e.gericht, e.emoji, freezerList, pantryList, familyPrompt, personCount, familyMembersForCheck, e.mahlzeitTyp as 'leicht' | 'normal' | undefined, rezeptbuchEntries ?? [])
+      if (r) {
         result[e.gericht] = {
-          ...rescaled,
-          personenAnzahl: personCount ?? rescaled.personenAnzahl,
-          ersetzteZutaten: rescaled.ersetzteZutaten?.length ? rescaled.ersetzteZutaten : (store[e.gericht]?.ersetzteZutaten ?? []),
+          ...r,
+          personenAnzahl: personCount ?? r.personenAnzahl,
+          ersetzteZutaten: r.ersetzteZutaten?.length ? r.ersetzteZutaten : (store[e.gericht]?.ersetzteZutaten ?? []),
         }
         done++
         onProgress?.(done, total)
         return
       }
-      let r = await generateRecipe(e.gericht, e.emoji, freezerList, pantryList, familyPrompt, personCount, familyMembersForCheck, e.mahlzeitTyp as 'leicht' | 'normal' | undefined)
-      if (!r) r = await generateRecipe(e.gericht, e.emoji, freezerList, pantryList, familyPrompt, personCount, familyMembersForCheck, e.mahlzeitTyp as 'leicht' | 'normal' | undefined)
-      if (r) {
+      // Retry (Rezeptbuch would have returned non-null; this only retries failed Sonnet calls)
+      const r2 = await generateRecipe(e.gericht, e.emoji, freezerList, pantryList, familyPrompt, personCount, familyMembersForCheck, e.mahlzeitTyp as 'leicht' | 'normal' | undefined)
+      if (r2) {
         result[e.gericht] = {
-          ...r,
+          ...r2,
           personenAnzahl: personCount,
-          ersetzteZutaten: r.ersetzteZutaten?.length ? r.ersetzteZutaten : (store[e.gericht]?.ersetzteZutaten ?? []),
+          ersetzteZutaten: r2.ersetzteZutaten?.length ? r2.ersetzteZutaten : (store[e.gericht]?.ersetzteZutaten ?? []),
         }
       }
       done++

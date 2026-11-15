@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, useRef, useMemo } from 'react'
-import { generateWeekPlan, getRemySuggestions, generateRecipe, rescaleRecipeLocally, findInRezeptbuch, adjustRecipe, loadMissingRecipes, getPersonCountForSlot, saveLastDishes, isFullRecipe, getLastRecipeErrorCode, getMondayIso, getNextMondayIso, applySwap, checkAllergiesForSwap, checkFreshnessWarning, loadHistoryDishes, fetchFreshMealsData, saveMealsDataOnly, mergeRecipeToDb } from '../lib/mealLogic'
+import { generateWeekPlan, getRemySuggestions, generateRecipe, getRecipeForDish, rescaleRecipeLocally, findInRezeptbuch, adjustRecipe, loadMissingRecipes, getPersonCountForSlot, saveLastDishes, isFullRecipe, getLastRecipeErrorCode, getMondayIso, getNextMondayIso, applySwap, checkAllergiesForSwap, checkFreshnessWarning, loadHistoryDishes, fetchFreshMealsData, saveMealsDataOnly, mergeRecipeToDb } from '../lib/mealLogic'
 import { checkAllergens, formatAllergenWarningsCard } from '../lib/allergenCheck'
 import { rescaleShoppingListMengen, rewriteShoppingItemsForDish, swapShoppingItemsTags, generateShoppingList, removeShoppingItemsForDish, moveShoppingItemsForDish, generateItemsForEntry, computeNextWeekCoverage } from '../lib/shoppingLogic'
 import { getFreezerListString, getPantryListString, addFreezerItem, deleteFreezerItem, addPantryItem } from '../lib/freezerLogic'
@@ -718,11 +718,12 @@ export default function WocheScreen({
         try {
           const att = isNextWeek ? (nextWeekData?.attendance ?? []) : attendance
           const personCount = getPersonCountForSlot(entry.tag, entry.slot, att, mbs)
-          const rezept = await generateRecipe(
+          const rezept = await getRecipeForDish(
             entry.gericht, entry.emoji,
             getFreezerListString(freezerItems), getPantryListString(pantryItems),
             familyPrompt, personCount, allergenCheckMembers,
             entry.mahlzeitTyp as 'leicht' | 'normal' | undefined,
+            rezeptbuchEntries,
           )
           if (!rezept) continue
           const merged: Rezept = {
@@ -1747,7 +1748,7 @@ export default function WocheScreen({
     const mbs = members.length ? members : DEFAULT_MEMBERS
     const pc = getPersonCountForSlot(tag, slot, attendance, mbs)
     const allergenCheckMembers = mbs.filter(m => m.allergien?.length > 0).map(m => ({ name: m.name, allergien: m.allergien }))
-    const rezept = await generateRecipe(newGericht, emoji, getFreezerListString(freezerItems), getPantryListString(pantryItems), familyPrompt, pc, allergenCheckMembers)
+    const rezept = await getRecipeForDish(newGericht, emoji, getFreezerListString(freezerItems), getPantryListString(pantryItems), familyPrompt, pc, allergenCheckMembers, undefined, rezeptbuchEntries)
     if (rezept) {
       updatedMeals = { ...updatedMeals, [newGericht]: rezept, [mealsKey(tag, slot)]: { ...rezept, fuerGericht: newGericht } }
     }
@@ -2823,22 +2824,6 @@ export default function WocheScreen({
         return
       }
 
-      // 1.9 Rezeptbuch prüfen (vor Lock / KI-Aufruf)
-      if (rezeptbuchEntries.length > 0) {
-        const bookEntry = findInRezeptbuch(gericht, rezeptbuchEntries)
-        if (bookEntry) {
-          const bookRecipe = { ...bookEntry.rezept, quelle: 'rezeptbuch' as string }
-          const toSave: Rezept = {
-            ...((bookRecipe.personenAnzahl ?? 4) !== personCount ? rescaleRecipeLocally(bookRecipe, personCount) : bookRecipe),
-            personenAnzahl: personCount,
-            ersetzteZutaten: bookRecipe.ersetzteZutaten?.length ? bookRecipe.ersetzteZutaten : (freshRecipe?.ersetzteZutaten ?? []),
-          }
-          const savedMeals = await mergeRecipeToDb(gericht, slotKey, toSave)
-          await onWeekPlanChange(weekPlan, { ...mealsData, ...savedMeals })
-          return
-        }
-      }
-
       // 2. Lock prüfen: läuft bereits eine Erstellung auf einem anderen Gerät?
       const lockEntry = freshRaw[lockKey] as (Rezept & { generatedAt?: string }) | undefined
       if (lockEntry?.name === '__generating' && lockEntry.generatedAt) {
@@ -2871,7 +2856,7 @@ export default function WocheScreen({
 
       // 4. Rezept generieren
       try {
-        const rezept = await generateRecipe(gericht, emoji, getFreezerListString(freezerItems), getPantryListString(pantryItems), familyPrompt, personCount)
+        const rezept = await getRecipeForDish(gericht, emoji, getFreezerListString(freezerItems), getPantryListString(pantryItems), familyPrompt, personCount, undefined, undefined, rezeptbuchEntries)
         if (rezept) {
           const toSave: Rezept = {
             ...rezept,
@@ -2913,15 +2898,7 @@ export default function WocheScreen({
         setNwPendingMeals(prev => ({ ...prev, [gericht]: rescaled }))
         return
       }
-      // Rezeptbuch prüfen vor KI-Aufruf
-      const bookEntry = rezeptbuchEntries.length > 0 ? findInRezeptbuch(gericht, rezeptbuchEntries) : undefined
-      if (bookEntry) {
-        const bookRecipe = { ...bookEntry.rezept, quelle: 'rezeptbuch' as string }
-        const rescaled = (bookRecipe.personenAnzahl ?? 4) !== personCount ? rescaleRecipeLocally(bookRecipe, personCount) : bookRecipe
-        setNwPendingMeals(prev => ({ ...prev, [gericht]: { ...rescaled, personenAnzahl: personCount } }))
-        return
-      }
-      const rezept = await generateRecipe(gericht, emoji, getFreezerListString(freezerItems), getPantryListString(pantryItems), familyPrompt, personCount)
+      const rezept = await getRecipeForDish(gericht, emoji, getFreezerListString(freezerItems), getPantryListString(pantryItems), familyPrompt, personCount, undefined, undefined, rezeptbuchEntries)
       if (rezept) {
         setNwPendingMeals(prev => ({
           ...prev,
@@ -2953,16 +2930,8 @@ export default function WocheScreen({
         setPendingPlanMeals(prev => ({ ...prev, [gericht]: rescaled }))
         return
       }
-      // Rezeptbuch prüfen vor KI-Aufruf
-      const bookEntry = rezeptbuchEntries.length > 0 ? findInRezeptbuch(gericht, rezeptbuchEntries) : undefined
-      if (bookEntry) {
-        const bookRecipe = { ...bookEntry.rezept, quelle: 'rezeptbuch' as string }
-        const rescaled = (bookRecipe.personenAnzahl ?? 4) !== personCount ? rescaleRecipeLocally(bookRecipe, personCount) : bookRecipe
-        setPendingPlanMeals(prev => ({ ...prev, [gericht]: { ...rescaled, personenAnzahl: personCount } }))
-        return
-      }
       const pendingEntry = pendingPlan.find(e => e.tag === tag && e.slot === slot)
-      const rezept = await generateRecipe(gericht, emoji, getFreezerListString(freezerItems), getPantryListString(pantryItems), familyPrompt, personCount, allergenCheckMembers, pendingEntry?.mahlzeitTyp as 'leicht' | 'normal' | undefined)
+      const rezept = await getRecipeForDish(gericht, emoji, getFreezerListString(freezerItems), getPantryListString(pantryItems), familyPrompt, personCount, allergenCheckMembers, pendingEntry?.mahlzeitTyp as 'leicht' | 'normal' | undefined, rezeptbuchEntries)
       if (rezept) {
         setPendingPlanMeals(prev => ({
           ...prev,
@@ -3003,18 +2972,7 @@ export default function WocheScreen({
         }
         return
       }
-      // Rezeptbuch prüfen vor KI-Aufruf
-      const bookEntry = rezeptbuchEntries.length > 0 ? findInRezeptbuch(gericht, rezeptbuchEntries) : undefined
-      if (bookEntry) {
-        const bookRecipe = { ...bookEntry.rezept, quelle: 'rezeptbuch' as string }
-        const rescaled = (bookRecipe.personenAnzahl ?? 4) !== personCount ? rescaleRecipeLocally(bookRecipe, personCount) : bookRecipe
-        const toSave = { ...rescaled, personenAnzahl: personCount }
-        await onNextWeekDataChange({
-          mealsData: { ...(nextWeekData?.mealsData ?? {}), [gericht]: toSave, [mealsKey(tag, slot)]: { ...toSave, fuerGericht: gericht } },
-        }, nextMonday)
-        return
-      }
-      const rezept = await generateRecipe(gericht, emoji, getFreezerListString(freezerItems), getPantryListString(pantryItems), familyPrompt, personCount, allergenCheckMembers)
+      const rezept = await getRecipeForDish(gericht, emoji, getFreezerListString(freezerItems), getPantryListString(pantryItems), familyPrompt, personCount, allergenCheckMembers, undefined, rezeptbuchEntries)
       if (rezept) {
         const merged: Rezept = { ...rezept, personenAnzahl: personCount, ersetzteZutaten: rezept.ersetzteZutaten?.length ? rezept.ersetzteZutaten : (existing?.ersetzteZutaten ?? []) }
         await onNextWeekDataChange({ mealsData: { ...(nextWeekData?.mealsData ?? {}), [gericht]: merged, [mealsKey(tag, slot)]: { ...merged, fuerGericht: gericht } } }, nextMonday)
@@ -3272,7 +3230,7 @@ export default function WocheScreen({
     const membersForCount = members.length ? members : DEFAULT_MEMBERS
     await Promise.all(confirmedAlts.map(async ({ gericht, emoji, tag, slot }) => {
       const personCount = getPersonCountForSlot(tag, slot, attendance, membersForCount)
-      const rezept = await generateRecipe(gericht, emoji, freezerStr, pantryStr, familyPrompt, personCount)
+      const rezept = await getRecipeForDish(gericht, emoji, freezerStr, pantryStr, familyPrompt, personCount, undefined, undefined, rezeptbuchEntries)
       if (rezept) {
         const r = { ...rezept, personenAnzahl: personCount }
         newMeals[gericht] = r
@@ -3359,7 +3317,7 @@ export default function WocheScreen({
       }
       await Promise.all(confirmedAlts.map(async ({ gericht, emoji, tag, slot }) => {
         const personCount = pc(tag, slot)
-        const rezept = await generateRecipe(gericht, emoji, freezerStr, pantryStr, familyPrompt, personCount)
+        const rezept = await getRecipeForDish(gericht, emoji, freezerStr, pantryStr, familyPrompt, personCount, undefined, undefined, rezeptbuchEntries)
         if (rezept) { const r = { ...rezept, personenAnzahl: personCount }; finalMeals[gericht] = r; finalMeals[mealsKey(tag, slot)] = r }
       }))
       const newItems: ShoppingItem[] = []
@@ -3443,7 +3401,7 @@ export default function WocheScreen({
           : e
       )
       if (!getMeal(mealsData, wish.tag ?? '', wish.slot ?? 'Mittag', wish.dishName)) {
-        const rezept = await generateRecipe(wish.dishName, wish.emoji, getFreezerListString(freezerItems), getPantryListString(pantryItems), familyPrompt)
+        const rezept = await getRecipeForDish(wish.dishName, wish.emoji, getFreezerListString(freezerItems), getPantryListString(pantryItems), familyPrompt, undefined, undefined, undefined, rezeptbuchEntries)
         if (rezept) {
           newMeals[wish.dishName] = rezept
           if (wish.tag && wish.slot) newMeals[mealsKey(wish.tag, wish.slot)] = { ...rezept, fuerGericht: wish.dishName }
