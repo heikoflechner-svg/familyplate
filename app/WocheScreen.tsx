@@ -1204,6 +1204,10 @@ export default function WocheScreen({
   const [schnellEigenPerson, setSchnellEigenPerson] = useState<string | null>(null)
   const [schnellEigenAddToList, setSchnellEigenAddToList] = useState(false)
   const [schnellEigenText, setSchnellEigenText] = useState('')
+  const [gerichtVorschlagKey, setGerichtVorschlagKey] = useState<string | null>(null)
+  const [gerichtVorschlagText, setGerichtVorschlagText] = useState('')
+  const [rejectReasonId, setRejectReasonId] = useState<string | null>(null)
+  const [rejectReasonText, setRejectReasonText] = useState('')
 
   function getSlotAnwesend(tag: string, slot: WochenSlot): Chef[] {
     const allChefs = (members.length ? members : DEFAULT_MEMBERS).map(m => m.id as Chef)
@@ -1692,6 +1696,64 @@ export default function WocheScreen({
     await onProposalsChange(proposals.filter(p => p.id !== id))
   }
 
+  async function submitGerichtProposal(tag: string, slot: WochenSlot, name: string) {
+    if (!name.trim()) return
+    const existing = proposals.find(p => p.type === 'gericht' && p.tag === tag && p.slot === slot && p.vonChef === currentUser)
+    if (existing) return
+    await onProposalsChange([...proposals, {
+      id: crypto.randomUUID(),
+      type: 'gericht' as const,
+      tag, slot,
+      vonChef: currentUser,
+      fuerChef: wochenchef,
+      newGericht: name.trim(),
+      newEmoji: '🍽️',
+      createdAt: new Date().toISOString(),
+    }])
+    setGerichtVorschlagKey(null)
+    setGerichtVorschlagText('')
+  }
+
+  async function acceptGerichtProposal(proposal: ChangeProposal) {
+    const tag = proposal.tag
+    const slot = proposal.slot!
+    const newGericht = proposal.newGericht!
+    const emoji = proposal.newEmoji ?? '🍽️'
+    const oldEntry = weekPlan.find(e => e.tag === tag && e.slot === slot)
+    if (!oldEntry) { await onProposalsChange(proposals.filter(p => p.id !== proposal.id)); return }
+    const newPlan = weekPlan.map(e =>
+      e.tag === tag && e.slot === slot ? { ...e, gericht: newGericht, emoji, quelle: 'manuell' } : e
+    )
+    let updatedMeals = { ...mealsData }
+    delete updatedMeals[mealsKey(tag, slot)]
+    if (oldEntry.gericht !== newGericht && !weekPlan.some(e => !(e.tag === tag && e.slot === slot) && e.gericht === oldEntry.gericht)) {
+      delete updatedMeals[oldEntry.gericht]
+    }
+    const { list: listAfterRemove } = removeShoppingItemsForDish(shoppingList, tag, slot, oldEntry.gericht, false)
+    const mbs = members.length ? members : DEFAULT_MEMBERS
+    const pc = getPersonCountForSlot(tag, slot, attendance, mbs)
+    const allergenCheckMembers = mbs.filter(m => m.allergien?.length > 0).map(m => ({ name: m.name, allergien: m.allergien }))
+    const rezept = await generateRecipe(newGericht, emoji, getFreezerListString(freezerItems), getPantryListString(pantryItems), familyPrompt, pc, allergenCheckMembers)
+    if (rezept) {
+      updatedMeals = { ...updatedMeals, [newGericht]: rezept, [mealsKey(tag, slot)]: { ...rezept, fuerGericht: newGericht } }
+    }
+    const newEntry = newPlan.find(e => e.tag === tag && e.slot === slot)!
+    const newShoppingItems = rezept ? generateItemsForEntry(newEntry, { [newGericht]: rezept }) : []
+    await onProposalsChange(proposals.filter(p => p.id !== proposal.id))
+    await onWeekPlanChange(newPlan, updatedMeals)
+    await onShoppingListChange([...listAfterRemove, ...newShoppingItems])
+  }
+
+  async function rejectGerichtProposal(id: string, reason?: string) {
+    if (!reason?.trim()) {
+      await onProposalsChange(proposals.filter(p => p.id !== id))
+    } else {
+      await onProposalsChange(proposals.map(p => p.id === id ? { ...p, ablehnungsGrund: reason.trim() } : p))
+    }
+    setRejectReasonId(null)
+    setRejectReasonText('')
+  }
+
   async function acceptShoppingProposal(proposal: ChangeProposal) {
     if (!proposal.vorgeschlagene || !onShoppingPersonsChange) return
     await onShoppingPersonsChange({ ...shoppingPersons, [proposal.tag]: proposal.vorgeschlagene })
@@ -1735,7 +1797,8 @@ export default function WocheScreen({
     const swapProposals = proposals.filter(p => p.type === 'tauschen')
     const verschiebenProposals = proposals.filter(p => p.type === 'verschieben')
     const entfernenProposals = proposals.filter(p => p.type === 'entfernen')
-    const total = chefProposals.length + einkaufProposals.length + swapProposals.length + verschiebenProposals.length + entfernenProposals.length + nachtragsAltWishes.length + nachtragsErgWishes.length
+    const gerichtProposals = proposals.filter(p => p.type === 'gericht' && !p.ablehnungsGrund)
+    const total = chefProposals.length + einkaufProposals.length + swapProposals.length + verschiebenProposals.length + entfernenProposals.length + gerichtProposals.length + nachtragsAltWishes.length + nachtragsErgWishes.length
     const showPreConfirm = !planConfirmed && weekPlan.length > 0
     if (total === 0 && !showPreConfirm) return null
     return (
@@ -1869,7 +1932,7 @@ export default function WocheScreen({
 
         {/* Entfernen-Vorschläge */}
         {entfernenProposals.length > 0 && (
-          <div style={{ padding: '10px 14px', borderBottom: (nachtragsAltWishes.length + nachtragsErgWishes.length) > 0 ? '1px solid #FDE68A' : 'none', background: '#FFFBEB' }}>
+          <div style={{ padding: '10px 14px', borderBottom: (gerichtProposals.length + nachtragsAltWishes.length + nachtragsErgWishes.length) > 0 ? '1px solid #FDE68A' : 'none', background: '#FFFBEB' }}>
             <div style={{ fontSize: 11, fontWeight: 600, color: '#92400E', marginBottom: 8 }}>🗑 Entfernen ({entfernenProposals.length})</div>
             {entfernenProposals.map(p => {
               const entry = weekPlan.find(e => e.tag === p.tag && e.slot === p.slot)
@@ -1884,6 +1947,46 @@ export default function WocheScreen({
                     <button onClick={() => void acceptRemoveProposal(p)} style={{ flex: 1, padding: '5px', background: '#DC2626', color: 'white', border: 'none', borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>🗑 Entfernen</button>
                     <button onClick={() => rejectProposal(p.id)} style={{ padding: '5px 10px', background: 'white', border: '1px solid #ddd', borderRadius: 6, fontSize: 11, cursor: 'pointer', color: '#888' }}>✕ Ablehnen</button>
                   </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+
+        {/* Gericht-Änderungsvorschläge */}
+        {gerichtProposals.length > 0 && (
+          <div style={{ padding: '10px 14px', borderBottom: (nachtragsAltWishes.length + nachtragsErgWishes.length) > 0 ? '1px solid #FDE68A' : 'none', background: '#FFFBEB' }}>
+            <div style={{ fontSize: 11, fontWeight: 600, color: '#92400E', marginBottom: 8 }}>✏️ Gericht-Änderungen ({gerichtProposals.length})</div>
+            {gerichtProposals.map(p => {
+              const currentEntry = weekPlan.find(e => e.tag === p.tag && e.slot === p.slot)
+              const isRejectOpen = rejectReasonId === p.id
+              return (
+                <div key={p.id} style={{ background: 'white', border: '1px solid #FCD34D', borderRadius: 8, padding: '8px 10px', marginBottom: 6 }}>
+                  <div style={{ fontSize: 10, color: '#92400E', fontWeight: 700, marginBottom: 3 }}>{p.tag} · {p.slot === 'Mittag' ? '☀️' : '🌙'} {p.slot}</div>
+                  <div style={{ fontSize: 12, color: '#111', marginBottom: 6 }}>
+                    <span style={{ color: '#888' }}>{personNames[p.vonChef]} schlägt vor:</span>
+                    {currentEntry && <span style={{ color: '#aaa' }}> {currentEntry.emoji} {currentEntry.gericht} →</span>}
+                    <span style={{ fontWeight: 700 }}> 🍽️ {p.newGericht}</span>
+                  </div>
+                  {!isRejectOpen ? (
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <button onClick={() => void acceptGerichtProposal(p)} style={{ flex: 1, padding: '5px', background: '#1D9E75', color: 'white', border: 'none', borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>✅ Übernehmen</button>
+                      <button onClick={() => { setRejectReasonId(p.id); setRejectReasonText('') }} style={{ padding: '5px 10px', background: 'white', border: '1px solid #ddd', borderRadius: 6, fontSize: 11, cursor: 'pointer', color: '#888' }}>✕ Ablehnen</button>
+                    </div>
+                  ) : (
+                    <div>
+                      <input
+                        value={rejectReasonText}
+                        onChange={ev => setRejectReasonText(ev.target.value)}
+                        placeholder="Kurze Begründung (optional) …"
+                        style={{ width: '100%', marginBottom: 6, border: '1px solid #e5e7eb', borderRadius: 6, padding: '4px 8px', fontSize: 11, outline: 'none', boxSizing: 'border-box' as const }}
+                      />
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <button onClick={() => void rejectGerichtProposal(p.id, rejectReasonText)} style={{ flex: 1, padding: '5px', background: '#DC2626', color: 'white', border: 'none', borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>✕ Ablehnen</button>
+                        <button onClick={() => setRejectReasonId(null)} style={{ padding: '5px 10px', background: 'white', border: '1px solid #ddd', borderRadius: 6, fontSize: 11, cursor: 'pointer', color: '#888' }}>Abbrechen</button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )
             })}
@@ -4572,12 +4675,60 @@ export default function WocheScreen({
                         <WishesSection
                           tag={tag} wishes={wishes} freezerItems={freezerItems} pantryItems={pantryItems}
                           personNames={personNames} members={activeMembers} mittagsloseTage={mittagsloseTage} lockedSlot={slot} showExisting={false}
-                          canAdd={!shopDone && !wishDeadlinePassed && !(planConfirmed && (currentUser === wochenchef || canEditSettings))}
+                          canAdd={!shopDone && !wishDeadlinePassed && !planConfirmed}
                           deadlineHint={wishDeadlineHint} wishHint={currentUser === wochenchef || canEditSettings ? undefined : wishHint}
                           isOpen={wishFormKey === `${tag}-${slot}`} initialPerson={currentUser} familyPrompt={familyPrompt}
                           onOpen={() => openWishForm(tag, slot)} onClose={closeWishForm} onSubmitWish={handleWishSubmit} onRemove={removeWish}
                           fullWidth
                         />
+                        {planConfirmed && !(currentUser === wochenchef || canEditSettings) && !shopDone && (() => {
+                          const pKey = `${tag}-${slot}`
+                          const myProposal = proposals.find(p => p.type === 'gericht' && p.tag === tag && p.slot === slot && p.vonChef === currentUser)
+                          if (myProposal?.ablehnungsGrund) {
+                            return (
+                              <div style={{ borderTop: '1px solid #f5f5f5', padding: '6px 12px 8px' }}>
+                                <div style={{ fontSize: 11, color: '#DC2626', marginBottom: 4 }}>✕ Vorschlag abgelehnt: „{myProposal.ablehnungsGrund}"</div>
+                                <button onClick={() => void onProposalsChange(proposals.filter(p => p.id !== myProposal.id))}
+                                  style={{ fontSize: 11, color: '#888', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>Verstanden</button>
+                              </div>
+                            )
+                          }
+                          if (myProposal) {
+                            return (
+                              <div style={{ borderTop: '1px solid #f5f5f5', padding: '5px 12px 6px', fontSize: 11, color: '#92400E' }}>
+                                ⏳ Vorschlag „{myProposal.newGericht}" wartet auf Bestätigung
+                              </div>
+                            )
+                          }
+                          const isOpen = gerichtVorschlagKey === pKey
+                          return (
+                            <div style={{ borderTop: '1px solid #f5f5f5' }}>
+                              <button
+                                onClick={() => { setGerichtVorschlagKey(isOpen ? null : pKey); setGerichtVorschlagText('') }}
+                                style={{ width: '100%', padding: '6px 12px', background: 'none', border: 'none', textAlign: 'left', fontSize: 11, color: isOpen ? '#1D9E75' : '#bbb', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}
+                              >✏️ Gericht vorschlagen</button>
+                              {isOpen && (
+                                <div style={{ padding: '4px 12px 8px', background: '#f9f9f9' }}>
+                                  <div style={{ fontSize: 10, color: '#92400E', padding: '2px 0 6px' }}>⏳ Vorschlag geht an {personNames[wochenchef]}</div>
+                                  <div style={{ display: 'flex', gap: 6 }}>
+                                    <input
+                                      value={gerichtVorschlagText}
+                                      onChange={ev => setGerichtVorschlagText(ev.target.value)}
+                                      onKeyDown={ev => ev.key === 'Enter' && void submitGerichtProposal(tag, slot, gerichtVorschlagText)}
+                                      placeholder="Neues Gericht …"
+                                      style={{ flex: 1, border: '1px solid #e5e7eb', borderRadius: 7, padding: '5px 9px', fontSize: 12, outline: 'none', background: 'white' }}
+                                    />
+                                    <button
+                                      onClick={() => void submitGerichtProposal(tag, slot, gerichtVorschlagText)}
+                                      disabled={!gerichtVorschlagText.trim() || saving}
+                                      style={{ padding: '5px 12px', background: '#1D9E75', color: 'white', border: 'none', borderRadius: 7, fontSize: 11, fontWeight: 600, cursor: 'pointer', opacity: !gerichtVorschlagText.trim() ? 0.5 : 1 }}
+                                    >Vorschlagen</button>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          )
+                        })()}
                         {(() => {
                           const pKey = `${tag}-${slot}`
                           const isKochOpen = kochPanelKey === pKey
@@ -5567,11 +5718,59 @@ export default function WocheScreen({
         <WishesSection
           tag={tag} wishes={wishes} freezerItems={freezerItems} pantryItems={pantryItems}
           personNames={personNames} members={activeMembers} mittagsloseTage={mittagsloseTage} lockedSlot={slot}
-          canAdd={!shopDone && !wishDeadlinePassed && !(planConfirmed && (currentUser === wochenchef || canEditSettings))}
+          canAdd={!shopDone && !wishDeadlinePassed && !planConfirmed}
           deadlineHint={wishDeadlineHint} wishHint={currentUser === wochenchef || canEditSettings ? undefined : wishHint}
           isOpen={wishFormKey === `${tag}-${slot}`} initialPerson={currentUser} familyPrompt={familyPrompt}
           onOpen={() => openWishForm(tag, slot)} onClose={closeWishForm} onSubmitWish={handleWishSubmit} onRemove={removeWish}
         />
+        {planConfirmed && !(currentUser === wochenchef || canEditSettings) && !shopDone && (() => {
+          const pKey = `${tag}-${slot}`
+          const myProposal = proposals.find(p => p.type === 'gericht' && p.tag === tag && p.slot === slot && p.vonChef === currentUser)
+          if (myProposal?.ablehnungsGrund) {
+            return (
+              <div style={{ padding: '6px 12px 8px', borderTop: '1px solid #f0f0f0' }}>
+                <div style={{ fontSize: 11, color: '#DC2626', marginBottom: 4 }}>✕ Vorschlag abgelehnt: „{myProposal.ablehnungsGrund}"</div>
+                <button onClick={() => void onProposalsChange(proposals.filter(p => p.id !== myProposal.id))}
+                  style={{ fontSize: 11, color: '#888', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>Verstanden</button>
+              </div>
+            )
+          }
+          if (myProposal) {
+            return (
+              <div style={{ padding: '5px 12px 6px', fontSize: 11, color: '#92400E', borderTop: '1px solid #f0f0f0' }}>
+                ⏳ Vorschlag „{myProposal.newGericht}" wartet auf Bestätigung
+              </div>
+            )
+          }
+          const isOpen = gerichtVorschlagKey === pKey
+          return (
+            <div style={{ borderTop: '1px solid #f0f0f0' }}>
+              <button
+                onClick={() => { setGerichtVorschlagKey(isOpen ? null : pKey); setGerichtVorschlagText('') }}
+                style={{ padding: '5px 12px', background: 'none', border: 'none', textAlign: 'left', fontSize: 11, color: isOpen ? '#1D9E75' : '#bbb', cursor: 'pointer' }}
+              >✏️ Gericht vorschlagen</button>
+              {isOpen && (
+                <div style={{ padding: '0 12px 8px', background: '#f9f9f9' }}>
+                  <div style={{ fontSize: 10, color: '#92400E', padding: '2px 0 6px' }}>⏳ Vorschlag geht an {personNames[wochenchef]}</div>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <input
+                      value={gerichtVorschlagText}
+                      onChange={ev => setGerichtVorschlagText(ev.target.value)}
+                      onKeyDown={ev => ev.key === 'Enter' && void submitGerichtProposal(tag, slot, gerichtVorschlagText)}
+                      placeholder="Neues Gericht …"
+                      style={{ flex: 1, border: '1px solid #e5e7eb', borderRadius: 7, padding: '5px 9px', fontSize: 12, outline: 'none', background: 'white' }}
+                    />
+                    <button
+                      onClick={() => void submitGerichtProposal(tag, slot, gerichtVorschlagText)}
+                      disabled={!gerichtVorschlagText.trim() || saving}
+                      style={{ padding: '5px 12px', background: '#1D9E75', color: 'white', border: 'none', borderRadius: 7, fontSize: 11, fontWeight: 600, cursor: 'pointer', opacity: !gerichtVorschlagText.trim() ? 0.5 : 1 }}
+                    >Vorschlagen</button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )
+        })()}
         {planConfirmed && (isPast || tag === today) && slotAnwesend.includes(currentUser) && onRateGericht && (
           <div style={{ borderTop: '1px solid #f5f5f5', padding: '5px 12px', display: 'flex', alignItems: 'center', gap: 4 }}>
             <span style={{ fontSize: 10, color: '#aaa', marginRight: 2 }}>⭐ Wie war's?</span>

@@ -48,9 +48,9 @@ export interface WeekPlanEntry {
 
 export interface ChangeProposal {
   id: string
-  type?: 'chef' | 'einkauf' | 'tauschen' | 'nwtauschen' | 'verschieben' | 'entfernen'  // undefined = 'chef' (Rückwärtskompatibilität)
+  type?: 'chef' | 'einkauf' | 'tauschen' | 'nwtauschen' | 'verschieben' | 'entfernen' | 'gericht'  // undefined = 'chef' (Rückwärtskompatibilität)
   tag: string
-  slot?: WochenSlot           // chef + tauschen + verschieben + entfernen proposals
+  slot?: WochenSlot           // chef + tauschen + verschieben + entfernen + gericht proposals
   vonChef: Chef
   fuerChef?: Chef             // chef + tauschen proposals
   newChef?: Chef              // chef proposals
@@ -63,6 +63,10 @@ export interface ChangeProposal {
   dstTag?: string
   dstSlot?: WochenSlot
   dstNextWeek?: boolean
+  // gericht proposals:
+  newGericht?: string
+  newEmoji?: string
+  ablehnungsGrund?: string
 }
 
 export type Wish = {
