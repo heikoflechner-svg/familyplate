@@ -104,18 +104,30 @@ self.addEventListener('message', function(event) {
 });
 
 // ── Push ───────────────────────────────────────────────────────────────────────
+// Writes /__pending_nav BEFORE showing the notification so the app can navigate
+// even when notificationclick doesn't fire reliably (iOS fallback).
 self.addEventListener('push', function(event) {
   if (!event.data) return;
   var data;
   try { data = event.data.json(); } catch(e) { return; }
   event.waitUntil(
-    self.registration.showNotification(data.title || 'MenuFamPlan', {
-      body: data.body || '',
-      icon: '/icon-192.png',
-      badge: '/icon-192.png',
-      tag: data.tag || ('menufamplan-' + Date.now()),
-      renotify: true,
-      data: { url: data.url || '/' },
+    caches.open('fp-nav').then(function(cache) {
+      return cache.put(
+        new Request('/__pending_nav'),
+        new Response(
+          JSON.stringify({ tab: 'woche', ts: Date.now(), swVersion: SW_DIAG_VERSION, source: 'push' }),
+          { headers: { 'Content-Type': 'application/json' } }
+        )
+      );
+    }).then(function() {
+      return self.registration.showNotification(data.title || 'MenuFamPlan', {
+        body: data.body || '',
+        icon: '/icon-192.png',
+        badge: '/icon-192.png',
+        tag: data.tag || ('menufamplan-' + Date.now()),
+        renotify: true,
+        data: { url: data.url || '/' },
+      });
     })
   );
 });
@@ -129,13 +141,13 @@ self.addEventListener('notificationclick', function(event) {
 
   event.waitUntil(
     caches.open('fp-nav').then(function(cache) {
-      var payload = JSON.stringify({ tab: 'woche', ts: Date.now(), swVersion: SW_DIAG_VERSION });
+      var payload = JSON.stringify({ tab: 'woche', ts: Date.now(), swVersion: SW_DIAG_VERSION, source: 'click' });
       var makeResponse = function() {
         return new Response(payload, { headers: { 'Content-Type': 'application/json' } });
       };
       return Promise.all([
         cache.put(new Request('/__pending_nav'), makeResponse()),
-        cache.put(new Request('/__last_notif_click'), makeResponse()),
+        cache.put(new Request('/__last_click'), makeResponse()),
       ]);
     }).then(function() {
       return clients.matchAll({ type: 'window', includeUncontrolled: true });

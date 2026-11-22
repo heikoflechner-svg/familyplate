@@ -135,7 +135,8 @@ export default function MehrScreen({
   const [pushIsIos, setPushIsIos] = useState(false)
   const [pushIsStandalone, setPushIsStandalone] = useState(false)
   const [swDiagVersion, setSwDiagVersion] = useState<string | null>(null)
-  const [swDiagLastClick, setSwDiagLastClick] = useState<{ tab: string; ts: number; swVersion?: string } | null>(null)
+  const [swDiagLastClick, setSwDiagLastClick] = useState<{ tab: string; ts: number; swVersion?: string; source?: string } | null>(null)
+  const [swDiagNavLog, setSwDiagNavLog] = useState<{ ts: number; tab: string; source: string } | null>(null)
 
   useEffect(() => {
     if (view !== 'push') return
@@ -227,13 +228,24 @@ export default function MehrScreen({
       void (async () => {
         try {
           const cache = await window.caches.open('fp-nav')
-          const res = await cache.match('/__last_notif_click')
+          const res = await cache.match('/__last_click')
           if (res && alive) {
-            const data = await res.json() as { tab: string; ts: number; swVersion?: string }
+            const data = await res.json() as { tab: string; ts: number; swVersion?: string; source?: string }
             setSwDiagLastClick(data)
           }
         } catch {}
       })()
+    }
+
+    // App nav log from localStorage
+    if (typeof window !== 'undefined') {
+      try {
+        const raw = localStorage.getItem('fp_nav_log')
+        if (raw && alive) {
+          const parsed = JSON.parse(raw) as { ts: number; tab: string; source: string }
+          setSwDiagNavLog(parsed)
+        }
+      } catch {}
     }
 
     return () => { alive = false }
@@ -1526,10 +1538,16 @@ export default function MehrScreen({
             <div style={{ fontSize: 10, color: '#bbb', lineHeight: 1.7, fontFamily: 'monospace' }}>
               <div>SW: {swDiagVersion ?? '…'}</div>
               <div>
-                Letzter Klick:{' '}
+                {'Klick beim SW: '}
                 {swDiagLastClick
-                  ? `${new Date(swDiagLastClick.ts).toLocaleTimeString('de-DE')} → ${swDiagLastClick.tab}${swDiagLastClick.swVersion ? ` (SW: ${swDiagLastClick.swVersion})` : ' (kein SW-Tag)'}`
+                  ? `${new Date(swDiagLastClick.ts).toLocaleTimeString('de-DE')} → ${swDiagLastClick.tab} (SW: ${swDiagLastClick.swVersion ?? '?'}, via ${swDiagLastClick.source ?? '?'})`
                   : 'noch keiner'}
+              </div>
+              <div>
+                {'App hat gewechselt: '}
+                {swDiagNavLog
+                  ? `${new Date(swDiagNavLog.ts).toLocaleTimeString('de-DE')} → ${swDiagNavLog.tab} (via ${swDiagNavLog.source})`
+                  : 'noch nie'}
               </div>
             </div>
           </div>

@@ -495,10 +495,17 @@ export default function FamilyPlateApp() {
         const cache = await window.caches.open('fp-nav')
         const res = await cache.match('/__pending_nav')
         if (!res) return
-        const { tab, ts } = await res.json() as { tab: Tab; ts: number }
+        const data = await res.json() as { tab: Tab; ts: number; source?: string }
         await cache.delete('/__pending_nav')
-        if (Date.now() - ts > TWO_MINUTES) return
-        if (tab && VALID_TABS.includes(tab)) setActiveTab(tab)
+        if (Date.now() - data.ts > TWO_MINUTES) return
+        if (data.tab && VALID_TABS.includes(data.tab)) {
+          setActiveTab(data.tab)
+          try {
+            localStorage.setItem('fp_nav_log', JSON.stringify({
+              ts: Date.now(), tab: data.tab, source: data.source ?? 'unknown',
+            }))
+          } catch {}
+        }
       } catch {}
     }
 
@@ -506,12 +513,15 @@ export default function FamilyPlateApp() {
 
     function onVisible() { if (document.visibilityState === 'visible') void checkPendingNav() }
     function onFocus() { void checkPendingNav() }
+    function onPageShow(e: Event) { if ((e as PageTransitionEvent).persisted) void checkPendingNav() }
 
     document.addEventListener('visibilitychange', onVisible)
     window.addEventListener('focus', onFocus)
+    window.addEventListener('pageshow', onPageShow)
     return () => {
       document.removeEventListener('visibilitychange', onVisible)
       window.removeEventListener('focus', onFocus)
+      window.removeEventListener('pageshow', onPageShow)
     }
   }, [])
 
