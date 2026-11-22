@@ -450,6 +450,18 @@ export default function FamilyPlateApp() {
     navigator.serviceWorker.addEventListener('controllerchange', () => window.location.reload())
   }, [])
 
+  // Handle messages from service worker (e.g. notification click → navigate to week tab)
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return
+    function onSwMessage(event: MessageEvent) {
+      if (event.data?.type === 'NAVIGATE_TAB' && event.data.tab) {
+        setActiveTab(event.data.tab as Tab)
+      }
+    }
+    navigator.serviceWorker.addEventListener('message', onSwMessage)
+    return () => navigator.serviceWorker.removeEventListener('message', onSwMessage)
+  }, [])
+
   // Trigger SW update check when app becomes visible (e.g. returning from home screen)
   useEffect(() => {
     if (process.env.NODE_ENV !== 'production') return

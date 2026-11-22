@@ -105,14 +105,15 @@ self.addEventListener('push', function(event) {
       body: data.body || '',
       icon: '/icon-192.png',
       badge: '/icon-192.png',
-      tag: data.tag || 'menufamplan',
+      tag: data.tag || ('menufamplan-' + Date.now()),
+      renotify: true,
       data: { url: data.url || '/' },
     })
   );
 });
 
 // ── Notification click ─────────────────────────────────────────────────────────
-// Opens/focuses the app and navigates to the week plan.
+// Opens/focuses the app and signals it to navigate to the week plan tab.
 self.addEventListener('notificationclick', function(event) {
   event.notification.close();
   var targetUrl = (event.notification.data && event.notification.data.url) || '/';
@@ -120,7 +121,9 @@ self.addEventListener('notificationclick', function(event) {
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function(list) {
       for (var i = 0; i < list.length; i++) {
         if (list[i].url.startsWith(self.location.origin) && 'focus' in list[i]) {
-          return list[i].focus();
+          return list[i].focus().then(function(focusedClient) {
+            focusedClient.postMessage({ type: 'NAVIGATE_TAB', tab: 'woche' });
+          });
         }
       }
       if (clients.openWindow) return clients.openWindow(targetUrl);

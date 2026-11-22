@@ -130,6 +130,8 @@ export default function MehrScreen({
   const [pushSettingsSaving, setPushSettingsSaving] = useState(false)
   const [pushTestSending, setPushTestSending] = useState(false)
   const [pushTestMsg, setPushTestMsg] = useState<string | null>(null)
+  const [pushTestReminderSending, setPushTestReminderSending] = useState<'vortag' | 'kochtag' | null>(null)
+  const [testReminderMsg, setTestReminderMsg] = useState<string | null>(null)
   const [pushIsIos, setPushIsIos] = useState(false)
   const [pushIsStandalone, setPushIsStandalone] = useState(false)
 
@@ -274,6 +276,33 @@ export default function MehrScreen({
       setPushTestMsg('Fehler: ' + ((e as Error).message || 'Unbekannt'))
     } finally {
       setPushTestSending(false)
+    }
+  }
+
+  async function handleTestReminder(type: 'vortag' | 'kochtag') {
+    if (pushTestReminderSending) return
+    setPushTestReminderSending(type)
+    setTestReminderMsg(null)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.access_token) throw new Error('Nicht angemeldet.')
+      const res = await fetch('/api/push/test-reminder', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ type }),
+      })
+      const json = await res.json() as { ok?: boolean; sent?: number; msg?: string; error?: string }
+      if (!res.ok) throw new Error(json.error || 'Fehler.')
+      if (json.msg) {
+        setTestReminderMsg(json.msg)
+      } else {
+        const label = type === 'vortag' ? 'Vortags' : 'Kochtag'
+        setTestReminderMsg(`✓ ${label}-Test gesendet (${json.sent ?? 1} Payload${(json.sent ?? 1) !== 1 ? 's' : ''})`)
+      }
+    } catch (e) {
+      setTestReminderMsg('Fehler: ' + ((e as Error).message || 'Unbekannt'))
+    } finally {
+      setPushTestReminderSending(null)
     }
   }
 
@@ -1264,9 +1293,7 @@ export default function MehrScreen({
 
   // ── Push-Benachrichtigungen ─────────────────────────────────────────────────
   if (view === 'push') {
-    // isOwner wird in Runde 2 für Test-Reminder-Buttons verwendet
-    const _isOwner = memberStatuses.find(s => s.kuerzel === currentUser)?.role === 'owner'
-    void _isOwner
+    const isOwner = memberStatuses.find(s => s.kuerzel === currentUser)?.role === 'owner'
     return (
       <div className="screen active" style={{ overflowY: 'auto' }}>
         <div className="topbar">
@@ -1377,6 +1404,37 @@ export default function MehrScreen({
               {pushTestMsg && (
                 <div style={{ fontSize: 12, color: pushTestMsg.startsWith('Fehler') ? '#991B1B' : '#065F46', marginTop: 8, textAlign: 'center' }}>
                   {pushTestMsg}
+                </div>
+              )}
+
+              {isOwner && (
+                <div style={{ marginTop: 14 }}>
+                  <div style={{ fontSize: 11, color: '#888', marginBottom: 6 }}>Erinnerungen testen (nur du siehst diese):</div>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    {(['vortag', 'kochtag'] as const).map(type => (
+                      <button
+                        key={type}
+                        onClick={() => void handleTestReminder(type)}
+                        disabled={pushTestReminderSending !== null}
+                        style={{
+                          flex: 1, padding: '10px 8px', borderRadius: 12, border: '1px solid #E5E7EB',
+                          cursor: pushTestReminderSending !== null ? 'default' : 'pointer',
+                          fontSize: 12, fontWeight: 600,
+                          background: pushTestReminderSending === type ? '#F9FAFB' : '#fff',
+                          color: pushTestReminderSending === type ? '#aaa' : '#0F6E56',
+                        }}
+                      >
+                        {pushTestReminderSending === type
+                          ? 'Wird gesendet…'
+                          : type === 'vortag' ? '📅 Vortags-Erinnerung' : '☀️ Kochtag-Erinnerung'}
+                      </button>
+                    ))}
+                  </div>
+                  {testReminderMsg && (
+                    <div style={{ fontSize: 12, color: testReminderMsg.startsWith('Fehler') ? '#991B1B' : '#065F46', marginTop: 8, textAlign: 'center' }}>
+                      {testReminderMsg}
+                    </div>
+                  )}
                 </div>
               )}
 
