@@ -148,13 +148,37 @@ export default function MehrScreen({
     if (!supported) return
 
     setPushPermission(Notification.permission)
+    setPushError(null)
 
-    navigator.serviceWorker.getRegistration('/sw.js').then(reg => {
-      if (!reg) return undefined
-      return reg.pushManager.getSubscription()
-    }).then(sub => {
-      setPushSubscribed(!!sub)
-    }).catch(() => setPushSubscribed(false))
+    // Browser-Abo prüfen und mit DB synchronisieren (idempotenter upsert).
+    // Status = aktiv erst wenn BEIDES vorhanden ist (Browser + DB-Eintrag).
+    void (async () => {
+      try {
+        const reg = await navigator.serviceWorker.getRegistration('/sw.js')
+        if (!reg) { setPushSubscribed(false); return }
+        const browserSub = await reg.pushManager.getSubscription()
+        if (!browserSub) { setPushSubscribed(false); return }
+
+        const { data: { session } } = await supabase.auth.getSession()
+        if (!session?.access_token) { setPushSubscribed(false); return }
+
+        const res = await fetch('/api/push/subscribe', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+          body: JSON.stringify({ subscription: browserSub.toJSON() }),
+        })
+
+        if (res.ok) {
+          setPushSubscribed(true)
+        } else {
+          const json = await res.json() as { error?: string }
+          setPushSubscribed(false)
+          setPushError(json.error ?? 'Verbindung zum Server fehlgeschlagen.')
+        }
+      } catch {
+        setPushSubscribed(false)
+      }
+    })()
 
     void supabase.auth.getSession().then(({ data: { session } }) => {
       if (!session?.access_token) return
@@ -1368,7 +1392,15 @@ export default function MehrScreen({
 
           {pushError && (
             <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 10, padding: '10px 14px', marginTop: 12, fontSize: 13, color: '#991B1B' }}>
-              {pushError}
+              <div>{pushError}</div>
+              {!pushSubscribed && (
+                <button
+                  onClick={() => { setPushError(null); void handlePushSubscribe() }}
+                  style={{ marginTop: 8, background: 'none', border: '1px solid #FECACA', borderRadius: 8, padding: '5px 12px', cursor: 'pointer', fontSize: 12, color: '#991B1B' }}
+                >
+                  Nochmal versuchen
+                </button>
+              )}
             </div>
           )}
 

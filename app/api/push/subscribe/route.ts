@@ -44,7 +44,10 @@ export async function POST(req: NextRequest) {
 
   if (error) {
     console.error('[push/subscribe] upsert error:', error)
-    return NextResponse.json({ error: 'Speichern fehlgeschlagen.' }, { status: 500 })
+    const msg = error.code === '22P02'
+      ? 'Datenbankfehler: Spaltentyp stimmt nicht überein (family_id). SQL-Migration prüfen.'
+      : `Speichern fehlgeschlagen: ${error.message ?? error.code ?? 'unbekannt'}`
+    return NextResponse.json({ error: msg }, { status: 500 })
   }
 
   return NextResponse.json({ ok: true })
