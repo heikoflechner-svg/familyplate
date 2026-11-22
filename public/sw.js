@@ -24,7 +24,7 @@ self.addEventListener('activate', function(event) {
     caches.keys().then(function(keys) {
       return Promise.all(
         keys
-          .filter(function(k) { return k !== CACHE_STATIC && k !== CACHE_PAGES; })
+          .filter(function(k) { return k !== CACHE_STATIC && k !== CACHE_PAGES && k !== 'fp-nav'; })
           .map(function(k) { return caches.delete(k); })
       );
     }).then(function() { return self.clients.claim(); })
@@ -113,12 +113,24 @@ self.addEventListener('push', function(event) {
 });
 
 // ── Notification click ─────────────────────────────────────────────────────────
-// Opens/focuses the app and signals it to navigate to the week plan tab.
+// Writes a pending-nav "note" to the Cache API (survives iOS BFCache and start_url
+// restrictions), then focuses/opens the app and also sends a postMessage fallback.
 self.addEventListener('notificationclick', function(event) {
   event.notification.close();
   var targetUrl = (event.notification.data && event.notification.data.url) || '/';
+
   event.waitUntil(
-    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function(list) {
+    caches.open('fp-nav').then(function(cache) {
+      return cache.put(
+        new Request('/__pending_nav'),
+        new Response(
+          JSON.stringify({ tab: 'woche', ts: Date.now() }),
+          { headers: { 'Content-Type': 'application/json' } }
+        )
+      );
+    }).then(function() {
+      return clients.matchAll({ type: 'window', includeUncontrolled: true });
+    }).then(function(list) {
       for (var i = 0; i < list.length; i++) {
         if (list[i].url.startsWith(self.location.origin) && 'focus' in list[i]) {
           return list[i].focus().then(function(focusedClient) {

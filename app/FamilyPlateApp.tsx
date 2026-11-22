@@ -481,6 +481,40 @@ export default function FamilyPlateApp() {
     return () => document.removeEventListener('visibilitychange', onVisible)
   }, [])
 
+  // Cache-based pending nav – primary iOS fix for push notification clicks.
+  // The SW writes a JSON "note" to caches('fp-nav')/'/__pending_nav' in notificationclick.
+  // This survives iOS BFCache restore and start_url restrictions (unlike URL params or postMessage).
+  // Checked on mount, every visibilitychange, and window focus. TTL: 2 minutes.
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('caches' in window)) return
+    const VALID_TABS: Tab[] = ['woche', 'gefriertruhe', 'einkauf', 'rezepte', 'mehr']
+    const TWO_MINUTES = 2 * 60 * 1000
+
+    async function checkPendingNav() {
+      try {
+        const cache = await window.caches.open('fp-nav')
+        const res = await cache.match('/__pending_nav')
+        if (!res) return
+        const { tab, ts } = await res.json() as { tab: Tab; ts: number }
+        await cache.delete('/__pending_nav')
+        if (Date.now() - ts > TWO_MINUTES) return
+        if (tab && VALID_TABS.includes(tab)) setActiveTab(tab)
+      } catch {}
+    }
+
+    void checkPendingNav()
+
+    function onVisible() { if (document.visibilityState === 'visible') void checkPendingNav() }
+    function onFocus() { void checkPendingNav() }
+
+    document.addEventListener('visibilitychange', onVisible)
+    window.addEventListener('focus', onFocus)
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible)
+      window.removeEventListener('focus', onFocus)
+    }
+  }, [])
+
   // Trigger SW update check when app becomes visible (e.g. returning from home screen)
   useEffect(() => {
     if (process.env.NODE_ENV !== 'production') return
