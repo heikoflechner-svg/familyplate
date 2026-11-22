@@ -103,7 +103,7 @@ export async function POST(req: NextRequest) {
       for (const sub of testerSubs) {
         await sendPushToEndpoint(
           { endpoint: sub.endpoint, p256dh: sub.p256dh, auth: sub.auth },
-          { title: payload.title, body: testBody.slice(0, 240), tag: `test-${payload.tag}-${Date.now()}`, url: '/' },
+          { title: payload.title, body: testBody.slice(0, 240), tag: `test-${payload.tag}-${Date.now()}`, url: payload.url },
           familyId,
         )
       }

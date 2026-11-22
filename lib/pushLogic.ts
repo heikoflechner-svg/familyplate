@@ -177,7 +177,7 @@ export function buildVortagPayloads(
       title,
       body: truncate(bodyParts.join(' · '), 200),
       tag: `vortag-${chef}-${targetDate}`,
-      url: '/',
+      url: '/?tab=woche',
     })
   }
   return payloads
@@ -214,7 +214,7 @@ export function buildKochtagPayloads(
       title,
       body: truncate(bodyParts.join(' · '), 200),
       tag: `kochtag-${chef}-${targetDate}`,
-      url: '/',
+      url: '/?tab=woche',
     })
   }
   return payloads
@@ -257,7 +257,7 @@ export function buildWochenchefPayloads(params: {
         title: 'Du bist nächste Woche Wochenchef 👨‍🍳',
         body: 'Die Woche ist noch nicht geplant – jetzt mit Rémy planen?',
         tag: `wochenchef-sa-${t.kuerzel}-${targetDate}`,
-        url: '/',
+        url: '/?tab=woche',
       })
     }
   } else {
@@ -272,7 +272,7 @@ export function buildWochenchefPayloads(params: {
         title: 'Nächste Woche ist noch nicht geplant',
         body: truncate(`${chefDisplayName} hat noch nicht geplant – übernehmen?`, 200),
         tag: `wochenchef-so-${t.kuerzel}-${targetDate}`,
-        url: '/',
+        url: '/?tab=woche',
       })
     }
   }

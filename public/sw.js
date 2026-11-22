@@ -123,6 +123,9 @@ self.addEventListener('notificationclick', function(event) {
         if (list[i].url.startsWith(self.location.origin) && 'focus' in list[i]) {
           return list[i].focus().then(function(focusedClient) {
             focusedClient.postMessage({ type: 'NAVIGATE_TAB', tab: 'woche' });
+            if ('navigate' in focusedClient) {
+              return focusedClient.navigate(targetUrl);
+            }
           });
         }
       }

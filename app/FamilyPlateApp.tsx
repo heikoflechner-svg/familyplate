@@ -462,6 +462,25 @@ export default function FamilyPlateApp() {
     return () => navigator.serviceWorker.removeEventListener('message', onSwMessage)
   }, [])
 
+  // iOS fallback: read ?tab= URL param set by SW navigate() on notification click
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const VALID_TABS: Tab[] = ['woche', 'gefriertruhe', 'einkauf', 'rezepte', 'mehr']
+    function applyTabParam() {
+      const tab = new URLSearchParams(window.location.search).get('tab') as Tab | null
+      if (tab && VALID_TABS.includes(tab)) {
+        setActiveTab(tab)
+        window.history.replaceState(null, '', window.location.pathname)
+      }
+    }
+    applyTabParam()
+    function onVisible() {
+      if (document.visibilityState === 'visible') applyTabParam()
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, [])
+
   // Trigger SW update check when app becomes visible (e.g. returning from home screen)
   useEffect(() => {
     if (process.env.NODE_ENV !== 'production') return
