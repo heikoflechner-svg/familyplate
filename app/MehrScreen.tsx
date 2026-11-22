@@ -130,7 +130,7 @@ export default function MehrScreen({
   const [pushSettingsSaving, setPushSettingsSaving] = useState(false)
   const [pushTestSending, setPushTestSending] = useState(false)
   const [pushTestMsg, setPushTestMsg] = useState<string | null>(null)
-  const [pushTestReminderSending, setPushTestReminderSending] = useState<'vortag' | 'kochtag' | null>(null)
+  const [pushTestReminderSending, setPushTestReminderSending] = useState<'vortag' | 'kochtag' | 'wochenchef' | null>(null)
   const [testReminderMsg, setTestReminderMsg] = useState<string | null>(null)
   const [pushIsIos, setPushIsIos] = useState(false)
   const [pushIsStandalone, setPushIsStandalone] = useState(false)
@@ -279,7 +279,7 @@ export default function MehrScreen({
     }
   }
 
-  async function handleTestReminder(type: 'vortag' | 'kochtag') {
+  async function handleTestReminder(type: 'vortag' | 'kochtag' | 'wochenchef') {
     if (pushTestReminderSending) return
     setPushTestReminderSending(type)
     setTestReminderMsg(null)
@@ -1430,6 +1430,19 @@ export default function MehrScreen({
                       </button>
                     ))}
                   </div>
+                  <button
+                    onClick={() => void handleTestReminder('wochenchef')}
+                    disabled={pushTestReminderSending !== null}
+                    style={{
+                      width: '100%', padding: '10px 8px', borderRadius: 12, border: '1px solid #E5E7EB',
+                      cursor: pushTestReminderSending !== null ? 'default' : 'pointer',
+                      fontSize: 12, fontWeight: 600, marginTop: 8,
+                      background: pushTestReminderSending === 'wochenchef' ? '#F9FAFB' : '#fff',
+                      color: pushTestReminderSending === 'wochenchef' ? '#aaa' : '#0F6E56',
+                    }}
+                  >
+                    {pushTestReminderSending === 'wochenchef' ? 'Wird gesendet…' : '👨‍🍳 Wochenchef-Erinnerung'}
+                  </button>
                   {testReminderMsg && (
                     <div style={{ fontSize: 12, color: testReminderMsg.startsWith('Fehler') ? '#991B1B' : '#065F46', marginTop: 8, textAlign: 'center' }}>
                       {testReminderMsg}

@@ -220,11 +220,71 @@ export function buildKochtagPayloads(
   return payloads
 }
 
+export interface WochenchefPayloadsResult {
+  payloads: NotificationPayload[]
+  isAlreadyPlanned: boolean
+}
+
+export interface MemberBasic {
+  kuerzel: string
+  role: string
+  displayName: string
+}
+
+/** Payloads für die Wochenchef-Erinnerung (Samstag → NW-Chef, Sonntag → Owner+Admin). */
+export function buildWochenchefPayloads(params: {
+  nextWeekData: { wochenchef?: string; planConfirmed?: boolean; isDraft?: boolean } | null
+  currentWochenchef: string
+  members: MemberBasic[]
+  targetDate: string
+  isSunday: boolean
+}): WochenchefPayloadsResult {
+  const { nextWeekData, currentWochenchef, members, targetDate, isSunday } = params
+
+  const isPlanned = nextWeekData?.planConfirmed === true && !nextWeekData?.isDraft
+  if (isPlanned) return { payloads: [], isAlreadyPlanned: true }
+
+  const nextChef = (nextWeekData?.wochenchef || currentWochenchef) || ''
+  const payloads: NotificationPayload[] = []
+
+  if (!isSunday) {
+    // Samstag: an den NW-Wochenchef, Fallback: alle Owner
+    const chefMember = nextChef ? members.find(m => m.kuerzel === nextChef) : undefined
+    const targets = chefMember ? [chefMember] : members.filter(m => m.role === 'owner')
+    for (const t of targets) {
+      payloads.push({
+        memberId: t.kuerzel,
+        title: 'Du bist nächste Woche Wochenchef 👨‍🍳',
+        body: 'Die Woche ist noch nicht geplant – jetzt mit Rémy planen?',
+        tag: `wochenchef-sa-${t.kuerzel}-${targetDate}`,
+        url: '/',
+      })
+    }
+  } else {
+    // Sonntag: an alle Owner + Admin
+    const chefDisplayName = nextChef
+      ? (members.find(m => m.kuerzel === nextChef)?.displayName || nextChef)
+      : 'Der Wochenchef'
+    const targets = members.filter(m => m.role === 'owner' || m.role === 'admin')
+    for (const t of targets) {
+      payloads.push({
+        memberId: t.kuerzel,
+        title: 'Nächste Woche ist noch nicht geplant',
+        body: truncate(`${chefDisplayName} hat noch nicht geplant – übernehmen?`, 200),
+        tag: `wochenchef-so-${t.kuerzel}-${targetDate}`,
+        url: '/',
+      })
+    }
+  }
+
+  return { payloads, isAlreadyPlanned: false }
+}
+
 /** Sendet Payloads an die Geräte der jeweiligen Köche. Prüft push_settings. */
 export async function sendRemindersToFamily(
   familyId: string,
   payloads: NotificationPayload[],
-  reminderKey: 'reminder_vortag' | 'reminder_kochtag',
+  reminderKey: 'reminder_vortag' | 'reminder_kochtag' | 'reminder_wochenchef',
 ): Promise<{ sent: number; skipped: number; errors: string[] }> {
   const admin = getAdminClient()
   const result = { sent: 0, skipped: 0, errors: [] as string[] }
