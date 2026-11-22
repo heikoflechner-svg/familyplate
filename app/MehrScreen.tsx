@@ -4,7 +4,18 @@ import type { Chef, FamilyMember, ChangeProposal, WeekPlanEntry, NextWeekData, T
 import type { DishRating } from '../lib/dishRatingsLogic'
 import { buildMemberCfg, DEFAULT_MEMBERS } from '../lib/familyLogic'
 import { getNextMondayIso, loadWeekHistory } from '../lib/mealLogic'
+import { supabase } from '../lib/supabase'
 import RezeptbuchScreen from './RezeptbuchScreen'
+
+function urlBase64ToUint8Array(base64String: string): ArrayBuffer {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4)
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/')
+  const rawData = window.atob(base64)
+  const buf = new ArrayBuffer(rawData.length)
+  const output = new Uint8Array(buf)
+  for (let i = 0; i < rawData.length; i++) output[i] = rawData.charCodeAt(i)
+  return buf
+}
 
 const WOCHENTAGE = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag']
 
@@ -22,7 +33,7 @@ const TAG_SHORT: Record<string, string> = {
 }
 
 
-type View = 'overview' | 'einkauf' | 'wochenchef' | 'verlauf' | 'standardwoche' | 'rezeptbuch'
+type View = 'overview' | 'einkauf' | 'wochenchef' | 'verlauf' | 'standardwoche' | 'rezeptbuch' | 'push'
 
 type HistoryEntry = {
   weekStart: string
@@ -108,6 +119,157 @@ export default function MehrScreen({
   const [historyLimit, setHistoryLimit] = useState(12)
   const [hasMoreHistory, setHasMoreHistory] = useState(false)
   const [openWeek, setOpenWeek] = useState<string | null>(null)
+
+  // ── Push-Benachrichtigungen ─────────────────────────────────────────────────
+  const [pushSupported, setPushSupported] = useState<boolean | null>(null)
+  const [pushPermission, setPushPermission] = useState<NotificationPermission>('default')
+  const [pushSubscribed, setPushSubscribed] = useState(false)
+  const [pushSettings, setPushSettings] = useState({ reminder_vortag: true, reminder_kochtag: true, reminder_wochenchef: true })
+  const [pushLoading, setPushLoading] = useState(false)
+  const [pushError, setPushError] = useState<string | null>(null)
+  const [pushSettingsSaving, setPushSettingsSaving] = useState(false)
+  const [pushTestSending, setPushTestSending] = useState(false)
+  const [pushTestMsg, setPushTestMsg] = useState<string | null>(null)
+  const [pushIsIos, setPushIsIos] = useState(false)
+  const [pushIsStandalone, setPushIsStandalone] = useState(false)
+
+  useEffect(() => {
+    if (view !== 'push') return
+    if (typeof window === 'undefined') return
+
+    const ios = /iphone|ipad|ipod/i.test(navigator.userAgent)
+    const standalone = !!(window.navigator as { standalone?: boolean }).standalone ||
+      window.matchMedia('(display-mode: standalone)').matches
+    setPushIsIos(ios)
+    setPushIsStandalone(standalone)
+
+    const supported = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window
+    setPushSupported(supported)
+    if (!supported) return
+
+    setPushPermission(Notification.permission)
+
+    navigator.serviceWorker.getRegistration('/sw.js').then(reg => {
+      if (!reg) return undefined
+      return reg.pushManager.getSubscription()
+    }).then(sub => {
+      setPushSubscribed(!!sub)
+    }).catch(() => setPushSubscribed(false))
+
+    void supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!session?.access_token) return
+      fetch('/api/push/settings', { headers: { Authorization: `Bearer ${session.access_token}` } })
+        .then(r => r.ok ? r.json() : null)
+        .then((json: { settings?: { reminder_vortag: boolean; reminder_kochtag: boolean; reminder_wochenchef: boolean } } | null) => {
+          if (json?.settings) setPushSettings(json.settings)
+        })
+        .catch(() => {})
+    })
+  }, [view])
+
+  async function handlePushSubscribe() {
+    if (pushLoading) return
+    const vapidKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
+    if (!vapidKey) {
+      setPushError('Push-Konfiguration fehlt. Bitte Heiko bescheid geben (VAPID-Schlüssel nicht gesetzt).')
+      return
+    }
+    setPushLoading(true)
+    setPushError(null)
+    try {
+      const permission = await Notification.requestPermission()
+      setPushPermission(permission)
+      if (permission !== 'granted') {
+        setPushError('Berechtigung nicht erteilt – bitte im Browser erlauben.')
+        return
+      }
+      const reg = await navigator.serviceWorker.getRegistration('/sw.js')
+      if (!reg) throw new Error('Service Worker nicht gefunden. Bitte Seite neu laden.')
+      const sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(vapidKey),
+      })
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.access_token) throw new Error('Nicht angemeldet.')
+      const res = await fetch('/api/push/subscribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ subscription: sub.toJSON() }),
+      })
+      if (!res.ok) throw new Error('Speichern fehlgeschlagen.')
+      setPushSubscribed(true)
+    } catch (e) {
+      setPushError((e as Error).message || 'Fehler beim Einschalten.')
+    } finally {
+      setPushLoading(false)
+    }
+  }
+
+  async function handlePushUnsubscribe() {
+    if (pushLoading) return
+    setPushLoading(true)
+    setPushError(null)
+    try {
+      const reg = await navigator.serviceWorker.getRegistration('/sw.js')
+      const sub = reg ? await reg.pushManager.getSubscription() : null
+      if (sub) {
+        const endpoint = sub.endpoint
+        await sub.unsubscribe()
+        const { data: { session } } = await supabase.auth.getSession()
+        if (session?.access_token) {
+          await fetch('/api/push/subscribe', {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+            body: JSON.stringify({ endpoint }),
+          })
+        }
+      }
+      setPushSubscribed(false)
+    } catch (e) {
+      setPushError((e as Error).message || 'Fehler beim Ausschalten.')
+    } finally {
+      setPushLoading(false)
+    }
+  }
+
+  async function handlePushTest() {
+    if (pushTestSending) return
+    setPushTestSending(true)
+    setPushTestMsg(null)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.access_token) throw new Error('Nicht angemeldet.')
+      const res = await fetch('/api/push/test', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      })
+      const json = await res.json() as { ok?: boolean; error?: string; sent?: number }
+      if (!res.ok) throw new Error(json.error || 'Fehler.')
+      setPushTestMsg(`✓ Gesendet (${json.sent ?? 1} Gerät${(json.sent ?? 1) !== 1 ? 'e' : ''}) – in wenigen Sekunden ankommen.`)
+    } catch (e) {
+      setPushTestMsg('Fehler: ' + ((e as Error).message || 'Unbekannt'))
+    } finally {
+      setPushTestSending(false)
+    }
+  }
+
+  async function savePushSetting(key: keyof typeof pushSettings, value: boolean) {
+    if (pushSettingsSaving) return
+    const newSettings = { ...pushSettings, [key]: value }
+    setPushSettings(newSettings)
+    setPushSettingsSaving(true)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.access_token) return
+      await fetch('/api/push/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ settings: newSettings }),
+      })
+    } catch {}
+    finally { setPushSettingsSaving(false) }
+  }
+  // ── Ende Push ───────────────────────────────────────────────────────────────
 
   useEffect(() => {
     if (view !== 'verlauf' || historyLoading || historyLoaded) return
@@ -326,6 +488,24 @@ export default function MehrScreen({
                 {defaultMealConfig
                   ? `Mo–Fr Mittag ${defaultMealConfig['Montag']?.mittag ?? 'normal'} · Sa/So ${defaultPlanWE ? 'ein' : 'aus'}`
                   : 'Grundeinstellung für neue Wochen'}
+              </div>
+            </div>
+            <span style={{ marginLeft: 'auto', color: '#bbb', fontSize: 18 }}>›</span>
+          </button>
+
+          <button
+            onClick={() => setView('push')}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 14, width: '100%',
+              background: '#fff', border: '1px solid #E5E7EB', borderRadius: 14,
+              padding: '16px 18px', marginTop: 12, cursor: 'pointer', textAlign: 'left',
+            }}
+          >
+            <span style={{ fontSize: 26 }}>🔔</span>
+            <div>
+              <div style={{ fontSize: 15, fontWeight: 700, color: '#111' }}>Benachrichtigungen</div>
+              <div style={{ fontSize: 12, color: '#888', marginTop: 2 }}>
+                Push-Nachrichten ein/ausschalten
               </div>
             </div>
             <span style={{ marginLeft: 'auto', color: '#bbb', fontSize: 18 }}>›</span>
@@ -1053,6 +1233,145 @@ export default function MehrScreen({
               Mehr laden…
             </button>
           )}
+        </div>
+      </div>
+    )
+  }
+
+  // ── Push-Benachrichtigungen ─────────────────────────────────────────────────
+  if (view === 'push') {
+    // isOwner wird in Runde 2 für Test-Reminder-Buttons verwendet
+    const _isOwner = memberStatuses.find(s => s.kuerzel === currentUser)?.role === 'owner'
+    void _isOwner
+    return (
+      <div className="screen active" style={{ overflowY: 'auto' }}>
+        <div className="topbar">
+          <button className="back" onClick={() => setView('overview')}>‹</button>
+          <h1>🔔 Benachrichtigungen</h1>
+        </div>
+        <div className="content" style={{ padding: '0 16px 24px' }}>
+
+          {/* Browser unterstützt kein Push */}
+          {pushSupported === false && (
+            <div style={{ background: '#F9FAFB', border: '1px solid #E5E7EB', borderRadius: 12, padding: '14px 16px', marginTop: 20, fontSize: 13, color: '#555' }}>
+              Dein Browser unterstützt keine Push-Nachrichten. Bitte Chrome, Edge oder Firefox verwenden.
+            </div>
+          )}
+
+          {/* iOS aber nicht als Home-Screen-App */}
+          {pushSupported !== false && pushIsIos && !pushIsStandalone && (
+            <div style={{ background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 12, padding: '14px 16px', marginTop: 20, fontSize: 13, color: '#92400E' }}>
+              <div style={{ fontWeight: 700, marginBottom: 6 }}>Homescreen-App nötig</div>
+              Damit Push-Nachrichten auf deinem iPhone/iPad ankommen, muss MenuFamPlan als App auf dem Homescreen installiert sein:
+              <ol style={{ margin: '8px 0 0', paddingLeft: 20, lineHeight: 1.8 }}>
+                <li>Im Safari-Browser öffnen</li>
+                <li>Teilen-Symbol tippen (□↑)</li>
+                <li>„Zum Home-Bildschirm" wählen</li>
+                <li>Danach diese Seite in der App öffnen</li>
+              </ol>
+            </div>
+          )}
+
+          {/* Permission denied */}
+          {pushSupported !== false && pushPermission === 'denied' && (
+            <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 12, padding: '14px 16px', marginTop: 20, fontSize: 13, color: '#991B1B' }}>
+              <div style={{ fontWeight: 700, marginBottom: 4 }}>Push ist blockiert</div>
+              Bitte in den Browser-Einstellungen die Berechtigung für diese Seite zurücksetzen, danach neu laden.
+            </div>
+          )}
+
+          {/* Einschalten-Button */}
+          {pushSupported === true && pushPermission !== 'denied' && !pushSubscribed && (
+            <div style={{ marginTop: 20 }}>
+              <button
+                onClick={() => void handlePushSubscribe()}
+                disabled={pushLoading || (pushIsIos && !pushIsStandalone)}
+                style={{
+                  width: '100%', padding: '14px', borderRadius: 14, border: 'none',
+                  cursor: pushLoading || (pushIsIos && !pushIsStandalone) ? 'default' : 'pointer',
+                  fontSize: 15, fontWeight: 700,
+                  background: pushLoading || (pushIsIos && !pushIsStandalone) ? '#E5E7EB' : '#0F6E56',
+                  color: pushLoading || (pushIsIos && !pushIsStandalone) ? '#999' : '#fff',
+                }}
+              >
+                {pushLoading ? 'Wird aktiviert…' : '🔔 Push-Nachrichten einschalten'}
+              </button>
+            </div>
+          )}
+
+          {/* Aktiv-Status + Einstellungen */}
+          {pushSupported === true && pushSubscribed && (
+            <>
+              <div style={{ background: '#F0FAF5', border: '1px solid #B2DFCC', borderRadius: 12, padding: '12px 16px', marginTop: 20, fontSize: 13, color: '#065F46', fontWeight: 600 }}>
+                ✓ Push auf diesem Gerät aktiv
+              </div>
+
+              <div style={{ background: '#fff', border: '1px solid #E5E7EB', borderRadius: 14, padding: '14px 16px', marginTop: 14 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: '#888', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 12 }}>
+                  Welche Nachrichten?
+                </div>
+                {[
+                  { key: 'reminder_vortag' as const, label: 'Vortags-Erinnerung', desc: 'Morgen kochst du: … (ca. 14–15 Uhr)' },
+                  { key: 'reminder_kochtag' as const, label: 'Kochtag-Erinnerung', desc: 'Heute kochst du: … (ca. 7–8 Uhr)' },
+                  { key: 'reminder_wochenchef' as const, label: 'Wochenchef-Erinnerung', desc: 'Wenn nächste Woche noch nicht geplant (Sa/So)' },
+                ].map(item => (
+                  <div key={item.key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 0', borderBottom: item.key !== 'reminder_wochenchef' ? '1px solid #f5f5f5' : 'none' }}>
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: '#111' }}>{item.label}</div>
+                      <div style={{ fontSize: 11, color: '#888', marginTop: 2 }}>{item.desc}</div>
+                    </div>
+                    <button
+                      onClick={() => void savePushSetting(item.key, !pushSettings[item.key])}
+                      disabled={pushSettingsSaving}
+                      style={{
+                        padding: '6px 16px', borderRadius: 20, border: 'none',
+                        cursor: pushSettingsSaving ? 'default' : 'pointer',
+                        fontSize: 13, fontWeight: 600, flexShrink: 0, marginLeft: 12,
+                        background: pushSettings[item.key] ? '#0F6E56' : '#F3F4F6',
+                        color: pushSettings[item.key] ? '#fff' : '#444',
+                      }}
+                    >
+                      {pushSettings[item.key] ? 'An' : 'Aus'}
+                    </button>
+                  </div>
+                ))}
+              </div>
+
+              <button
+                onClick={() => void handlePushTest()}
+                disabled={pushTestSending}
+                style={{
+                  width: '100%', padding: '12px', borderRadius: 14, border: '1px solid #E5E7EB',
+                  cursor: pushTestSending ? 'default' : 'pointer',
+                  fontSize: 14, fontWeight: 600, marginTop: 14,
+                  background: pushTestSending ? '#F9FAFB' : '#fff',
+                  color: pushTestSending ? '#aaa' : '#0F6E56',
+                }}
+              >
+                {pushTestSending ? 'Wird gesendet…' : '📨 Test-Nachricht senden'}
+              </button>
+              {pushTestMsg && (
+                <div style={{ fontSize: 12, color: pushTestMsg.startsWith('Fehler') ? '#991B1B' : '#065F46', marginTop: 8, textAlign: 'center' }}>
+                  {pushTestMsg}
+                </div>
+              )}
+
+              <button
+                onClick={() => void handlePushUnsubscribe()}
+                disabled={pushLoading}
+                style={{ display: 'block', margin: '20px auto 0', background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: '#aaa', textDecoration: 'underline' }}
+              >
+                Push auf diesem Gerät deaktivieren
+              </button>
+            </>
+          )}
+
+          {pushError && (
+            <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 10, padding: '10px 14px', marginTop: 12, fontSize: 13, color: '#991B1B' }}>
+              {pushError}
+            </div>
+          )}
+
         </div>
       </div>
     )

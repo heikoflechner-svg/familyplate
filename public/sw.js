@@ -94,3 +94,36 @@ self.addEventListener('message', function(event) {
     self.skipWaiting();
   }
 });
+
+// ── Push ───────────────────────────────────────────────────────────────────────
+self.addEventListener('push', function(event) {
+  if (!event.data) return;
+  var data;
+  try { data = event.data.json(); } catch(e) { return; }
+  event.waitUntil(
+    self.registration.showNotification(data.title || 'MenuFamPlan', {
+      body: data.body || '',
+      icon: '/icon-192.png',
+      badge: '/icon-192.png',
+      tag: data.tag || 'menufamplan',
+      data: { url: data.url || '/' },
+    })
+  );
+});
+
+// ── Notification click ─────────────────────────────────────────────────────────
+// Opens/focuses the app and navigates to the week plan.
+self.addEventListener('notificationclick', function(event) {
+  event.notification.close();
+  var targetUrl = (event.notification.data && event.notification.data.url) || '/';
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function(list) {
+      for (var i = 0; i < list.length; i++) {
+        if (list[i].url.startsWith(self.location.origin) && 'focus' in list[i]) {
+          return list[i].focus();
+        }
+      }
+      if (clients.openWindow) return clients.openWindow(targetUrl);
+    })
+  );
+});
