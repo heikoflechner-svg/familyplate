@@ -3,6 +3,9 @@
 // Bump SW_VERSION on every meaningful deployment to flush old caches.
 // The browser detects byte-for-byte changes in this file and installs an update.
 const SW_VERSION = 'fp-sw-v1';
+// Diagnostic version — bump this string on every push-related change so the
+// push panel can confirm which SW version is active on the device.
+const SW_DIAG_VERSION = 'diag-20261122-fp-nav';
 const CACHE_STATIC = SW_VERSION + '-static';
 const CACHE_PAGES  = SW_VERSION + '-pages';
 
@@ -93,6 +96,11 @@ self.addEventListener('message', function(event) {
   if (event.data && event.data.type === 'SKIP_WAITING') {
     self.skipWaiting();
   }
+  if (event.data && event.data.type === 'GET_VERSION') {
+    if (event.ports && event.ports[0]) {
+      event.ports[0].postMessage({ type: 'VERSION_RESPONSE', version: SW_DIAG_VERSION });
+    }
+  }
 });
 
 // ── Push ───────────────────────────────────────────────────────────────────────
@@ -121,13 +129,14 @@ self.addEventListener('notificationclick', function(event) {
 
   event.waitUntil(
     caches.open('fp-nav').then(function(cache) {
-      return cache.put(
-        new Request('/__pending_nav'),
-        new Response(
-          JSON.stringify({ tab: 'woche', ts: Date.now() }),
-          { headers: { 'Content-Type': 'application/json' } }
-        )
-      );
+      var payload = JSON.stringify({ tab: 'woche', ts: Date.now(), swVersion: SW_DIAG_VERSION });
+      var makeResponse = function() {
+        return new Response(payload, { headers: { 'Content-Type': 'application/json' } });
+      };
+      return Promise.all([
+        cache.put(new Request('/__pending_nav'), makeResponse()),
+        cache.put(new Request('/__last_notif_click'), makeResponse()),
+      ]);
     }).then(function() {
       return clients.matchAll({ type: 'window', includeUncontrolled: true });
     }).then(function(list) {

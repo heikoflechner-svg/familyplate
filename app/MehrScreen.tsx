@@ -134,6 +134,8 @@ export default function MehrScreen({
   const [testReminderMsg, setTestReminderMsg] = useState<string | null>(null)
   const [pushIsIos, setPushIsIos] = useState(false)
   const [pushIsStandalone, setPushIsStandalone] = useState(false)
+  const [swDiagVersion, setSwDiagVersion] = useState<string | null>(null)
+  const [swDiagLastClick, setSwDiagLastClick] = useState<{ tab: string; ts: number; swVersion?: string } | null>(null)
 
   useEffect(() => {
     if (view !== 'push') return
@@ -191,6 +193,50 @@ export default function MehrScreen({
         })
         .catch(() => {})
     })
+  }, [view])
+
+  useEffect(() => {
+    if (view !== 'push') return
+    setSwDiagVersion(null)
+    setSwDiagLastClick(null)
+
+    let alive = true
+
+    // SW version via MessageChannel
+    if ('serviceWorker' in navigator) {
+      const ctrl = navigator.serviceWorker.controller
+      if (!ctrl) {
+        setSwDiagVersion('kein Controller (SW wartet auf Aktivierung oder nie installiert)')
+      } else {
+        const channel = new MessageChannel()
+        const timer = setTimeout(() => {
+          if (alive) setSwDiagVersion('keine Antwort (alter SW?)')
+        }, 2500)
+        channel.port1.onmessage = (e) => {
+          clearTimeout(timer)
+          if (alive) setSwDiagVersion((e.data?.version as string) || 'unbekannte Version')
+        }
+        ctrl.postMessage({ type: 'GET_VERSION' }, [channel.port2])
+      }
+    } else {
+      setSwDiagVersion('kein SW-Support im Browser')
+    }
+
+    // Last notification click from cache
+    if (typeof window !== 'undefined' && 'caches' in window) {
+      void (async () => {
+        try {
+          const cache = await window.caches.open('fp-nav')
+          const res = await cache.match('/__last_notif_click')
+          if (res && alive) {
+            const data = await res.json() as { tab: string; ts: number; swVersion?: string }
+            setSwDiagLastClick(data)
+          }
+        } catch {}
+      })()
+    }
+
+    return () => { alive = false }
   }, [view])
 
   async function handlePushSubscribe() {
@@ -1474,6 +1520,19 @@ export default function MehrScreen({
               )}
             </div>
           )}
+
+          {/* ── Diagnose ──────────────────────────────────────────────────── */}
+          <div style={{ marginTop: 28, borderTop: '1px solid #f0f0f0', paddingTop: 10 }}>
+            <div style={{ fontSize: 10, color: '#bbb', lineHeight: 1.7, fontFamily: 'monospace' }}>
+              <div>SW: {swDiagVersion ?? '…'}</div>
+              <div>
+                Letzter Klick:{' '}
+                {swDiagLastClick
+                  ? `${new Date(swDiagLastClick.ts).toLocaleTimeString('de-DE')} → ${swDiagLastClick.tab}${swDiagLastClick.swVersion ? ` (SW: ${swDiagLastClick.swVersion})` : ' (kein SW-Tag)'}`
+                  : 'noch keiner'}
+              </div>
+            </div>
+          </div>
 
         </div>
       </div>
