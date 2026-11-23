@@ -131,7 +131,7 @@ export function generateItemsForEntry(entry: WeekPlanEntry, mealsData: Record<st
   // Neue Rezepte markieren allergiegerechte Zutaten mit `fuer` direkt in zutaten →
   // ersetzteZutaten nur für alte Rezepte als Fallback nutzen, sonst Duplikate.
   const hasFuerMarkierung = rezept.zutaten.some(z => z.fuer)
-  if (!hasFuerMarkierung) {
+  if (!hasFuerMarkierung && rezept.zutaten.length > 0) {
     for (const ersatz of (rezept.ersetzteZutaten ?? [])) {
       const ersatzKey = ersatz.toLowerCase()
       items.push({

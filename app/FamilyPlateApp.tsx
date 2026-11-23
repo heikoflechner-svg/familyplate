@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
-import { loadWeekPlan, saveWeekPlan, saveAttendance, saveShoppingList, saveProposals, saveWochenchef, savePlanConfirmed, saveShopDone, saveShoppingDays, saveShoppingPersons, loadLastDishes, getMondayIso, getNextMondayIso, saveWeekStart, loadNextWeekData, saveNextWeekData, activateNextWeek, buildDefaultAttendance, loadMissingRecipes, getPersonCountForSlot } from '../lib/mealLogic'
+import { loadWeekPlan, saveWeekPlan, saveAttendance, saveShoppingList, saveProposals, saveWochenchef, savePlanConfirmed, saveShopDone, saveShoppingDays, saveShoppingPersons, loadLastDishes, getMondayIso, getNextMondayIso, saveWeekStart, loadNextWeekData, saveNextWeekData, activateNextWeek, buildDefaultAttendance, getPersonCountForSlot, getMissingPlanEntries, ensureMissingRecipes } from '../lib/mealLogic'
 import { needsMigration, migrateMealsDataAddSlotKeys } from '../lib/mealsDataUtils'
 import { loadFreezerItems, loadPantryItems, getFreezerListString, getPantryListString } from '../lib/freezerLogic'
 import { loadFamilyProfile, saveFamilyProfile, saveShoppingConfig, applyChefStats, incrementWochenchefStat, DEFAULT_MEMBERS, buildFamilyPrompt } from '../lib/familyLogic'
@@ -317,23 +317,32 @@ export default function FamilyPlateApp() {
       loadLastDishes().then(setLastDishes).catch(() => {})
       loadRezeptbuch().then(entries => { if (entries !== null) setRezeptbuchEntries(entries) }).catch(() => {})
       loadDishRatings().then(setDishRatings).catch(() => {})
-      // Recovery: if plan is confirmed but shopping list was lost (e.g. app closed during recipe load)
-      if (pc && sl.length === 0 && plan.length > 0 && latestProfile) {
+      // Recovery: fehlende Rezepte nachladen (z. B. nach iOS-Hintergrund-Freeze)
+      if (pc && plan.length > 0 && latestProfile) {
         const mbs = latestProfile.members.length ? latestProfile.members : DEFAULT_MEMBERS
         const fp = buildFamilyPrompt(mbs)
         const acm = mbs.filter(m => m.allergien.length > 0).map(m => ({ name: m.name, allergien: m.allergien }))
         const frzStr = getFreezerListString(freezer)
         const pntStr = getPantryListString(pantry)
-        const pcCb = (t: string, s: string) => getPersonCountForSlot(t, s as WochenSlot, resolvedAtt, mbs)
-        void loadMissingRecipes(plan, md, frzStr, pntStr, fp, pcCb, acm)
-          .then(rawFull => {
-            const full = migrateMealsDataAddSlotKeys(plan, rawFull)
-            const list = generateShoppingList(plan, full)
-            setShoppingList(list)
-            setMealsData(full)
-            void saveShoppingList(list)
-            void saveWeekPlan(plan, full, w)
-          })
+        const pcCb = (t: string, s: WochenSlot) => getPersonCountForSlot(t, s, resolvedAtt, mbs)
+        if (getMissingPlanEntries(plan, migratedMd, { fromToday: true }).length > 0) {
+          void ensureMissingRecipes(
+            plan, migratedMd, sl,
+            { freezerList: frzStr, pantryList: pntStr, familyPrompt: fp, getPersonCount: pcCb, allergenCheckMembers: acm, fromToday: true },
+            {
+              onProgress: () => {},
+              onSave: async (full, newList) => {
+                setMealsData(full)
+                setShoppingList(newList)
+                await saveWeekPlan(plan, full, w)
+                await saveShoppingList(newList)
+              },
+              onFailed: (names) => {
+                console.warn('[Recovery] Rezepte konnten nicht erstellt werden:', names)
+              },
+            },
+          )
+        }
       }
     }
     doLoad().catch(err => {

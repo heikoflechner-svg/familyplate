@@ -17,7 +17,7 @@ import {
   parseMengeStück,
 } from '../lib/shoppingLogic'
 import type { ConsolidatedItem } from '../lib/shoppingLogic'
-import { getRecipeForDish, isFullRecipe, getPersonCountForSlot, getMondayIso, getNextMondayIso, loadMissingRecipes } from '../lib/mealLogic'
+import { getRecipeForDish, isFullRecipe, getPersonCountForSlot, getMondayIso, getNextMondayIso, loadMissingRecipes, getMissingPlanEntries, ensureMissingRecipes } from '../lib/mealLogic'
 import { getFreezerListString, getPantryListString } from '../lib/freezerLogic'
 import { buildFamilyPrompt, DEFAULT_MEMBERS } from '../lib/familyLogic'
 import type { WeekPlanEntry, Rezept, ShoppingItem, Chef, NextWeekData, FreezerItem, PantryItem, FamilyMember, DayAttendance, RezeptbuchEntry } from '../lib/state'
@@ -118,14 +118,14 @@ export default function EinkaufScreen({
   const [newMenge, setNewMenge] = useState('')
   const [generating, setGenerating] = useState(false)
   const [nwAutoGenProgress, setNwAutoGenProgress] = useState<{ done: number; total: number } | null>(null)
+  const [cwAutoGenProgress, setCwAutoGenProgress] = useState<{ done: number; total: number } | null>(null)
   const [viewMode, setViewMode] = useState<ViewMode>('tag')
   const [editingItem, setEditingItem] = useState<string | null>(null)
   const [selectedDates, setSelectedDates] = useState<Set<string>>(new Set())
   const [confirmNeu, setConfirmNeu] = useState(false)
   const [imWagenOpen, setImWagenOpen] = useState(false)
-  const autoLoadDoneRef = useRef(false)
   const nwAutoLoadRef = useRef(false)
-  const nwMissingAutoRef = useRef(false)
+  const cwNwMissingRef = useRef(false)
   const nwRecipeGenProgressRef = useRef<{ done: number; total: number } | null>(null)
   const selInitRef = useRef(false)
 
@@ -213,71 +213,67 @@ export default function EinkaufScreen({
     nwRecipeGenProgressRef.current = nwRecipeGenProgress ?? null
   }, [nwRecipeGenProgress])
 
-  // Auto-Trigger: fehlende NW-Rezepte nachholen (einmalig pro Sitzung, nur wenn WocheScreen fertig)
+  // Unified Auto-Trigger: fehlende CW- und NW-Rezepte nachladen (einmalig pro Mount)
   useEffect(() => {
-    if (!nwConfirmed || !onNextWeekDataChange) return
-    if (nwRecipeGenProgressRef.current !== null) return
-    if (nwAutoLoadRef.current || nwMissingAutoRef.current) return
-    const seenSet = new Set<string>()
-    const missingEntries = nwPlan.filter(e => {
-      if (seenSet.has(e.gericht) || isFullRecipe(nwMeals[e.gericht])) return false
-      seenSet.add(e.gericht); return true
-    })
-    if (missingEntries.length === 0) return
-    nwMissingAutoRef.current = true
-    const daysToInclude = nwListableDays
-    if (daysToInclude.length === 0) return
-    const nwMealsSnap = { ...nwMeals }
-    const nwPlanSnap = [...nwPlan]
-    const nwListSnap = [...nwShoppingList]
-    const saveChange = onNextWeekDataChange
+    if (cwNwMissingRef.current) return
+    const cwMissing = planConfirmed ? getMissingPlanEntries(weekPlan, mealsData, { fromToday: true }) : []
+    // NW: nur wenn Liste schon existiert; Zeilen 319-351 behandeln den leeren-Liste-Fall
+    const nwMissing = (nwConfirmed && nwShoppingList.length > 0 && onNextWeekDataChange)
+      ? getMissingPlanEntries(nwPlan, nwMeals)
+      : []
+    if (cwMissing.length === 0 && nwMissing.length === 0) return
+    cwNwMissingRef.current = true
     void (async () => {
-      setNwAutoGenProgress({ done: 0, total: missingEntries.length })
       setGenerating(true)
+      const freezerStr = getFreezerListString(freezerItems)
+      const pantryStr = getPantryListString(pantryItems)
+      const fprompt = buildFamilyPrompt(members.length ? members : DEFAULT_MEMBERS)
+      const mbs = members.length ? members : DEFAULT_MEMBERS
       try {
-        const freezerStr = getFreezerListString(freezerItems)
-        const pantryStr = getPantryListString(pantryItems)
-        const fprompt = buildFamilyPrompt(members.length ? members : DEFAULT_MEMBERS)
-        const updatedMeals = await loadMissingRecipes(
-          nwPlanSnap, nwMealsSnap, freezerStr, pantryStr, fprompt,
-          undefined, undefined,
-          (d, t) => setNwAutoGenProgress({ done: d, total: t }),
-          rezeptbuchEntries,
-        )
-        const list = generateShoppingList(nwPlanSnap, updatedMeals, daysToInclude)
-        const merged = mergeShoppingList(list, nwListSnap)
-        await saveChange({ mealsData: updatedMeals, shoppingList: merged }, nextWeekStart ?? getNextMondayIso())
+        if (cwMissing.length > 0) {
+          setCwAutoGenProgress({ done: 0, total: cwMissing.length })
+          await ensureMissingRecipes(
+            weekPlan, mealsData, shoppingList,
+            {
+              freezerList: freezerStr, pantryList: pantryStr, familyPrompt: fprompt,
+              getPersonCount: (t, s) => getPersonCountForSlot(t, s, attendance, mbs),
+              rezeptbuchEntries, fromToday: true,
+            },
+            {
+              onProgress: (d, t) => setCwAutoGenProgress({ done: d, total: t }),
+              onSave: async (full, newList) => {
+                await onMealsDataChange(full)
+                await onShoppingListChange(newList)
+              },
+              onFailed: () => {},
+            },
+          )
+          setCwAutoGenProgress(null)
+        }
+        if (nwMissing.length > 0 && onNextWeekDataChange) {
+          setNwAutoGenProgress({ done: 0, total: nwMissing.length })
+          await ensureMissingRecipes(
+            nwPlan, nwMeals, nwShoppingList,
+            {
+              freezerList: freezerStr, pantryList: pantryStr, familyPrompt: fprompt,
+              rezeptbuchEntries, isNextWeek: true,
+            },
+            {
+              onProgress: (d, t) => setNwAutoGenProgress({ done: d, total: t }),
+              onSave: async (full, newList) => {
+                await onNextWeekDataChange({ mealsData: full, shoppingList: newList }, nextWeekStart ?? getNextMondayIso())
+              },
+              onFailed: () => {},
+            },
+          )
+          setNwAutoGenProgress(null)
+        }
       } finally {
         setGenerating(false)
-        setNwAutoGenProgress(null)
       }
     })()
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nwConfirmed, fullNwRecipeCount, nwPlan.length])
-
-  useEffect(() => {
-    if (!planConfirmed || weekPlan.length === 0 || autoLoadDoneRef.current) return
-    const hasMissing = weekPlan.some(e => !isFullRecipe(mealsData[e.gericht]))
-    if (!hasMissing) { autoLoadDoneRef.current = true; return }
-    autoLoadDoneRef.current = true
-    const freezerStr = getFreezerListString(freezerItems)
-    const pantryStr = getPantryListString(pantryItems)
-    const familyPrompt = buildFamilyPrompt(members.length ? members : DEFAULT_MEMBERS)
-    const mbs = members.length ? members : DEFAULT_MEMBERS
-    const store = { ...mealsData }
-    const seen = new Set<string>()
-    const missing = weekPlan.filter(e => {
-      if (seen.has(e.gericht) || isFullRecipe(store[e.gericht])) return false
-      seen.add(e.gericht)
-      return true
-    })
-    void Promise.all(missing.map(async e => {
-      const personCount = getPersonCountForSlot(e.tag, e.slot, attendance, mbs)
-      const r = await getRecipeForDish(e.gericht, e.emoji, freezerStr, pantryStr, familyPrompt, personCount, undefined, undefined, rezeptbuchEntries)
-      if (r) store[e.gericht] = { ...r, personenAnzahl: personCount, ersetzteZutaten: r.ersetzteZutaten?.length ? r.ersetzteZutaten : (store[e.gericht]?.ersetzteZutaten ?? []) }
-    })).then(() => onMealsDataChange(store))
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [planConfirmed])
+  }, [planConfirmed, nwConfirmed, fullNwRecipeCount])
 
   // One-time cleanup on mount: remove past meals, water items, and cross-list NW duplicates
   useEffect(() => {
@@ -645,12 +641,15 @@ export default function EinkaufScreen({
 
         {/* Missing recipes warning / progress */}
         {(planConfirmed || nwConfirmed) && (() => {
-          const activeProgress = nwRecipeGenProgress ?? nwAutoGenProgress
+          const activeProgress = cwAutoGenProgress ?? nwRecipeGenProgress ?? nwAutoGenProgress
           if (activeProgress) {
             return (
               <div style={{ background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: 10, padding: '10px 14px', marginBottom: 12 }}>
                 <div style={{ fontSize: 12, color: '#166534', fontWeight: 600 }}>
                   🐀 Rémy erstellt Rezepte … {activeProgress.done} von {activeProgress.total}
+                </div>
+                <div style={{ fontSize: 11, color: '#166534', marginTop: 4 }}>
+                  Bitte App offen lassen, bis alle Rezepte fertig sind.
                 </div>
               </div>
             )

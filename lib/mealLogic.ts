@@ -1,6 +1,8 @@
 import { supabase, getFamilyId } from './supabase'
 import type { WeekPlanEntry, Rezept, Wish, RemyVorschlag, WochenSlot, DayAttendance, Chef, ShoppingItem, ChangeProposal, NextWeekData, NextWeekWish, PlanSettings, FamilyMember, TagMahlzeitenKonfig, RezeptbuchEntry } from './state'
 import { checkAllergens } from './allergenCheck'
+import { migrateMealsDataAddSlotKeys } from './mealsDataUtils'
+import { rewriteShoppingItemsForDish } from './shoppingLogic'
 
 function toLocalDateIso(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
@@ -841,4 +843,99 @@ export async function loadMissingRecipes(
     }))
   }
   return result
+}
+
+// Session-level Sperre: verhindert parallele API-Aufrufe für dasselbe Gericht
+// (z. B. wenn FamilyPlateApp-Start und Einkauf-Tab gleichzeitig feuern)
+const _recipesInFlight = new Set<string>()
+
+/** Gibt alle Plan-Einträge zurück, für die noch kein vollständiges Rezept vorliegt.
+ *  Ausschlussliste: leeres Gericht, Reste:*, quelle=gefriertruhe/kuehlschrank,
+ *  eigenesEssen-Slots, vergangene Tage (wenn fromToday), Duplikate (erster Treffer gewinnt). */
+export function getMissingPlanEntries(
+  entries: WeekPlanEntry[],
+  mealsData: Record<string, Rezept>,
+  options?: { fromToday?: boolean },
+): WeekPlanEntry[] {
+  let todayIdx = -1
+  if (options?.fromToday) {
+    const todayTag = WOCHENTAGE_ORDER[(new Date().getDay() + 6) % 7]
+    todayIdx = WOCHENTAGE_ORDER.indexOf(todayTag)
+  }
+  const seen = new Set<string>()
+  return entries.filter(e => {
+    if (!e.gericht || e.gericht.startsWith('Reste:')) return false
+    if (e.quelle === 'gefriertruhe' || e.quelle === 'kuehlschrank') return false
+    if (e.eigenesEssen && Object.keys(e.eigenesEssen).length > 0) return false
+    if (todayIdx >= 0 && WOCHENTAGE_ORDER.indexOf(e.tag) < todayIdx) return false
+    if (seen.has(e.gericht)) return false
+    const existing = mealsData[`${e.tag}-${e.slot}`] ?? mealsData[e.gericht]
+    if (isFullRecipe(existing)) return false
+    seen.add(e.gericht)
+    return true
+  })
+}
+
+/** Gemeinsame Funktion für FamilyPlateApp und EinkaufScreen:
+ *  Findet fehlende Rezepte, lädt sie nach, aktualisiert Shopping-Liste (nur betroffene Gerichte),
+ *  speichert via callbacks.onSave und meldet Fehler via callbacks.onFailed.
+ *  Session-Level-Lock verhindert doppelte API-Aufrufe. */
+export async function ensureMissingRecipes(
+  plan: WeekPlanEntry[],
+  mealsData: Record<string, Rezept>,
+  shoppingList: ShoppingItem[],
+  options: {
+    freezerList: string
+    pantryList: string
+    familyPrompt: string
+    getPersonCount?: (tag: string, slot: WochenSlot) => number
+    allergenCheckMembers?: { name: string; allergien: string[] }[]
+    rezeptbuchEntries?: RezeptbuchEntry[]
+    fromToday?: boolean
+    isNextWeek?: boolean
+  },
+  callbacks: {
+    onProgress: (done: number, total: number) => void
+    onSave: (updatedMeals: Record<string, Rezept>, updatedList: ShoppingItem[]) => Promise<void>
+    onFailed: (gerichtNames: string[]) => void
+  },
+): Promise<void> {
+  const missing = getMissingPlanEntries(plan, mealsData, { fromToday: options.fromToday })
+  // Nur Gerichte laden, die nicht bereits in einem anderen Aufruf in Arbeit sind
+  const toLoad = missing.filter(e => !_recipesInFlight.has(e.gericht))
+  if (toLoad.length === 0) return
+
+  for (const e of toLoad) _recipesInFlight.add(e.gericht)
+  try {
+    callbacks.onProgress(0, toLoad.length)
+    const rawUpdated = await loadMissingRecipes(
+      toLoad,
+      mealsData,
+      options.freezerList,
+      options.pantryList,
+      options.familyPrompt,
+      options.getPersonCount,
+      options.allergenCheckMembers,
+      callbacks.onProgress,
+      options.rezeptbuchEntries,
+    )
+    const full = migrateMealsDataAddSlotKeys(plan, rawUpdated)
+
+    // Shopping-Liste: nur für neu geladene Gerichte neu schreiben
+    let newList = shoppingList
+    const failedNames: string[] = []
+    for (const e of toLoad) {
+      const r = full[`${e.tag}-${e.slot}`] ?? full[e.gericht]
+      if (r && isFullRecipe(r)) {
+        newList = rewriteShoppingItemsForDish(newList, e, r, options.isNextWeek ?? false)
+      } else {
+        failedNames.push(e.gericht)
+      }
+    }
+
+    await callbacks.onSave(full, newList)
+    if (failedNames.length > 0) callbacks.onFailed(failedNames)
+  } finally {
+    for (const e of toLoad) _recipesInFlight.delete(e.gericht)
+  }
 }
