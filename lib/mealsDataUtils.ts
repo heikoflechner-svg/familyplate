@@ -13,8 +13,15 @@ export function getMeal(
   const slotRecipe = mealsData[`${tag}-${slot}`]
   if (slotRecipe && gerName) {
     if (slotRecipe.fuerGericht !== undefined) {
-      // fuerGericht present: exact check
-      return slotRecipe.fuerGericht === gerName ? slotRecipe : mealsData[gerName]
+      if (slotRecipe.fuerGericht === gerName) {
+        // Slot ist Stub (0 Schritte) aber Name-Key hat volles Rezept → Name-Key zurückgeben
+        if (slotRecipe.schritte.length === 0) {
+          const nameRecipe = mealsData[gerName]
+          if (nameRecipe && nameRecipe.schritte.length > 0) return nameRecipe
+        }
+        return slotRecipe
+      }
+      return mealsData[gerName]
     }
     // fuerGericht absent (old entry): tolerant check — nur wenn der Slot-Rezept-Name den
     // Gericht-Namen enthält (Rémy-Elaboration, z.B. "Pasta" → "Pasta mit Lachs").

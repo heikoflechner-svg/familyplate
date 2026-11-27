@@ -2700,8 +2700,11 @@ export default function WocheScreen({
     newShoppingList = swapShoppingItemsTags(newShoppingList, t1, s1, e1.gericht, t2, s2, e2.gericht)
     const r1ForSwap = newMealsData[e1.gericht] ?? getMeal(mealsData, t1, s1, e1.gericht)
     const r2ForSwap = newMealsData[e2.gericht] ?? getMeal(mealsData, t2, s2, e2.gericht)
-    if (r1ForSwap) newMealsData[mealsKey(t2, s2)] = r1ForSwap
-    if (r2ForSwap) newMealsData[mealsKey(t1, s1)] = r2ForSwap
+    // Alte Slot-Keys löschen und neu mit fuerGericht schreiben (wie executeMove)
+    delete newMealsData[mealsKey(t1, s1)]
+    delete newMealsData[mealsKey(t2, s2)]
+    if (r1ForSwap) newMealsData[mealsKey(t2, s2)] = { ...r1ForSwap, fuerGericht: e1.gericht }
+    if (r2ForSwap) newMealsData[mealsKey(t1, s1)] = { ...r2ForSwap, fuerGericht: e2.gericht }
 
     await onWeekPlanChange(newPlan, newMealsData)
     await onShoppingListChange(newShoppingList)
@@ -3216,6 +3219,17 @@ export default function WocheScreen({
           }
           // 5. Nur in DB schreiben; Buch-Rezepte immer speichern (force=true), generierte nur wenn noch keines da
           const savedMeals = await mergeRecipeToDb(gericht, slotKey, toSave, rezept.quelle === 'rezeptbuch')
+          // e: Defensiv – falls Slot nach dem Speichern noch immer ein Stub ist
+          const savedSlot = savedMeals[slotKey] ?? savedMeals[gericht]
+          if (!savedSlot || !isFullRecipe(savedSlot)) {
+            setRecipeErrorReason('Rezept konnte nicht gespeichert werden – bitte nochmal versuchen')
+            return
+          }
+          // f: Einkaufsliste nach erfolgreichem Laden aktualisieren (nur wenn Plan bestätigt)
+          if (planConfirmed) {
+            const planEntry = weekPlan.find(e => e.tag === tag && e.slot === slot)
+            if (planEntry) await onShoppingListChange(rewriteShoppingItemsForDish(shoppingList, planEntry, savedSlot, false))
+          }
           await onWeekPlanChange(weekPlan, { ...mealsData, ...savedMeals })
         } else {
           try { const c = await fetchFreshMealsData(); delete c[lockKey]; await saveMealsDataOnly(c) } catch { /* ignorieren */ }

@@ -533,12 +533,20 @@ export async function mergeRecipeToDb(
   rezept: Rezept,
   force = false,
 ): Promise<Record<string, Rezept>> {
+  // Leeres Rezept nie speichern (Punkt e)
+  if (rezept.zutaten.length === 0 && rezept.schritte.length === 0) {
+    const fresh = await fetchFreshMealsData()
+    return filterLockKeys(fresh)
+  }
   const fresh = await fetchFreshMealsData()
   const lockKey = `__gen:${gericht}`
   const freshClean = filterLockKeys(fresh)
-  const existingInDb = freshClean[gericht] ?? freshClean[slotKey]
+  // Nur Slot-Key prüfen; Name-Key kann ein Rezept eines früheren/anderen Eintrags enthalten
+  const existingSlot = freshClean[slotKey] as Rezept | undefined
+  const slotMatchesGericht = !existingSlot?.fuerGericht || existingSlot.fuerGericht === gericht
+  const existingInDb = slotMatchesGericht ? existingSlot : undefined
   const merged = (!force && isFullRecipe(existingInDb as Rezept | undefined))
-    ? freshClean  // DB already has a recipe (another device saved it) — use theirs
+    ? freshClean  // DB already has a recipe for this slot — use theirs
     : { ...freshClean, [gericht]: rezept, [slotKey]: { ...rezept, fuerGericht: gericht } }
   const toSave = { ...fresh, ...merged }
   delete toSave[lockKey]
@@ -599,7 +607,13 @@ export async function generateRecipe(
       return null
     }
     const data = await resp.json()
-    return (data.rezept as Rezept) ?? null
+    const r = (data.rezept as Rezept) ?? null
+    // Leeres Rezept (0 Zutaten UND 0 Schritte) nie als fertig akzeptieren (Punkt e)
+    if (r && r.zutaten.length === 0 && r.schritte.length === 0) {
+      _lastRecipeErrorCode = 'empty'
+      return null
+    }
+    return r
   } catch {
     _lastRecipeErrorCode = 'network'
     return null
@@ -805,9 +819,17 @@ export async function loadMissingRecipes(
   rezeptbuchEntries?: RezeptbuchEntry[],
 ): Promise<Record<string, Rezept>> {
   const result: Record<string, Rezept> = { ...store }
+  // Alle Einträge pro Gericht sammeln für Fan-out; KI-Aufruf nur für erste Occurrence (Punkt 4)
+  const entriesByGericht = new Map<string, WeekPlanEntry[]>()
   const seen = new Set<string>()
   const missing = entries.filter(e => {
-    if (seen.has(e.gericht) || isFullRecipe(result[e.gericht])) return false
+    const slotK = `${e.tag}-${e.slot}`
+    const slotEntry = result[slotK] as Rezept | undefined
+    const slotMatchesGericht = !slotEntry?.fuerGericht || slotEntry.fuerGericht === e.gericht
+    if (slotMatchesGericht && isFullRecipe(slotEntry)) return false  // Slot bereits voll
+    if (!entriesByGericht.has(e.gericht)) entriesByGericht.set(e.gericht, [])
+    entriesByGericht.get(e.gericht)!.push(e)
+    if (seen.has(e.gericht)) return false  // KI-Aufruf dedupliziert, Fan-out passiert unten
     seen.add(e.gericht)
     return true
   })
@@ -819,23 +841,18 @@ export async function loadMissingRecipes(
     await Promise.all(batch.map(async e => {
       const personCount = getPersonCount ? getPersonCount(e.tag, e.slot) : undefined
       const r = await getRecipeForDish(e.gericht, e.emoji, freezerList, pantryList, familyPrompt, personCount, familyMembersForCheck, e.mahlzeitTyp as 'leicht' | 'normal' | undefined, rezeptbuchEntries ?? [])
-      if (r) {
-        result[e.gericht] = {
-          ...r,
-          personenAnzahl: personCount ?? r.personenAnzahl,
-          ersetzteZutaten: r.ersetzteZutaten?.length ? r.ersetzteZutaten : (store[e.gericht]?.ersetzteZutaten ?? []),
-        }
-        done++
-        onProgress?.(done, total)
-        return
-      }
       // Retry (Rezeptbuch would have returned non-null; this only retries failed Sonnet calls)
-      const r2 = await generateRecipe(e.gericht, e.emoji, freezerList, pantryList, familyPrompt, personCount, familyMembersForCheck, e.mahlzeitTyp as 'leicht' | 'normal' | undefined)
-      if (r2) {
-        result[e.gericht] = {
-          ...r2,
-          personenAnzahl: personCount,
-          ersetzteZutaten: r2.ersetzteZutaten?.length ? r2.ersetzteZutaten : (store[e.gericht]?.ersetzteZutaten ?? []),
+      const toStore = r ?? await generateRecipe(e.gericht, e.emoji, freezerList, pantryList, familyPrompt, personCount, familyMembersForCheck, e.mahlzeitTyp as 'leicht' | 'normal' | undefined)
+      if (toStore) {
+        const loaded: Rezept = {
+          ...toStore,
+          personenAnzahl: personCount ?? toStore.personenAnzahl,
+          ersetzteZutaten: toStore.ersetzteZutaten?.length ? toStore.ersetzteZutaten : (store[e.gericht]?.ersetzteZutaten ?? []),
+        }
+        result[e.gericht] = loaded
+        // Fan-out: alle Slot-Keys für dieses Gericht befüllen (beide Einträge bei Duplikat)
+        for (const dup of (entriesByGericht.get(e.gericht) ?? [e])) {
+          result[`${dup.tag}-${dup.slot}`] = { ...loaded, fuerGericht: e.gericht }
         }
       }
       done++
@@ -851,7 +868,9 @@ const _recipesInFlight = new Set<string>()
 
 /** Gibt alle Plan-Einträge zurück, für die noch kein vollständiges Rezept vorliegt.
  *  Ausschlussliste: leeres Gericht, Reste:*, quelle=gefriertruhe/kuehlschrank,
- *  eigenesEssen-Slots, vergangene Tage (wenn fromToday), Duplikate (erster Treffer gewinnt). */
+ *  eigenesEssen-Slots, vergangene Tage (wenn fromToday).
+ *  Dasselbe Gericht an mehreren Slots wird mehrfach zurückgegeben (Punkt 4);
+ *  loadMissingRecipes dedupliziert den KI-Aufruf intern. */
 export function getMissingPlanEntries(
   entries: WeekPlanEntry[],
   mealsData: Record<string, Rezept>,
@@ -862,17 +881,15 @@ export function getMissingPlanEntries(
     const todayTag = WOCHENTAGE_ORDER[(new Date().getDay() + 6) % 7]
     todayIdx = WOCHENTAGE_ORDER.indexOf(todayTag)
   }
-  const seen = new Set<string>()
   return entries.filter(e => {
     if (!e.gericht || e.gericht.startsWith('Reste:')) return false
     if (e.quelle === 'gefriertruhe' || e.quelle === 'kuehlschrank') return false
     if (e.eigenesEssen && Object.keys(e.eigenesEssen).length > 0) return false
     if (todayIdx >= 0 && WOCHENTAGE_ORDER.indexOf(e.tag) < todayIdx) return false
-    if (seen.has(e.gericht)) return false
-    const existing = mealsData[`${e.tag}-${e.slot}`] ?? mealsData[e.gericht]
-    if (isFullRecipe(existing)) return false
-    seen.add(e.gericht)
-    return true
+    // Nur Slot-Key prüfen; kein Fallback auf Name-Key (verhindert falsches "schon vorhanden")
+    const slotEntry = mealsData[`${e.tag}-${e.slot}`]
+    const slotMatchesGericht = !slotEntry?.fuerGericht || slotEntry.fuerGericht === e.gericht
+    return !isFullRecipe(slotMatchesGericht ? slotEntry : undefined)
   })
 }
 
@@ -938,4 +955,36 @@ export async function ensureMissingRecipes(
   } finally {
     for (const e of toLoad) _recipesInFlight.delete(e.gericht)
   }
+}
+
+/** Repariert Slot-Stubs, die einen Name-Key mit vollem Rezept haben.
+ *  Schreibt Slot-Key ← Name-Key-Rezept + fuerGericht, aktualisiert Einkaufsliste.
+ *  Gibt changed:false zurück wenn nichts zu tun – Caller spart DB-Write. */
+export function repairStubSlots(
+  plan: WeekPlanEntry[],
+  mealsData: Record<string, Rezept>,
+  shoppingList: ShoppingItem[],
+  isNextWeek: boolean,
+): { mealsData: Record<string, Rezept>; shoppingList: ShoppingItem[]; changed: boolean } {
+  const result = { ...mealsData }
+  const repaired: WeekPlanEntry[] = []
+  for (const entry of plan) {
+    const slotK = `${entry.tag}-${entry.slot}`
+    const slotRecipe = result[slotK]
+    const nameRecipe = result[entry.gericht]
+    // Slot fehlt oder ist Stub für genau dieses Gericht, Name-Key hat volles Rezept
+    const slotIsStub = !slotRecipe ||
+      (slotRecipe.schritte.length === 0 && (slotRecipe.fuerGericht === entry.gericht || !slotRecipe.fuerGericht))
+    if (slotIsStub && isFullRecipe(nameRecipe as Rezept | undefined)) {
+      result[slotK] = { ...nameRecipe!, fuerGericht: entry.gericht }
+      repaired.push(entry)
+    }
+  }
+  if (repaired.length === 0) return { mealsData, shoppingList, changed: false }
+  let newSl = shoppingList
+  for (const entry of repaired) {
+    const r = result[`${entry.tag}-${entry.slot}`]
+    if (r) newSl = rewriteShoppingItemsForDish(newSl, entry, r, isNextWeek)
+  }
+  return { mealsData: result, shoppingList: newSl, changed: true }
 }

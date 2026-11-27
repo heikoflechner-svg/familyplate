@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
-import { loadWeekPlan, saveWeekPlan, saveAttendance, saveShoppingList, saveProposals, saveWochenchef, savePlanConfirmed, saveShopDone, saveShoppingDays, saveShoppingPersons, loadLastDishes, getMondayIso, getNextMondayIso, saveWeekStart, loadNextWeekData, saveNextWeekData, activateNextWeek, buildDefaultAttendance, getPersonCountForSlot, getMissingPlanEntries, ensureMissingRecipes } from '../lib/mealLogic'
+import { loadWeekPlan, saveWeekPlan, saveAttendance, saveShoppingList, saveProposals, saveWochenchef, savePlanConfirmed, saveShopDone, saveShoppingDays, saveShoppingPersons, loadLastDishes, getMondayIso, getNextMondayIso, saveWeekStart, loadNextWeekData, saveNextWeekData, activateNextWeek, buildDefaultAttendance, getPersonCountForSlot, getMissingPlanEntries, ensureMissingRecipes, repairStubSlots } from '../lib/mealLogic'
 import { needsMigration, migrateMealsDataAddSlotKeys } from '../lib/mealsDataUtils'
 import { loadFreezerItems, loadPantryItems, getFreezerListString, getPantryListString } from '../lib/freezerLogic'
 import { loadFamilyProfile, saveFamilyProfile, saveShoppingConfig, applyChefStats, incrementWochenchefStat, DEFAULT_MEMBERS, buildFamilyPrompt } from '../lib/familyLogic'
@@ -21,6 +21,9 @@ import EinkaufScreen from './EinkaufScreen'
 import ProfilScreen from './ProfilScreen'
 import MehrScreen from './MehrScreen'
 import OnboardingWizard from './OnboardingWizard'
+
+// Session-Lock: repairStubSlots läuft pro Sitzung höchstens einmal (nicht bei jeder Datenneuladung)
+let _stubRepairDone = false
 
 export default function FamilyPlateApp() {
   const [currentUser, setCurrentUser] = useState<Chef | null>(null)
@@ -317,6 +320,25 @@ export default function FamilyPlateApp() {
       loadLastDishes().then(setLastDishes).catch(() => {})
       loadRezeptbuch().then(entries => { if (entries !== null) setRezeptbuchEntries(entries) }).catch(() => {})
       loadDishRatings().then(setDishRatings).catch(() => {})
+      // Stub-Reparatur: Slot-Stubs durch Name-Key-Vollrezepte ersetzen (einmalig pro Sitzung)
+      if (!_stubRepairDone) {
+        _stubRepairDone = true
+        const rCurrent = repairStubSlots(plan, migratedMd, sl, false)
+        if (rCurrent.changed) {
+          setMealsData(rCurrent.mealsData)
+          setShoppingList(rCurrent.shoppingList)
+          void saveWeekPlan(plan, rCurrent.mealsData, w)
+          void saveShoppingList(rCurrent.shoppingList)
+        }
+        if (effectiveNwd?.plan && effectiveNwd.mealsData) {
+          const rNw = repairStubSlots(effectiveNwd.plan, effectiveNwd.mealsData, effectiveNwd.shoppingList ?? [], true)
+          if (rNw.changed) {
+            const updatedNwd = { ...effectiveNwd, mealsData: rNw.mealsData, shoppingList: rNw.shoppingList }
+            setNextWeekData(updatedNwd)
+            void saveNextWeekData(nws ?? getNextMondayIso(), updatedNwd)
+          }
+        }
+      }
       // Recovery: fehlende Rezepte nachladen (z. B. nach iOS-Hintergrund-Freeze)
       if (pc && plan.length > 0 && latestProfile) {
         const mbs = latestProfile.members.length ? latestProfile.members : DEFAULT_MEMBERS
