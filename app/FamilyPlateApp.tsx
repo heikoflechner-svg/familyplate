@@ -342,6 +342,8 @@ export default function FamilyPlateApp() {
         }
 
         // Recovery: fehlende Rezepte nachladen (z. B. nach iOS-Hintergrund-Freeze)
+        let aiCallsStarted = 0
+        let missingEntries: WeekPlanEntry[] = []
         if (pc && plan.length > 0 && latestProfile) {
           const mbs = latestProfile.members.length ? latestProfile.members : DEFAULT_MEMBERS
           const fp = buildFamilyPrompt(mbs)
@@ -349,7 +351,8 @@ export default function FamilyPlateApp() {
           const frzStr = getFreezerListString(freezer)
           const pntStr = getPantryListString(pantry)
           const pcCb = (t: string, s: WochenSlot) => getPersonCountForSlot(t, s, resolvedAtt, mbs)
-          if (getMissingPlanEntries(plan, migratedMd, { fromToday: true }).length > 0) {
+          missingEntries = getMissingPlanEntries(plan, migratedMd, { fromToday: true })
+          if (missingEntries.length > 0) {
             await ensureMissingRecipes(
               plan, migratedMd, finalSl,
               { freezerList: frzStr, pantryList: pntStr, familyPrompt: fp, getPersonCount: pcCb, allergenCheckMembers: acm, fromToday: true },
@@ -365,16 +368,19 @@ export default function FamilyPlateApp() {
                 onFailed: (names) => {
                   setRecoveryError(`Rezepte nicht erstellt: ${names.join(', ')}`)
                 },
+                onLockFiltered: (started) => { aiCallsStarted = started },
               },
             )
           }
         }
 
         // EIN saveWeekPlan wenn sich seit dem DB-Ladestand etwas geändert hat
-        if (finalMd !== md || finalSl !== sl) {
+        const savedOnStart = finalMd !== md || finalSl !== sl
+        if (savedOnStart) {
           await saveWeekPlan(plan, finalMd, w)
           if (finalSl !== sl) await saveShoppingList(finalSl)
         }
+        console.info(`[startRecovery] fehlend: ${missingEntries.length}, KI-Aufrufe: ${aiCallsStarted}, gespeichert: ${savedOnStart ? 'ja' : 'nein'}`)
       }
     }
     doLoad().catch(err => {

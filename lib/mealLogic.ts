@@ -921,6 +921,7 @@ export async function ensureMissingRecipes(
     onProgress: (done: number, total: number) => void
     onSave: (updatedMeals: Record<string, Rezept>, updatedList: ShoppingItem[]) => Promise<void>
     onFailed: (gerichtNames: string[]) => void
+    onLockFiltered?: (started: number) => void
   },
 ): Promise<void> {
   const missing = getMissingPlanEntries(plan, mealsData, { fromToday: options.fromToday })
@@ -928,11 +929,32 @@ export async function ensureMissingRecipes(
   const toLoad = missing.filter(e => !_recipesInFlight.has(e.gericht))
   if (toLoad.length === 0) return
 
-  for (const e of toLoad) _recipesInFlight.add(e.gericht)
+  // Cross-Device-Lock: Gerichte überspringen, die ein anderes Gerät gerade generiert (< 70 s)
+  let freshForLock: Record<string, Rezept> = {}
+  try { freshForLock = await fetchFreshMealsData() } catch {}
+  const lockNow = Date.now()
+  const unlockedToLoad = toLoad.filter(e => {
+    const lock = freshForLock[`__gen:${e.gericht}`] as (Rezept & { generatedAt?: string }) | undefined
+    if (lock?.name === '__generating' && lock.generatedAt) {
+      const age = lockNow - new Date(lock.generatedAt).getTime()
+      if (age < 70_000) return false
+    }
+    return true
+  })
+  if (unlockedToLoad.length > 0) {
+    const lockSentinel = { name: '__generating', emoji: '', zutaten: [], schritte: [], minuten: 0, schwierigkeit: '', generatedAt: new Date().toISOString() } as unknown as Rezept
+    const withLocks = { ...freshForLock }
+    for (const e of unlockedToLoad) withLocks[`__gen:${e.gericht}`] = lockSentinel
+    await saveMealsDataOnly(withLocks).catch(() => {})
+  }
+  callbacks.onLockFiltered?.(unlockedToLoad.length)
+  if (unlockedToLoad.length === 0) return
+
+  for (const e of unlockedToLoad) _recipesInFlight.add(e.gericht)
   try {
-    callbacks.onProgress(0, toLoad.length)
+    callbacks.onProgress(0, unlockedToLoad.length)
     const rawUpdated = await loadMissingRecipes(
-      toLoad,
+      unlockedToLoad,
       mealsData,
       options.freezerList,
       options.pantryList,
@@ -947,7 +969,7 @@ export async function ensureMissingRecipes(
     // Shopping-Liste: nur für neu geladene Gerichte neu schreiben
     let newList = shoppingList
     const failedNames: string[] = []
-    for (const e of toLoad) {
+    for (const e of unlockedToLoad) {
       const r = full[`${e.tag}-${e.slot}`] ?? full[e.gericht]
       if (r && isFullRecipe(r)) {
         newList = rewriteShoppingItemsForDish(newList, e, r, options.isNextWeek ?? false)
@@ -957,12 +979,12 @@ export async function ensureMissingRecipes(
     }
 
     // onSave nur wenn mindestens ein Rezept tatsächlich geladen wurde (nie alten Stand überschreiben)
-    if (failedNames.length < toLoad.length) {
+    if (failedNames.length < unlockedToLoad.length) {
       await callbacks.onSave(full, newList)
     }
     if (failedNames.length > 0) callbacks.onFailed(failedNames)
   } finally {
-    for (const e of toLoad) _recipesInFlight.delete(e.gericht)
+    for (const e of unlockedToLoad) _recipesInFlight.delete(e.gericht)
   }
 }
 
@@ -995,5 +1017,6 @@ export function repairStubSlots(
     const r = result[`${entry.tag}-${entry.slot}`]
     if (r) newSl = rewriteShoppingItemsForDish(newSl, entry, r, isNextWeek)
   }
+  console.info(`[repairStubSlots] ${isNextWeek ? 'NW' : 'KW'}: ${plan.length} Einträge geprüft, ${repaired.length} Stubs repariert${repaired.length > 0 ? ': ' + repaired.map(e => `${e.tag}-${e.slot}`).join(', ') : ''}`)
   return { mealsData: result, shoppingList: newSl, changed: true }
 }
