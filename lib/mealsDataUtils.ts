@@ -4,6 +4,15 @@ export function mealsKey(tag: string, slot: WochenSlot | string): string {
   return `${tag}-${slot}`
 }
 
+// Hier definiert (statt in mealLogic) um Zirkularimport zu vermeiden.
+// mealLogic importiert migrateMealsDataAddSlotKeys von hier, daher darf mealsDataUtils
+// nichts aus mealLogic importieren.
+export function isFullRecipe(r?: Rezept | null): boolean {
+  if (!r || r.schritte.length === 0) return false
+  if (r.name === 'Hähnchen-Pasta' && r.schritte[0]?.startsWith('Hähnchen auftauen')) return false
+  return r.zutaten.length > 4 || r.zutaten.some(z => z.typ === 'grundvorrat')
+}
+
 export function getMeal(
   mealsData: Record<string, Rezept>,
   tag: string,
@@ -35,20 +44,48 @@ export function getMeal(
   return slotRecipe ?? (gerName ? mealsData[gerName] : undefined)
 }
 
+/** Gibt true zurück wenn irgendein Slot-Key fehlt (und sein Name-Key ein volles Rezept hat)
+ *  ODER wenn ein Slot-Key ein Stub für dieses Gericht ist und der Name-Key voll ist. */
 export function needsMigration(plan: WeekPlanEntry[], meals: Record<string, Rezept>): boolean {
-  return plan.some(e => !!meals[e.gericht] && !meals[mealsKey(e.tag, e.slot)])
+  return plan.some(e => {
+    const slotK = mealsKey(e.tag, e.slot)
+    const nameRecipe = meals[e.gericht]
+    const slotRecipe = meals[slotK]
+    if (!nameRecipe || !isFullRecipe(nameRecipe)) return false
+    if (!slotRecipe) return true
+    return slotRecipe.schritte.length === 0 &&
+      (!slotRecipe.fuerGericht || slotRecipe.fuerGericht === e.gericht)
+  })
 }
 
+/** Kopiert volle Name-Key-Rezepte in Slot-Keys und repariert Stubs.
+ *  Regeln:
+ *  – Slot fehlt + Name-Key ist voll  → Slot-Key anlegen (mit fuerGericht)
+ *  – Slot fehlt + Name-Key ist Stub  → NICHTS (keine Stubs in Slot-Keys erzeugen)
+ *  – Slot ist Stub für dieses Gericht + Name-Key ist voll → Slot-Key ersetzen
+ *  – Slot hat volles Rezept           → unverändert
+ *  Gibt das Original-Objekt zurück wenn keine Änderungen nötig (Referenz-Gleichheit). */
 export function migrateMealsDataAddSlotKeys(
   plan: WeekPlanEntry[],
   meals: Record<string, Rezept>
 ): Record<string, Rezept> {
-  const result: Record<string, Rezept> = { ...meals }
+  let result: Record<string, Rezept> | null = null
   for (const entry of plan) {
     const slotK = mealsKey(entry.tag, entry.slot)
-    if (!result[slotK] && result[entry.gericht]) {
-      result[slotK] = { ...result[entry.gericht], fuerGericht: entry.gericht }
+    const src = result ?? meals
+    const nameRecipe = src[entry.gericht]
+    const slotRecipe = src[slotK]
+    if (!nameRecipe || !isFullRecipe(nameRecipe)) continue
+
+    const slotMissing = !slotRecipe
+    const slotIsStub = slotRecipe
+      ? slotRecipe.schritte.length === 0 && (!slotRecipe.fuerGericht || slotRecipe.fuerGericht === entry.gericht)
+      : false
+
+    if (slotMissing || slotIsStub) {
+      if (!result) result = { ...meals }
+      result[slotK] = { ...nameRecipe, fuerGericht: entry.gericht }
     }
   }
-  return result
+  return result ?? meals
 }

@@ -3109,7 +3109,8 @@ export default function WocheScreen({
 
   function codeToHuman(code: string | null): string {
     if (!code) return 'unbekannter Fehler'
-    if (code === 'truncated') return 'Antwort abgeschnitten'
+    if (code === 'truncated') return 'Antwort zu lang – bitte nochmal versuchen'
+    if (code === 'empty') return 'Leeres Rezept erhalten – bitte nochmal versuchen'
     if (code === 'format') return 'Format-Fehler'
     if (code === '429') return 'Fehler 429 (zu viele Anfragen)'
     if (code === 'network') return 'Netzwerk-Fehler'

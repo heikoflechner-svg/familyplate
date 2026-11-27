@@ -1,7 +1,9 @@
 import { supabase, getFamilyId } from './supabase'
 import type { WeekPlanEntry, Rezept, Wish, RemyVorschlag, WochenSlot, DayAttendance, Chef, ShoppingItem, ChangeProposal, NextWeekData, NextWeekWish, PlanSettings, FamilyMember, TagMahlzeitenKonfig, RezeptbuchEntry } from './state'
 import { checkAllergens } from './allergenCheck'
-import { migrateMealsDataAddSlotKeys } from './mealsDataUtils'
+import { migrateMealsDataAddSlotKeys, isFullRecipe } from './mealsDataUtils'
+// Re-export: alle bisherigen Importpfade funktionieren weiterhin
+export { isFullRecipe } from './mealsDataUtils'
 import { rewriteShoppingItemsForDish } from './shoppingLogic'
 
 function toLocalDateIso(date: Date): string {
@@ -485,15 +487,7 @@ export async function generateWeekPlan(params: {
   return { plan, mealsData }
 }
 
-// Ein "volles" Rezept hat Zubereitungsschritte und mehr als 4 Zutaten oder mindestens
-// eine Grundvorrat-Zutat. Stubs aus der schnellen Wochenplanung (0 Schritte) und
-// alte Kurz-Rezepte (≤4 Zutaten, kein 'grundvorrat') werden als unvollständig
-// behandelt und beim nächsten Antippen/Neu-Klick automatisch neu geladen.
-export function isFullRecipe(r?: Rezept | null): boolean {
-  if (!r || r.schritte.length === 0) return false
-  if (r.name === 'Hähnchen-Pasta' && r.schritte[0]?.startsWith('Hähnchen auftauen')) return false
-  return r.zutaten.length > 4 || r.zutaten.some(z => z.typ === 'grundvorrat')
-}
+// isFullRecipe ist jetzt in mealsDataUtils definiert (kein Zirkularimport) und wird oben re-exportiert.
 
 function filterLockKeys(meals: Record<string, Rezept>): Record<string, Rezept> {
   return Object.fromEntries(Object.entries(meals).filter(([k]) => !k.startsWith('__gen:')))
@@ -840,9 +834,21 @@ export async function loadMissingRecipes(
     const batch = missing.slice(i, i + CONCURRENCY)
     await Promise.all(batch.map(async e => {
       const personCount = getPersonCount ? getPersonCount(e.tag, e.slot) : undefined
+      // Kostenschutz: Wenn Name-Key schon ein volles Rezept hat, kein KI-Aufruf nötig
+      const existingName = result[e.gericht]
+      if (isFullRecipe(existingName)) {
+        for (const dup of (entriesByGericht.get(e.gericht) ?? [e])) {
+          result[`${dup.tag}-${dup.slot}`] = { ...existingName!, fuerGericht: e.gericht }
+        }
+        result[e.gericht] = existingName!
+        done++
+        onProgress?.(done, total)
+        return
+      }
       const r = await getRecipeForDish(e.gericht, e.emoji, freezerList, pantryList, familyPrompt, personCount, familyMembersForCheck, e.mahlzeitTyp as 'leicht' | 'normal' | undefined, rezeptbuchEntries ?? [])
-      // Retry (Rezeptbuch would have returned non-null; this only retries failed Sonnet calls)
-      const toStore = r ?? await generateRecipe(e.gericht, e.emoji, freezerList, pantryList, familyPrompt, personCount, familyMembersForCheck, e.mahlzeitTyp as 'leicht' | 'normal' | undefined)
+      // Retry: bei API_truncated kein weiterer Versuch (würde wieder kürzen)
+      const shouldRetry = !r && getLastRecipeErrorCode() !== 'truncated'
+      const toStore = r ?? (shouldRetry ? await generateRecipe(e.gericht, e.emoji, freezerList, pantryList, familyPrompt, personCount, familyMembersForCheck, e.mahlzeitTyp as 'leicht' | 'normal' | undefined) : null)
       if (toStore) {
         const loaded: Rezept = {
           ...toStore,
@@ -950,7 +956,10 @@ export async function ensureMissingRecipes(
       }
     }
 
-    await callbacks.onSave(full, newList)
+    // onSave nur wenn mindestens ein Rezept tatsächlich geladen wurde (nie alten Stand überschreiben)
+    if (failedNames.length < toLoad.length) {
+      await callbacks.onSave(full, newList)
+    }
     if (failedNames.length > 0) callbacks.onFailed(failedNames)
   } finally {
     for (const e of toLoad) _recipesInFlight.delete(e.gericht)

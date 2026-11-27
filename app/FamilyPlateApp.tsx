@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
 import { loadWeekPlan, saveWeekPlan, saveAttendance, saveShoppingList, saveProposals, saveWochenchef, savePlanConfirmed, saveShopDone, saveShoppingDays, saveShoppingPersons, loadLastDishes, getMondayIso, getNextMondayIso, saveWeekStart, loadNextWeekData, saveNextWeekData, activateNextWeek, buildDefaultAttendance, getPersonCountForSlot, getMissingPlanEntries, ensureMissingRecipes, repairStubSlots } from '../lib/mealLogic'
-import { needsMigration, migrateMealsDataAddSlotKeys } from '../lib/mealsDataUtils'
+import { migrateMealsDataAddSlotKeys } from '../lib/mealsDataUtils'
 import { loadFreezerItems, loadPantryItems, getFreezerListString, getPantryListString } from '../lib/freezerLogic'
 import { loadFamilyProfile, saveFamilyProfile, saveShoppingConfig, applyChefStats, incrementWochenchefStat, DEFAULT_MEMBERS, buildFamilyPrompt } from '../lib/familyLogic'
 import { generateShoppingList } from '../lib/shoppingLogic'
@@ -22,7 +22,7 @@ import ProfilScreen from './ProfilScreen'
 import MehrScreen from './MehrScreen'
 import OnboardingWizard from './OnboardingWizard'
 
-// Session-Lock: repairStubSlots läuft pro Sitzung höchstens einmal (nicht bei jeder Datenneuladung)
+// Session-Lock: Reparatur + Recovery laufen pro Sitzung genau einmal
 let _stubRepairDone = false
 
 export default function FamilyPlateApp() {
@@ -65,6 +65,7 @@ export default function FamilyPlateApp() {
   const [profileSaveError, setProfileSaveError] = useState<string | null>(null)
   const [profileLoadError, setProfileLoadError] = useState(false)
   const [loadTrigger, setLoadTrigger] = useState(0)
+  const [recoveryError, setRecoveryError] = useState<string | null>(null)
   const [isOffline, setIsOffline] = useState(false)
   const [offlineCachedAt, setOfflineCachedAt] = useState<string | null>(null)
   const [syncDone, setSyncDone] = useState(false)
@@ -257,8 +258,8 @@ export default function FamilyPlateApp() {
         saveAttendance(resolvedAtt, []).catch(() => {})
       }
       setWeekPlan(plan)
-      const migratedMd = needsMigration(plan, md) ? migrateMealsDataAddSlotKeys(plan, md) : md
-      if (migratedMd !== md) void saveWeekPlan(plan, migratedMd, w)
+      // Migration + Stub-Reparatur (kein fire-and-forget – wird im _stubRepairDone-Block gespeichert)
+      const migratedMd = migrateMealsDataAddSlotKeys(plan, md)
       setMealsData(migratedMd)
       setWishes(w)
       setAttendance(resolvedAtt)
@@ -273,13 +274,12 @@ export default function FamilyPlateApp() {
       setWeekStart(ws)
       setNextWeekStart(nws)
       let effectiveNwd = nwd
-      if (nwd?.plan && nwd?.mealsData && needsMigration(nwd.plan, nwd.mealsData)) {
+      if (nwd?.plan && nwd?.mealsData) {
         const migratedNwMeals = migrateMealsDataAddSlotKeys(nwd.plan, nwd.mealsData)
-        effectiveNwd = { ...nwd, mealsData: migratedNwMeals }
+        if (migratedNwMeals !== nwd.mealsData) {
+          effectiveNwd = { ...nwd, mealsData: migratedNwMeals }
+        }
         setNextWeekData(effectiveNwd)
-        void saveNextWeekData(nws ?? getNextMondayIso(), effectiveNwd)
-      } else {
-        setNextWeekData(nwd)
       }
       setPlanSettings(resolvedPs)
       setMittagsloseTage(resolvedPs?.mittagsloseTage ?? effectiveMtl)
@@ -320,50 +320,60 @@ export default function FamilyPlateApp() {
       loadLastDishes().then(setLastDishes).catch(() => {})
       loadRezeptbuch().then(entries => { if (entries !== null) setRezeptbuchEntries(entries) }).catch(() => {})
       loadDishRatings().then(setDishRatings).catch(() => {})
-      // Stub-Reparatur: Slot-Stubs durch Name-Key-Vollrezepte ersetzen (einmalig pro Sitzung)
+      // Einmaliger sequenzieller Start-Lauf (pro Sitzung):
+      // Reparatur (via Migration bereits im Speicher) → Recovery auf repariertem Stand → EIN saveWeekPlan
       if (!_stubRepairDone) {
         _stubRepairDone = true
-        const rCurrent = repairStubSlots(plan, migratedMd, sl, false)
-        if (rCurrent.changed) {
-          setMealsData(rCurrent.mealsData)
-          setShoppingList(rCurrent.shoppingList)
-          void saveWeekPlan(plan, rCurrent.mealsData, w)
-          void saveShoppingList(rCurrent.shoppingList)
+
+        // NW-Reparatur: separate Spalte, eigener Save
+        if (effectiveNwd && effectiveNwd !== nwd) {
+          await saveNextWeekData(nws ?? getNextMondayIso(), effectiveNwd)
         }
-        if (effectiveNwd?.plan && effectiveNwd.mealsData) {
-          const rNw = repairStubSlots(effectiveNwd.plan, effectiveNwd.mealsData, effectiveNwd.shoppingList ?? [], true)
-          if (rNw.changed) {
-            const updatedNwd = { ...effectiveNwd, mealsData: rNw.mealsData, shoppingList: rNw.shoppingList }
-            setNextWeekData(updatedNwd)
-            void saveNextWeekData(nws ?? getNextMondayIso(), updatedNwd)
+
+        // Einkaufsliste für reparierte Slots aktualisieren (planConfirmed: bereits bestätigt)
+        let finalMd = migratedMd
+        let finalSl = sl
+        if (pc) {
+          const rCurrent = repairStubSlots(plan, md, sl, false)
+          if (rCurrent.changed) {
+            finalSl = rCurrent.shoppingList
+            setShoppingList(finalSl)
           }
         }
-      }
-      // Recovery: fehlende Rezepte nachladen (z. B. nach iOS-Hintergrund-Freeze)
-      if (pc && plan.length > 0 && latestProfile) {
-        const mbs = latestProfile.members.length ? latestProfile.members : DEFAULT_MEMBERS
-        const fp = buildFamilyPrompt(mbs)
-        const acm = mbs.filter(m => m.allergien.length > 0).map(m => ({ name: m.name, allergien: m.allergien }))
-        const frzStr = getFreezerListString(freezer)
-        const pntStr = getPantryListString(pantry)
-        const pcCb = (t: string, s: WochenSlot) => getPersonCountForSlot(t, s, resolvedAtt, mbs)
-        if (getMissingPlanEntries(plan, migratedMd, { fromToday: true }).length > 0) {
-          void ensureMissingRecipes(
-            plan, migratedMd, sl,
-            { freezerList: frzStr, pantryList: pntStr, familyPrompt: fp, getPersonCount: pcCb, allergenCheckMembers: acm, fromToday: true },
-            {
-              onProgress: () => {},
-              onSave: async (full, newList) => {
-                setMealsData(full)
-                setShoppingList(newList)
-                await saveWeekPlan(plan, full, w)
-                await saveShoppingList(newList)
+
+        // Recovery: fehlende Rezepte nachladen (z. B. nach iOS-Hintergrund-Freeze)
+        if (pc && plan.length > 0 && latestProfile) {
+          const mbs = latestProfile.members.length ? latestProfile.members : DEFAULT_MEMBERS
+          const fp = buildFamilyPrompt(mbs)
+          const acm = mbs.filter(m => m.allergien.length > 0).map(m => ({ name: m.name, allergien: m.allergien }))
+          const frzStr = getFreezerListString(freezer)
+          const pntStr = getPantryListString(pantry)
+          const pcCb = (t: string, s: WochenSlot) => getPersonCountForSlot(t, s, resolvedAtt, mbs)
+          if (getMissingPlanEntries(plan, migratedMd, { fromToday: true }).length > 0) {
+            await ensureMissingRecipes(
+              plan, migratedMd, finalSl,
+              { freezerList: frzStr, pantryList: pntStr, familyPrompt: fp, getPersonCount: pcCb, allergenCheckMembers: acm, fromToday: true },
+              {
+                onProgress: () => {},
+                onSave: async (full, newList) => {
+                  // Nur React-State aktualisieren; DB-Save erfolgt einmalig unten
+                  finalMd = full
+                  finalSl = newList
+                  setMealsData(full)
+                  setShoppingList(newList)
+                },
+                onFailed: (names) => {
+                  setRecoveryError(`Rezepte nicht erstellt: ${names.join(', ')}`)
+                },
               },
-              onFailed: (names) => {
-                console.warn('[Recovery] Rezepte konnten nicht erstellt werden:', names)
-              },
-            },
-          )
+            )
+          }
+        }
+
+        // EIN saveWeekPlan wenn sich seit dem DB-Ladestand etwas geändert hat
+        if (finalMd !== md || finalSl !== sl) {
+          await saveWeekPlan(plan, finalMd, w)
+          if (finalSl !== sl) await saveShoppingList(finalSl)
         }
       }
     }
@@ -1037,6 +1047,17 @@ export default function FamilyPlateApp() {
           style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 999, background: '#FEE2E2', borderBottom: '1px solid #FCA5A5', padding: '10px 14px', fontSize: 12, color: '#991B1B', cursor: 'pointer' }}
         >
           ⚠️ {profileSaveError}
+        </div>
+      )}
+      {recoveryError && (
+        <div style={{ background: '#FEF2F2', borderBottom: '1px solid #FECACA', padding: '8px 14px', fontSize: 12, color: '#991B1B', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+          <span>⚠️ {recoveryError}</span>
+          <button
+            onClick={() => { setRecoveryError(null); _stubRepairDone = false; setLoadTrigger(t => t + 1) }}
+            style={{ flexShrink: 0, padding: '4px 10px', background: '#991B1B', color: 'white', border: 'none', borderRadius: 8, fontSize: 11, fontWeight: 600, cursor: 'pointer' }}
+          >
+            Nochmal versuchen
+          </button>
         </div>
       )}
       <div className="statusbar">
