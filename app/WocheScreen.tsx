@@ -2548,9 +2548,9 @@ export default function WocheScreen({
     const nextMonday = nextWeekStart ?? getNextMondayIso()
     const newPlan = nextWeekData.plan.map(p => p.tag === tag && p.slot === slot
       ? { ...p, eigenesEssen: { ...eigenNorm, [personId]: text } } : p)
-    // NW-Einkaufsliste skalieren
+    // NW-Einkaufsliste skalieren (Fallback auf leeres Array → alle Mitglieder, s. openNwSavedRecipe)
     const mbs = members.length ? members : DEFAULT_MEMBERS
-    const nwAtt = nextWeekData.attendance ?? attendance
+    const nwAtt = nextWeekData?.attendance ?? []
     const total = Math.max(1, getPersonCountForSlot(tag, slot, nwAtt, mbs))
     const oldExcl = Object.keys({ ...eigenNorm, ...(e.resteEsser ?? {}) }).length
     const newExcl = Object.keys({ ...eigenNorm, [personId]: text, ...(e.resteEsser ?? {}) }).length
@@ -2582,9 +2582,9 @@ export default function WocheScreen({
     const nextMonday = nextWeekStart ?? getNextMondayIso()
     const newPlan = nextWeekData.plan.map(p => p.tag === tag && p.slot === slot
       ? { ...p, eigenesEssen: Object.keys(next).length ? next : undefined } : p)
-    // NW-Einkaufsliste zurückskalieren
+    // NW-Einkaufsliste zurückskalieren (Fallback auf leeres Array → alle Mitglieder)
     const mbs = members.length ? members : DEFAULT_MEMBERS
-    const nwAtt = nextWeekData.attendance ?? attendance
+    const nwAtt = nextWeekData?.attendance ?? []
     const total = Math.max(1, getPersonCountForSlot(tag, slot, nwAtt, mbs))
     const oldExcl = Object.keys({ ...eigenNorm, ...(e.resteEsser ?? {}) }).length
     const newExcl = Object.keys({ ...next, ...(e.resteEsser ?? {}) }).length
