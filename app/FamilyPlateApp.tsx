@@ -55,6 +55,9 @@ export default function FamilyPlateApp() {
   const [weekStart, setWeekStart] = useState<string | null>(null)
   const [nextWeekStart, setNextWeekStart] = useState<string | null>(null)
   const [nextWeekData, setNextWeekData] = useState<NextWeekData | null>(null)
+  // Ref für handleNextWeekDataChange: vermeidet stale-closure bei async Background-Callbacks
+  const nextWeekDataRef = useRef<NextWeekData | null>(null)
+  nextWeekDataRef.current = nextWeekData
   const [memberStatuses, setMemberStatuses] = useState<{ kuerzel: string; role: string; isLinked: boolean }[]>([])
   const [wocheInitView, setWocheInitView] = useState<'home' | 'attendance'>('home')
   const [rezeptbuchEntries, setRezeptbuchEntries] = useState<RezeptbuchEntry[]>([])
@@ -921,7 +924,9 @@ export default function FamilyPlateApp() {
   }
 
   async function handleNextWeekDataChange(data: Partial<NextWeekData>, nextMonday: string) {
-    const merged: NextWeekData = { wishes: [], ...nextWeekData, ...data, wochenchef: data.wochenchef ?? nextWeekData?.wochenchef ?? activeWochenchef }
+    const current = nextWeekDataRef.current
+    const merged: NextWeekData = { wishes: [], ...current, ...data, wochenchef: data.wochenchef ?? current?.wochenchef ?? activeWochenchef }
+    console.info('[saveNW]', Object.keys(data).join(','), 'confirmed:', merged.planConfirmed, 'draft:', merged.isDraft, new Date().toISOString())
     setNextWeekData(merged)
     setNextWeekStart(nextMonday)
     await saveNextWeekData(nextMonday, merged)

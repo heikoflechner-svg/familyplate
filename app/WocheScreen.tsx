@@ -952,7 +952,7 @@ export default function WocheScreen({
 
   // NW-Entwurf debounced in Supabase speichern
   useEffect(() => {
-    if (!nwPendingPlan || !onNextWeekDataChange) return
+    if (!nwPendingPlan || !onNextWeekDataChange || nextWeekData?.planConfirmed) return
     if (nwDraftSaveTimerRef.current) clearTimeout(nwDraftSaveTimerRef.current)
     const plan = nwPendingPlan
     const meals = nwPendingMeals
@@ -1130,7 +1130,7 @@ export default function WocheScreen({
         const coverageDays = computeNextWeekCoverage(shoppingDays)
         const listDays = WOCHENTAGE.filter(d => planSnapshot.some(e => e.tag === d) && !coverageDays.includes(d))
         const list = generateShoppingList(planSnapshot, fullMigrated, listDays)
-        void saveChange({ mealsData: fullMigrated, shoppingList: list }, mon)
+        void saveChange({ mealsData: fullMigrated, shoppingList: list, planConfirmed: true, isDraft: false }, mon)
       })
       .catch(() => { if (missingCount > 0) genUpdate?.(null) })
   }
