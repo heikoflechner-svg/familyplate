@@ -12,6 +12,7 @@ import SlotWunschPanel from './SlotWunschPanel'
 import RecipeModal from './RecipeModal'
 import RezeptbuchScreen, { type RezeptSelection } from './RezeptbuchScreen'
 import { getMeal, mealsKey, migrateMealsDataAddSlotKeys } from '../lib/mealsDataUtils'
+import { getWochenchefUtil, canEditWeekUtil } from '../lib/wochenUtils'
 
 const WOCHENTAGE = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag']
 const TAG_SHORT: Record<string, string> = {
@@ -490,6 +491,22 @@ export default function WocheScreen({
   ernährungsVorgabe,
   onNwRecipeGenUpdate,
 }: Props) {
+  const cwStart = weekStart ?? getMondayIso()
+  const nwStart = nextWeekStart ?? getNextMondayIso()
+  function getWochenchef(woche: 'cw' | 'nw'): Chef {
+    return getWochenchefUtil(woche, wochenchef, nextWeekData?.wochenchef)
+  }
+  function canEditWeek(person: Chef, woche: 'cw' | 'nw'): boolean {
+    return canEditWeekUtil(person, woche, wochenchef, nextWeekData?.wochenchef, canEditSettings)
+  }
+  function getOrgOrAdmin(): Chef {
+    const org = members.find(m => {
+      const st = memberStatuses.find(s => s.kuerzel === m.id)
+      return st?.role === 'owner' || st?.role === 'admin'
+    })
+    return (org?.id ?? wochenchef) as Chef
+  }
+
   const hasMittag = (tag: string) => !mittagsloseTage.includes(tag)
   const personNames: Record<Chef, string> = Object.fromEntries(
     (members.length ? members : DEFAULT_MEMBERS).map(m => [m.id, m.name])
@@ -584,10 +601,10 @@ export default function WocheScreen({
   const nwPlanSettings = (nextWeekData as NextWeekData | null)?.planSettings ?? null
   // Hinweis: NW-Plan noch nicht freigegeben, aber Einkaufsfrist nähert sich
   const nwPlanChef = nextWeekData?.wochenchef ?? wochenchef
-  const canSeeDraft = currentUser === nwPlanChef || canEditSettings
+  const canSeeDraft = canEditWeek(currentUser, 'nw')
   const nwAlertDeadline = (
     shoppingDays.length > 0 &&
-    currentUser === nwPlanChef &&
+    canEditWeek(currentUser, 'nw') &&
     !(nextWeekData?.planConfirmed ?? false)
   ) ? getShoppingDeadlineStatus(shoppingDays) : null
 
@@ -1457,6 +1474,8 @@ export default function WocheScreen({
   const [schnellEigenText, setSchnellEigenText] = useState('')
   const [gerichtVorschlagKey, setGerichtVorschlagKey] = useState<string | null>(null)
   const [gerichtVorschlagText, setGerichtVorschlagText] = useState('')
+  const [nwGerichtVorschlagKey, setNwGerichtVorschlagKey] = useState<string | null>(null)
+  const [nwGerichtVorschlagText, setNwGerichtVorschlagText] = useState('')
   const [rejectReasonId, setRejectReasonId] = useState<string | null>(null)
   const [rejectReasonText, setRejectReasonText] = useState('')
 
@@ -1562,7 +1581,7 @@ export default function WocheScreen({
     const currentEntry = weekPlan.find(e => e.tag === tag && e.slot === slot)
     if (currentEntry?.chef === chef) { closeMealPanel(); return }
     closeMealPanel()
-    if (currentUser === wochenchef || canEditSettings) {
+    if (canEditWeek(currentUser, 'cw')) {
       const newPlan = weekPlan.map(e => e.tag === tag && e.slot === slot ? { ...e, chef } : e)
       await onWeekPlanChange(newPlan, mealsData)
     } else {
@@ -1572,9 +1591,10 @@ export default function WocheScreen({
         tag,
         slot,
         vonChef: currentUser,
-        fuerChef: wochenchef,
+        fuerChef: getWochenchef('cw'),
         newChef: chef,
         createdAt: new Date().toISOString(),
+        weekStart: cwStart,
       }])
     }
   }
@@ -1601,7 +1621,7 @@ export default function WocheScreen({
     const key = `${tag}-${slot}`
     const isOpen = schnellaktionKey === key
     const slotAnwesend = getSlotAnwesend(tag, slot)
-    const canDirectEdit = currentUser === wochenchef || canEditSettings
+    const canDirectEdit = canEditWeek(currentUser, 'cw')
     return (
       <div style={{ borderTop: '1px solid #f5f5f5' }}>
         <button
@@ -1958,13 +1978,35 @@ export default function WocheScreen({
       type: 'gericht' as const,
       tag, slot,
       vonChef: currentUser,
-      fuerChef: wochenchef,
+      fuerChef: getWochenchef('cw'),
       newGericht: name.trim(),
       newEmoji: '🍽️',
       createdAt: new Date().toISOString(),
+      weekStart: cwStart,
     }])
     setGerichtVorschlagKey(null)
     setGerichtVorschlagText('')
+  }
+
+  async function submitNwGerichtProposal(tag: string, slot: WochenSlot, name: string) {
+    if (!name.trim()) return
+    const nwFuerChef = getWochenchef('nw') || getOrgOrAdmin()
+    const existing = proposals.find(p => p.type === 'gericht' && p.tag === tag && p.slot === slot && p.vonChef === currentUser && p.weekStart === nwStart)
+    if (existing) return
+    if (!nwFuerChef) { console.warn('[proposal] NW-Chef unbekannt – Proposal ignoriert'); return }
+    await onProposalsChange([...proposals, {
+      id: crypto.randomUUID(),
+      type: 'gericht' as const,
+      tag, slot,
+      vonChef: currentUser,
+      fuerChef: nwFuerChef,
+      newGericht: name.trim(),
+      newEmoji: '🍽️',
+      createdAt: new Date().toISOString(),
+      weekStart: nwStart,
+    }])
+    setNwGerichtVorschlagKey(null)
+    setNwGerichtVorschlagText('')
   }
 
   async function acceptGerichtProposal(proposal: ChangeProposal) {
@@ -1972,6 +2014,19 @@ export default function WocheScreen({
     const slot = proposal.slot!
     const newGericht = proposal.newGericht!
     const emoji = proposal.newEmoji ?? '🍽️'
+    // NW-Gericht-Vorschlag
+    if (proposal.weekStart === nwStart && onNextWeekDataChange) {
+      const nwPlan = nextWeekData?.plan ?? []
+      const oldNwEntry = nwPlan.find(e => e.tag === tag && e.slot === slot)
+      if (!oldNwEntry) { await onProposalsChange(proposals.filter(p => p.id !== proposal.id)); return }
+      const newNwPlan = nwPlan.map(e => e.tag === tag && e.slot === slot ? { ...e, gericht: newGericht, emoji, quelle: 'manuell' } : e)
+      let updatedNwMeals = { ...(nextWeekData?.mealsData ?? {}) }
+      delete updatedNwMeals[mealsKey(tag, slot)]
+      await onProposalsChange(proposals.filter(p => p.id !== proposal.id))
+      await onNextWeekDataChange({ plan: newNwPlan, mealsData: updatedNwMeals }, nextWeekStart ?? getNextMondayIso())
+      return
+    }
+    // CW-Gericht-Vorschlag
     const oldEntry = weekPlan.find(e => e.tag === tag && e.slot === slot)
     if (!oldEntry) { await onProposalsChange(proposals.filter(p => p.id !== proposal.id)); return }
     const newPlan = weekPlan.map(e =>
@@ -2042,18 +2097,30 @@ export default function WocheScreen({
         </div>
       )
     }
-    if (currentUser !== wochenchef) return null
-    const nachtragsAltWishes = wishes.filter((w): w is Extract<Wish, { type: 'alternative' }> & { postConfirm: true } => !!(w.postConfirm && w.type === 'alternative'))
-    const nachtragsErgWishes = wishes.filter(w => w.postConfirm && w.type === 'ergaenzung')
-    const chefProposals = proposals.filter(p => !p.type || p.type === 'chef')
-    const einkaufProposals = proposals.filter(p => p.type === 'einkauf')
-    const swapProposals = proposals.filter(p => p.type === 'tauschen')
-    const verschiebenProposals = proposals.filter(p => p.type === 'verschieben')
-    const entfernenProposals = proposals.filter(p => p.type === 'entfernen')
-    const gerichtProposals = proposals.filter(p => p.type === 'gericht' && !p.ablehnungsGrund)
+    const amICwChef = canEditWeek(currentUser, 'cw')
+    const amINwChef = canEditWeek(currentUser, 'nw')
+    const myActive = (p: ChangeProposal) => {
+      if (p.weekStart && p.weekStart < cwStart) return false
+      return p.fuerChef === currentUser || canEditSettings
+    }
+    const mySubmitted = (p: ChangeProposal) =>
+      p.vonChef === currentUser && p.fuerChef !== currentUser && (!p.weekStart || p.weekStart >= cwStart)
+    const isExpiredProposal = (p: ChangeProposal) =>
+      !!(p.weekStart && p.weekStart < cwStart)
+    const nachtragsAltWishes = amICwChef ? wishes.filter((w): w is Extract<Wish, { type: 'alternative' }> & { postConfirm: true } => !!(w.postConfirm && w.type === 'alternative')) : []
+    const nachtragsErgWishes = amICwChef ? wishes.filter(w => w.postConfirm && w.type === 'ergaenzung') : []
+    const chefProposals = proposals.filter(p => myActive(p) && (!p.type || p.type === 'chef'))
+    const einkaufProposals = proposals.filter(p => myActive(p) && p.type === 'einkauf')
+    const swapProposals = proposals.filter(p => myActive(p) && (p.type === 'tauschen' || p.type === 'nwtauschen'))
+    const verschiebenProposals = proposals.filter(p => myActive(p) && p.type === 'verschieben')
+    const entfernenProposals = proposals.filter(p => myActive(p) && p.type === 'entfernen')
+    const gerichtProposals = proposals.filter(p => myActive(p) && p.type === 'gericht' && !p.ablehnungsGrund)
+    const submittedProposals = proposals.filter(mySubmitted)
+    const expiredProposals = proposals.filter(p => p.vonChef === currentUser && isExpiredProposal(p))
     const total = chefProposals.length + einkaufProposals.length + swapProposals.length + verschiebenProposals.length + entfernenProposals.length + gerichtProposals.length + nachtragsAltWishes.length + nachtragsErgWishes.length
-    const showPreConfirm = !planConfirmed && weekPlan.length > 0
-    if (total === 0 && !showPreConfirm) return null
+    const showPreConfirm = amICwChef && !planConfirmed && weekPlan.length > 0
+    if (total === 0 && !showPreConfirm && submittedProposals.length === 0 && expiredProposals.length === 0) return null
+    void amINwChef
     return (
       <div style={{ marginBottom: 14, border: `1px solid ${total > 0 ? '#FCD34D' : '#B2DFCC'}`, borderRadius: 12, overflow: 'hidden' }}>
         {total > 0 && (
@@ -2120,12 +2187,14 @@ export default function WocheScreen({
           <div style={{ padding: '10px 14px', borderBottom: (nachtragsAltWishes.length + nachtragsErgWishes.length) > 0 ? '1px solid #FDE68A' : 'none', background: '#FFFBEB' }}>
             <div style={{ fontSize: 11, fontWeight: 600, color: '#92400E', marginBottom: 8 }}>↔ Tausch-Vorschläge ({swapProposals.length})</div>
             {swapProposals.map(p => {
-              const e1 = weekPlan.find(e => e.tag === p.tag && e.slot === p.slot)
-              const e2 = weekPlan.find(e => e.tag === p.nachTag && e.slot === p.nachSlot)
+              const isNwSwap = p.type === 'nwtauschen'
+              const swapPlan = isNwSwap ? (nextWeekData?.plan ?? []) : weekPlan
+              const e1 = swapPlan.find(e => e.tag === p.tag && e.slot === p.slot)
+              const e2 = swapPlan.find(e => e.tag === p.nachTag && e.slot === p.nachSlot)
               return (
                 <div key={p.id} style={{ background: 'white', border: '1px solid #FCD34D', borderRadius: 8, padding: '8px 10px', marginBottom: 6 }}>
                   <div style={{ fontSize: 10, color: '#92400E', fontWeight: 700, marginBottom: 4 }}>
-                    {personNames[p.vonChef]} schlägt Tausch vor:
+                    {isNwSwap && <span style={{ color: '#1E40AF' }}>[NW] </span>}{personNames[p.vonChef]} schlägt Tausch vor:
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
                     <div style={{ flex: 1, fontSize: 11, color: '#333' }}>
@@ -2139,7 +2208,7 @@ export default function WocheScreen({
                     </div>
                   </div>
                   <div style={{ display: 'flex', gap: 6 }}>
-                    <button onClick={() => acceptSwapProposal(p)} disabled={swapSaving} style={{ flex: 1, padding: '5px', background: '#1D9E75', color: 'white', border: 'none', borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>✅ Übernehmen</button>
+                    <button onClick={() => isNwSwap ? void acceptNwSwapProposal(p) : acceptSwapProposal(p)} disabled={swapSaving || nwSwapSaving} style={{ flex: 1, padding: '5px', background: '#1D9E75', color: 'white', border: 'none', borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>✅ Übernehmen</button>
                     <button onClick={() => rejectProposal(p.id)} style={{ padding: '5px 10px', background: 'white', border: '1px solid #ddd', borderRadius: 6, fontSize: 11, cursor: 'pointer', color: '#888' }}>✕ Ablehnen</button>
                   </div>
                 </div>
@@ -2188,10 +2257,12 @@ export default function WocheScreen({
           <div style={{ padding: '10px 14px', borderBottom: (gerichtProposals.length + nachtragsAltWishes.length + nachtragsErgWishes.length) > 0 ? '1px solid #FDE68A' : 'none', background: '#FFFBEB' }}>
             <div style={{ fontSize: 11, fontWeight: 600, color: '#92400E', marginBottom: 8 }}>🗑 Entfernen ({entfernenProposals.length})</div>
             {entfernenProposals.map(p => {
-              const entry = weekPlan.find(e => e.tag === p.tag && e.slot === p.slot)
+              const isNwEntf = p.weekStart === nwStart
+              const entfPlan = isNwEntf ? (nextWeekData?.plan ?? []) : weekPlan
+              const entry = entfPlan.find(e => e.tag === p.tag && e.slot === p.slot)
               return (
                 <div key={p.id} style={{ background: 'white', border: '1px solid #FCD34D', borderRadius: 8, padding: '8px 10px', marginBottom: 6 }}>
-                  <div style={{ fontSize: 10, color: '#92400E', fontWeight: 700, marginBottom: 3 }}>{p.tag} · {p.slot === 'Mittag' ? '☀️' : '🌙'} {p.slot}</div>
+                  <div style={{ fontSize: 10, color: '#92400E', fontWeight: 700, marginBottom: 3 }}>{isNwEntf && <span style={{ color: '#1E40AF' }}>[NW] </span>}{p.tag} · {p.slot === 'Mittag' ? '☀️' : '🌙'} {p.slot}</div>
                   <div style={{ fontSize: 12, color: '#111', marginBottom: 6 }}>
                     <span style={{ color: '#888' }}>{personNames[p.vonChef]} schlägt vor: Gericht entfernen</span>
                     <br /><span style={{ fontWeight: 600 }}>{entry ? `${entry.emoji} ${entry.gericht}` : '(nicht mehr vorhanden)'}</span>
@@ -2211,11 +2282,13 @@ export default function WocheScreen({
           <div style={{ padding: '10px 14px', borderBottom: (nachtragsAltWishes.length + nachtragsErgWishes.length) > 0 ? '1px solid #FDE68A' : 'none', background: '#FFFBEB' }}>
             <div style={{ fontSize: 11, fontWeight: 600, color: '#92400E', marginBottom: 8 }}>✏️ Gericht-Änderungen ({gerichtProposals.length})</div>
             {gerichtProposals.map(p => {
-              const currentEntry = weekPlan.find(e => e.tag === p.tag && e.slot === p.slot)
+              const isNwGericht = p.weekStart === nwStart
+              const gerichtPlan = isNwGericht ? (nextWeekData?.plan ?? []) : weekPlan
+              const currentEntry = gerichtPlan.find(e => e.tag === p.tag && e.slot === p.slot)
               const isRejectOpen = rejectReasonId === p.id
               return (
                 <div key={p.id} style={{ background: 'white', border: '1px solid #FCD34D', borderRadius: 8, padding: '8px 10px', marginBottom: 6 }}>
-                  <div style={{ fontSize: 10, color: '#92400E', fontWeight: 700, marginBottom: 3 }}>{p.tag} · {p.slot === 'Mittag' ? '☀️' : '🌙'} {p.slot}</div>
+                  <div style={{ fontSize: 10, color: '#92400E', fontWeight: 700, marginBottom: 3 }}>{isNwGericht && <span style={{ color: '#1E40AF' }}>[NW] </span>}{p.tag} · {p.slot === 'Mittag' ? '☀️' : '🌙'} {p.slot}</div>
                   <div style={{ fontSize: 12, color: '#111', marginBottom: 6 }}>
                     <span style={{ color: '#888' }}>{personNames[p.vonChef]} schlägt vor:</span>
                     {currentEntry && <span style={{ color: '#aaa' }}> {currentEntry.emoji} {currentEntry.gericht} →</span>}
@@ -2302,6 +2375,34 @@ export default function WocheScreen({
               style={{ background: '#1D9E75', fontSize: 12, marginTop: 6, opacity: nachtragsIds.length === 0 ? 0.4 : 1 }}>
               {saving ? '⏳…' : `🛒 ${nachtragsIds.length} Ergänzung(en) zur Einkaufsliste`}
             </button>
+          </div>
+        )}
+
+        {/* Meine eingereichten Vorschläge (wartet auf Entscheidung) */}
+        {submittedProposals.length > 0 && (
+          <div style={{ padding: '10px 14px', borderBottom: (showPreConfirm || expiredProposals.length > 0) ? '1px solid #e5e7eb' : 'none', background: '#F8FAFC' }}>
+            <div style={{ fontSize: 11, fontWeight: 600, color: '#555', marginBottom: 8 }}>⏳ Meine Vorschläge ({submittedProposals.length})</div>
+            {submittedProposals.map(p => {
+              const typeLabel = p.type === 'nwtauschen' || p.type === 'tauschen' ? 'Tausch' : p.type === 'verschieben' ? 'Verschieben' : p.type === 'entfernen' ? 'Entfernen' : p.type === 'gericht' ? 'Gericht ändern' : p.type === 'chef' ? 'Koch' : 'Vorschlag'
+              const weekLabel = p.weekStart === nwStart ? ' (NW)' : ''
+              return (
+                <div key={p.id} style={{ background: 'white', border: '1px solid #e5e7eb', borderRadius: 8, padding: '8px 10px', marginBottom: 6 }}>
+                  <div style={{ fontSize: 11, color: '#555' }}>
+                    <span style={{ fontWeight: 600 }}>{typeLabel}{weekLabel}</span>
+                    {p.tag && <span style={{ color: '#888' }}> · {p.tag}{p.slot ? ` ${p.slot === 'Mittag' ? '☀️' : '🌙'}` : ''}</span>}
+                    {p.newGericht && <span style={{ fontWeight: 600 }}> → {p.newGericht}</span>}
+                  </div>
+                  <div style={{ fontSize: 10, color: '#aaa', marginTop: 2 }}>wartet auf {personNames[p.fuerChef!] || p.fuerChef}</div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+
+        {/* Abgelaufene Vorschläge (nur Hinweis) */}
+        {expiredProposals.length > 0 && (
+          <div style={{ padding: '8px 14px', borderBottom: showPreConfirm ? '1px solid #e5e7eb' : 'none', background: '#F8FAFC' }}>
+            <div style={{ fontSize: 10, color: '#aaa' }}>⚠️ {expiredProposals.length} Vorschlag/Vorschläge aus vergangenen Wochen abgelaufen</div>
           </div>
         )}
 
@@ -2645,6 +2746,7 @@ export default function WocheScreen({
   const plannedDays = WOCHENTAGE.filter(t => weekPlan.some(e => e.tag === t))
   const todayWocheIdx = WOCHENTAGE.indexOf(today)
   const tomorrow: string | null = todayWocheIdx + 1 < WOCHENTAGE.length ? WOCHENTAGE[todayWocheIdx + 1] : null
+  const tomorrowNW: string | null = today === 'Sonntag' ? 'Montag' : null
   const pastPlannedDays = plannedDays.filter(t => WOCHENTAGE.indexOf(t) < todayWocheIdx)
   const futureActiveDays = activeDays.filter(t => WOCHENTAGE.indexOf(t) >= todayWocheIdx)
   const todayIdx = activeDays.indexOf(today)
@@ -2658,12 +2760,12 @@ export default function WocheScreen({
   }
 
   function hasPendingChefProposal(tag: string, slot: WochenSlot): boolean {
-    return currentUser !== wochenchef &&
+    return !canEditWeek(currentUser, 'cw') &&
       proposals.some(p => p.vonChef === currentUser && p.tag === tag && p.slot === slot)
   }
 
   function hasPendingSwapProposal(tag: string, slot: WochenSlot): boolean {
-    if (currentUser === wochenchef || canEditSettings) return false
+    if (canEditWeek(currentUser, 'cw')) return false
     return proposals.some(p =>
       p.type === 'tauschen' && p.vonChef === currentUser &&
       ((p.tag === tag && p.slot === slot) || (p.nachTag === tag && p.nachSlot === slot))
@@ -2749,16 +2851,17 @@ export default function WocheScreen({
     if (!swapSource || !swapTarget) return
     const { tag: t1, slot: s1, entry: e1 } = swapSource
     const { tag: t2, slot: s2, entry: e2 } = swapTarget
-    const canSwapDirectly = currentUser === wochenchef || canEditSettings
+    const canSwapDirectly = canEditWeek(currentUser, 'cw')
     if (!canSwapDirectly) {
       await onProposalsChange([...proposals, {
         id: crypto.randomUUID(),
         type: 'tauschen' as const,
         tag: t1, slot: s1,
         vonChef: currentUser,
-        fuerChef: wochenchef,
+        fuerChef: getWochenchef('cw'),
         nachTag: t2, nachSlot: s2,
         createdAt: new Date().toISOString(),
+        weekStart: cwStart,
       }])
       setSwapSource(null)
       setSwapTarget(null)
@@ -2853,17 +2956,19 @@ export default function WocheScreen({
     if (!nwSwapSource || !nwSwapTarget) return
     const { tag: t1, slot: s1, entry: e1 } = nwSwapSource
     const { tag: t2, slot: s2, entry: e2 } = nwSwapTarget
-    const nwChef = nextWeekData?.wochenchef
-    const canSwapDirectly = (!!nwChef && currentUser === nwChef) || canEditSettings
+    const canSwapDirectly = canEditWeek(currentUser, 'nw')
     if (!canSwapDirectly) {
+      const nwFuerChef = getWochenchef('nw') || getOrgOrAdmin()
+      if (!nwFuerChef) { console.warn('[proposal] NW-Chef unbekannt – nwtauschen-Proposal ignoriert'); setNwSwapSource(null); setNwSwapTarget(null); return }
       await onProposalsChange([...proposals, {
         id: crypto.randomUUID(),
         type: 'nwtauschen' as const,
         tag: t1, slot: s1,
         vonChef: currentUser,
-        fuerChef: nwChef!,
+        fuerChef: nwFuerChef,
         nachTag: t2, nachSlot: s2,
         createdAt: new Date().toISOString(),
+        weekStart: nwStart,
       }])
       setNwSwapSource(null)
       setNwSwapTarget(null)
@@ -2950,7 +3055,7 @@ export default function WocheScreen({
   }
 
   async function handleRemoveRequest(tag: string, slot: WochenSlot, entry: WeekPlanEntry) {
-    if (currentUser === wochenchef || canEditSettings) {
+    if (canEditWeek(currentUser, 'cw')) {
       await executeRemove(tag, slot, entry)
     } else {
       await onProposalsChange([...proposals, {
@@ -2958,8 +3063,9 @@ export default function WocheScreen({
         type: 'entfernen' as const,
         tag, slot,
         vonChef: currentUser,
-        fuerChef: wochenchef,
+        fuerChef: getWochenchef('cw'),
         createdAt: new Date().toISOString(),
+        weekStart: cwStart,
       }])
       setRemoveConfirmKey(null)
     }
@@ -3036,33 +3142,80 @@ export default function WocheScreen({
   async function handleMoveRequest(dstTag: string, dstSlot: WochenSlot, dstNextWeek: boolean) {
     if (!moveSource) return
     const { tag: srcTag, slot: srcSlot, entry: srcEntry } = moveSource
-    if (currentUser === wochenchef || canEditSettings) {
-      if (!dstNextWeek) {
+    const hasCw = canEditWeek(currentUser, 'cw')
+    const hasNw = canEditWeek(currentUser, 'nw')
+    if (!dstNextWeek) {
+      // CW→CW
+      if (hasCw) {
         const dstEntry = weekPlan.find(e => e.tag === dstTag && e.slot === dstSlot)
-        if (dstEntry) {
-          await executeSwap(srcTag, srcSlot, srcEntry, dstTag, dstSlot, dstEntry)
-          return
-        }
+        if (dstEntry) { await executeSwap(srcTag, srcSlot, srcEntry, dstTag, dstSlot, dstEntry); return }
+        await executeMove(srcTag, srcSlot, srcEntry, dstTag, dstSlot, false)
+      } else {
+        await onProposalsChange([...proposals, {
+          id: crypto.randomUUID(),
+          type: 'verschieben' as const,
+          tag: srcTag, slot: srcSlot,
+          vonChef: currentUser,
+          fuerChef: getWochenchef('cw'),
+          dstTag, dstSlot,
+          createdAt: new Date().toISOString(),
+          weekStart: cwStart,
+        }])
+        setMoveSource(null)
+        setMovePendingTarget(null)
       }
-      await executeMove(srcTag, srcSlot, srcEntry, dstTag, dstSlot, dstNextWeek)
     } else {
-      await onProposalsChange([...proposals, {
-        id: crypto.randomUUID(),
-        type: 'verschieben' as const,
-        tag: srcTag, slot: srcSlot,
-        vonChef: currentUser,
-        fuerChef: wochenchef,
-        dstTag, dstSlot, ...(dstNextWeek ? { dstNextWeek: true } : {}),
-        createdAt: new Date().toISOString(),
-      }])
-      setMoveSource(null)
-      setMovePendingTarget(null)
+      // CW→NW: braucht Rechte auf BEIDEN Wochen
+      if (hasCw && hasNw) {
+        await executeMove(srcTag, srcSlot, srcEntry, dstTag, dstSlot, true)
+      } else if (!hasCw) {
+        // Ohne CW-Rechte: Vorschlag an CW-Chef (Quelle-Woche)
+        await onProposalsChange([...proposals, {
+          id: crypto.randomUUID(),
+          type: 'verschieben' as const,
+          tag: srcTag, slot: srcSlot,
+          vonChef: currentUser,
+          fuerChef: getWochenchef('cw'),
+          dstTag, dstSlot, dstNextWeek: true,
+          createdAt: new Date().toISOString(),
+          weekStart: cwStart,
+        }])
+        setMoveSource(null)
+        setMovePendingTarget(null)
+      } else {
+        // Hat CW-Rechte aber nicht NW-Rechte: Vorschlag an NW-Chef (Ziel-Woche)
+        const nwFuerChef = getWochenchef('nw') || getOrgOrAdmin()
+        if (!nwFuerChef) { console.warn('[proposal] NW-Chef unbekannt – verschieben-Proposal ignoriert'); setMoveSource(null); setMovePendingTarget(null); return }
+        await onProposalsChange([...proposals, {
+          id: crypto.randomUUID(),
+          type: 'verschieben' as const,
+          tag: srcTag, slot: srcSlot,
+          vonChef: currentUser,
+          fuerChef: nwFuerChef,
+          dstTag, dstSlot, dstNextWeek: true,
+          createdAt: new Date().toISOString(),
+          weekStart: nwStart,
+        }])
+        setMoveSource(null)
+        setMovePendingTarget(null)
+      }
     }
   }
 
   async function acceptRemoveProposal(proposal: ChangeProposal) {
     const tag = proposal.tag
     const slot = proposal.slot!
+    if (proposal.weekStart === nwStart && onNextWeekDataChange) {
+      const nwPlan = nextWeekData?.plan ?? []
+      const nwEntry = nwPlan.find(e => e.tag === tag && e.slot === slot)
+      if (!nwEntry) { await onProposalsChange(proposals.filter(p => p.id !== proposal.id)); return }
+      await onProposalsChange(proposals.filter(p => p.id !== proposal.id))
+      const newNwPlan = nwPlan.filter(e => !(e.tag === tag && e.slot === slot))
+      const newNwMeals = { ...(nextWeekData?.mealsData ?? {}) }
+      delete newNwMeals[mealsKey(tag, slot)]
+      await onNextWeekDataChange({ plan: newNwPlan, mealsData: newNwMeals }, nextWeekStart ?? getNextMondayIso())
+      return
+    }
     const entry = weekPlan.find(e => e.tag === tag && e.slot === slot)
     if (!entry) { await onProposalsChange(proposals.filter(p => p.id !== proposal.id)); return }
     await onProposalsChange(proposals.filter(p => p.id !== proposal.id))
@@ -3075,6 +3228,16 @@ export default function WocheScreen({
     const dstTag = proposal.dstTag!
     const dstSlot = proposal.dstSlot!
     const dstNextWeek = proposal.dstNextWeek ?? false
+    // NW→NW move proposal
+    if (proposal.weekStart === nwStart && !dstNextWeek && onNextWeekDataChange) {
+      const nwCurrentPlan = nextWeekData?.plan ?? []
+      const nwSrcEntry = nwCurrentPlan.find(e => e.tag === srcTag && e.slot === srcSlot)
+      if (!nwSrcEntry) { await onProposalsChange(proposals.filter(p => p.id !== proposal.id)); return }
+      await onProposalsChange(proposals.filter(p => p.id !== proposal.id))
+      await executeNwToNwMove(srcTag, srcSlot, nwSrcEntry, dstTag, dstSlot)
+      return
+    }
+    // CW→CW or CW→NW move proposal
     const srcEntry = weekPlan.find(e => e.tag === srcTag && e.slot === srcSlot)
     if (!srcEntry) { await onProposalsChange(proposals.filter(p => p.id !== proposal.id)); return }
     await onProposalsChange(proposals.filter(p => p.id !== proposal.id))
@@ -3083,26 +3246,27 @@ export default function WocheScreen({
 
   async function handleNwRemoveRequest(tag: string, slot: WochenSlot, entry: WeekPlanEntry) {
     if (!onNextWeekDataChange || !nextWeekData?.plan) { setNwRemoveConfirmKey(null); return }
-    const nwChef = nextWeekData?.wochenchef
-    const isNwChefNow = !!nwChef && currentUser === nwChef
-    if (isNwChefNow || canEditSettings) {
+    if (canEditWeek(currentUser, 'nw')) {
       const newPlan = nextWeekData.plan.filter(e => !(e.tag === tag && e.slot === slot))
       const newMealsData = { ...(nextWeekData.mealsData ?? {}) }
       delete newMealsData[mealsKey(tag, slot)]
       const nextMonday = nextWeekStart ?? getNextMondayIso()
       await onNextWeekDataChange({ plan: newPlan, mealsData: newMealsData }, nextMonday)
     } else {
+      const nwFuerChef = getWochenchef('nw') || getOrgOrAdmin()
+      if (!nwFuerChef) { console.warn('[proposal] NW-Chef unbekannt – entfernen-Proposal ignoriert'); setNwRemoveConfirmKey(null); return }
       await onProposalsChange([...proposals, {
         id: crypto.randomUUID(),
         type: 'entfernen' as const,
         tag, slot,
         vonChef: currentUser,
-        fuerChef: nwChef ?? wochenchef,
+        fuerChef: nwFuerChef,
         createdAt: new Date().toISOString(),
+        weekStart: nwStart,
       }])
     }
     setNwRemoveConfirmKey(null)
-    void entry  // suppress unused warning
+    void entry
   }
 
   async function executeNwToNwMove(srcTag: string, srcSlot: WochenSlot, srcEntry: WeekPlanEntry, dstTag: string, dstSlot: WochenSlot) {
@@ -4509,8 +4673,7 @@ export default function WocheScreen({
           const allergie2 = rezept2 ? checkAllergiesForSwap(rezept2, t2, s2, t1, s1, mbs, nwAttendance) : []
           const fresh1 = rezept1 ? checkFreshnessWarning(rezept1, t1, t2) : false
           const fresh2 = rezept2 ? checkFreshnessWarning(rezept2, t2, t1) : false
-          const nwChef = nextWeekData?.wochenchef
-          const canSwapDirectly = (!!nwChef && currentUser === nwChef) || canEditSettings
+          const canSwapDirectly = canEditWeek(currentUser, 'nw')
           const hasWarnings = chef1MissingAtSlot2 || chef2MissingAtSlot1 || allergie1.length > 0 || allergie2.length > 0 || fresh1 || fresh2 || pc1 !== pc2
           return (
             <div style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
@@ -4588,7 +4751,7 @@ export default function WocheScreen({
                 )}
                 {!canSwapDirectly && (
                   <div style={{ fontSize: 11, color: '#92400E', background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 8, padding: '8px 10px', marginBottom: 8 }}>
-                    ⏳ Dein Tausch-Vorschlag geht als Antrag an {personNames[nwChef!]}.
+                    ⏳ Dein Tausch-Vorschlag geht als Antrag an {personNames[getWochenchef('nw')] || personNames[getOrgOrAdmin()] || 'den NW-Chef'}.
                   </div>
                 )}
                 <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
@@ -4760,7 +4923,7 @@ export default function WocheScreen({
                             <ChefPicker current={e.chef} onSelect={chef => changeActiveChef(tag, slot, chef)} personNames={personNames} members={members} />
                           </div>
                         )}
-                        {planConfirmed && (currentUser === wochenchef || canEditSettings) && !shopDone && !wvIsSwapMode && (() => {
+                        {planConfirmed && canEditWeek(currentUser, 'cw') && !shopDone && !wvIsSwapMode && (() => {
                           const isGerichtOpen = gerichtEditKey === key
                           const stockItems = [...freezerItems, ...pantryItems]
                           return (
@@ -5264,7 +5427,7 @@ export default function WocheScreen({
             })}
             </>
           )}
-          {currentUser === wochenchef && !planConfirmed && (
+          {canEditWeek(currentUser, 'cw') && !planConfirmed && (
             <button className="btn soft" style={{ marginTop: 8 }} onClick={() => startPlanning()}>
               🔄 {weekPlan.length > 0 ? 'Neu planen' : 'Woche planen'}
             </button>
@@ -5279,7 +5442,7 @@ export default function WocheScreen({
             const nwPlan = nextWeekData?.plan ?? []
             const nwMeals = nextWeekData?.mealsData ?? {}
             const nwConfirmed = nextWeekData?.planConfirmed ?? false
-            const isNwChef = !!nwChef && currentUser === nwChef
+            const isNwChef = canEditWeek(currentUser, 'nw')
             const nwEffectivePlanWE = defaultPlanWE
             const nwDays = (nwEffectivePlanWE ? WOCHENTAGE : WOCHENTAGE.slice(0, 5)).filter(t => nwPlan.some(e => e.tag === t))
             const nwWishes = nextWeekData?.wishes ?? []
@@ -5620,43 +5783,6 @@ export default function WocheScreen({
                     )}
 
 
-                    {/* After confirmation: NW swap proposals for nwChef */}
-                    {!nwPlanLoading && !nwPendingPlan && nwConfirmed && isNwChef && (() => {
-                      const nwSwapProposals = proposals.filter(p => p.type === 'nwtauschen')
-                      if (nwSwapProposals.length === 0) return null
-                      return (
-                        <div style={{ padding: '10px 12px', borderTop: '1px solid #f0f0f0', background: '#FFFBEB' }}>
-                          <div style={{ fontSize: 11, fontWeight: 600, color: '#92400E', marginBottom: 8 }}>↔ Tausch-Vorschläge NW ({nwSwapProposals.length})</div>
-                          {nwSwapProposals.map(p => {
-                            const pe1 = nwPlan.find(e => e.tag === p.tag && e.slot === p.slot)
-                            const pe2 = nwPlan.find(e => e.tag === p.nachTag && e.slot === p.nachSlot)
-                            return (
-                              <div key={p.id} style={{ background: 'white', border: '1px solid #FCD34D', borderRadius: 8, padding: '8px 10px', marginBottom: 6 }}>
-                                <div style={{ fontSize: 10, color: '#92400E', fontWeight: 700, marginBottom: 4 }}>
-                                  {personNames[p.vonChef]} schlägt Tausch vor:
-                                </div>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
-                                  <div style={{ flex: 1, fontSize: 11, color: '#333' }}>
-                                    <span style={{ color: '#888' }}>{p.tag} {p.slot === 'Mittag' ? '☀️' : '🌙'}</span>
-                                    <br /><span style={{ fontWeight: 600 }}>{pe1 ? `${pe1.emoji} ${pe1.gericht}` : '—'}</span>
-                                  </div>
-                                  <span style={{ fontSize: 14 }}>↔</span>
-                                  <div style={{ flex: 1, fontSize: 11, color: '#333' }}>
-                                    <span style={{ color: '#888' }}>{p.nachTag} {p.nachSlot === 'Mittag' ? '☀️' : '🌙'}</span>
-                                    <br /><span style={{ fontWeight: 600 }}>{pe2 ? `${pe2.emoji} ${pe2.gericht}` : '—'}</span>
-                                  </div>
-                                </div>
-                                <div style={{ display: 'flex', gap: 6 }}>
-                                  <button onClick={() => void acceptNwSwapProposal(p)} disabled={nwSwapSaving} style={{ flex: 1, padding: '5px', background: '#1D9E75', color: 'white', border: 'none', borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>✅ Übernehmen</button>
-                                  <button onClick={() => void onProposalsChange(proposals.filter(x => x.id !== p.id))} style={{ padding: '5px 10px', background: 'white', border: '1px solid #ddd', borderRadius: 6, fontSize: 11, cursor: 'pointer', color: '#888' }}>✕ Ablehnen</button>
-                                </div>
-                              </div>
-                            )
-                          })}
-                        </div>
-                      )
-                    })()}
-
                     {/* After confirmation: full day view */}
                     {!nwPlanLoading && !nwPendingPlan && nwConfirmed && nwDays.map(tag => {
                       const mittag = nwPlan.find(e => e.tag === tag && e.slot === 'Mittag')
@@ -5665,7 +5791,7 @@ export default function WocheScreen({
                       return (
                         <div key={tag} style={{ borderTop: '1px solid #f0f0f0' }}>
                           <div style={{ padding: '7px 12px', background: '#f9fafb', borderBottom: '1px solid #f0f0f0', display: 'flex', alignItems: 'center' }}>
-                            <span style={{ flex: 1, fontSize: 11, fontWeight: 700, color: '#666', textTransform: 'uppercase', letterSpacing: '.5px' }}>{tag}<span style={{ textTransform: 'none', fontWeight: 400, letterSpacing: 0, color: '#aaa' }}>, {getTagDate(nextMonday, tag)}</span></span>
+                            <span style={{ flex: 1, fontSize: 11, fontWeight: 700, color: '#666', textTransform: 'uppercase', letterSpacing: '.5px' }}>{tag}<span style={{ textTransform: 'none', fontWeight: 400, letterSpacing: 0, color: '#aaa' }}>, {getTagDate(nextMonday, tag)}</span>{tag === tomorrowNW && <span style={{ textTransform: 'none', letterSpacing: 0, color: '#1D9E75', fontWeight: 600 }}> (morgen)</span>}</span>
                           </div>
                           {([mittag, abend] as const).map(e => {
                             if (!e) return null
@@ -5786,6 +5912,33 @@ export default function WocheScreen({
                                     </div>
                                   </div>
                                 )}
+                                {!isNwChef && !canEditSettings && !nwIsSwapMode && !nwMoveSource && nwConfirmed && (() => {
+                                  const isVorschlagOpen = nwGerichtVorschlagKey === nwKey
+                                  return (
+                                    <div style={{ borderTop: '1px solid #f5f5f5' }}>
+                                      <button onClick={() => setNwGerichtVorschlagKey(isVorschlagOpen ? null : nwKey)}
+                                        style={{ width: '100%', padding: '6px 12px', background: 'none', border: 'none', textAlign: 'left', fontSize: 11, color: isVorschlagOpen ? '#1D9E75' : '#bbb', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
+                                        💬 Gericht vorschlagen
+                                      </button>
+                                      {isVorschlagOpen && (
+                                        <div style={{ padding: '4px 12px 8px' }}>
+                                          <input
+                                            value={nwGerichtVorschlagText}
+                                            onChange={ev => setNwGerichtVorschlagText(ev.target.value)}
+                                            placeholder="Gerichtsname …"
+                                            style={{ width: '100%', marginBottom: 6, border: '1px solid #e5e7eb', borderRadius: 6, padding: '4px 8px', fontSize: 11, outline: 'none', boxSizing: 'border-box' as const }}
+                                          />
+                                          <button
+                                            onClick={() => void submitNwGerichtProposal(tag, slot, nwGerichtVorschlagText)}
+                                            disabled={!nwGerichtVorschlagText.trim()}
+                                            style={{ width: '100%', padding: '7px', background: '#1D9E75', color: 'white', border: 'none', borderRadius: 7, fontSize: 11, fontWeight: 600, cursor: 'pointer', opacity: !nwGerichtVorschlagText.trim() ? 0.4 : 1 }}>
+                                            📤 Vorschlag senden
+                                          </button>
+                                        </div>
+                                      )}
+                                    </div>
+                                  )
+                                })()}
                                 {nwMoveSource?.tag === tag && nwMoveSource.slot === slot && (
                                   <div style={{ borderTop: '1px solid #B2DFCC', background: '#F0FAF5', padding: '8px 12px' }}>
                                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
@@ -5801,7 +5954,16 @@ export default function WocheScreen({
                                           const isPending = nwMovePendingTarget?.tag === t && nwMovePendingTarget.slot === s
                                           return (
                                             <button key={`${t}-${s}`}
-                                              onClick={() => isPending ? void executeNwToNwMove(tag, slot, e, t, s) : setNwMovePendingTarget({ tag: t, slot: s })}
+                                              onClick={() => {
+                                                if (!isPending) { setNwMovePendingTarget({ tag: t, slot: s }); return }
+                                                if (canEditWeek(currentUser, 'nw')) {
+                                                  void executeNwToNwMove(tag, slot, e, t, s)
+                                                } else {
+                                                  const nwFuerChef = getWochenchef('nw') || getOrgOrAdmin()
+                                                  if (!nwFuerChef) { console.warn('[proposal] NW-Chef unbekannt'); setNwMoveSource(null); setNwMovePendingTarget(null); return }
+                                                  void onProposalsChange([...proposals, { id: crypto.randomUUID(), type: 'verschieben' as const, tag, slot, vonChef: currentUser, fuerChef: nwFuerChef, dstTag: t, dstSlot: s, createdAt: new Date().toISOString(), weekStart: nwStart }]).then(() => { setNwMoveSource(null); setNwMovePendingTarget(null) })
+                                                }
+                                              }}
                                               style={{ padding: '5px 6px', border: `1px solid ${isPending ? '#1D9E75' : '#ddd'}`, borderRadius: 7, background: isPending ? '#E1F5EE' : 'white', cursor: 'pointer', textAlign: 'left', fontSize: 10 }}>
                                               <span style={{ color: '#888' }}>{TAG_SHORT[t]} {s === 'Mittag' ? '☀️' : '🌙'}</span>
                                               <br />
@@ -5992,7 +6154,7 @@ export default function WocheScreen({
             <ChefPicker current={entry.chef} onSelect={chef => changeActiveChef(tag, slot, chef)} personNames={personNames} members={members} />
           </div>
         )}
-        {planConfirmed && (currentUser === wochenchef || canEditSettings) && !shopDone && !isSwapMode && (() => {
+        {planConfirmed && canEditWeek(currentUser, 'cw') && !shopDone && !isSwapMode && (() => {
           const gKey = key
           const isGerichtOpen = gerichtEditKey === gKey
           const stockItems = [...freezerItems, ...pantryItems]
@@ -6304,9 +6466,11 @@ export default function WocheScreen({
                     <button className="btn secondary" style={{ fontSize: 12 }} onClick={() => { void startPlanning(futureActiveDays) }}>
                       📅 Restwoche planen
                     </button>
-                    <button className="btn secondary" style={{ fontSize: 12 }} onClick={() => { setNwExpanded(true); void generateNwPlan() }}>
-                      ➡️ Nächste Woche planen
-                    </button>
+                    {canEditWeek(currentUser, 'nw') && (
+                      <button className="btn secondary" style={{ fontSize: 12 }} onClick={() => { setNwExpanded(true); void generateNwPlan() }}>
+                        ➡️ Nächste Woche planen
+                      </button>
+                    )}
                   </div>
                 </div>
               )}
@@ -6658,7 +6822,7 @@ export default function WocheScreen({
           </button>
         </div>
       </div>
-      {currentUser === wochenchef && !planConfirmed && (
+      {canEditWeek(currentUser, 'cw') && !planConfirmed && (
         <div style={{ padding: '0 20px 16px' }}>
           <button className="btn soft" onClick={() => startPlanning()}>🔄 Neu planen</button>
         </div>

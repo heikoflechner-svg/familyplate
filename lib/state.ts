@@ -56,6 +56,7 @@ export interface ChangeProposal {
   newChef?: Chef              // chef proposals
   vorgeschlagene?: Chef       // einkauf proposals
   createdAt: string
+  weekStart?: string         // ISO-Montag der betroffenen Woche; undefined = CW (Rückwärtskompatibilität)
   // tauschen proposals:
   nachTag?: string
   nachSlot?: WochenSlot

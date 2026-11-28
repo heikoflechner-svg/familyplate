@@ -121,7 +121,7 @@ export async function saveNextWeekData(weekStart: string, data: NextWeekData): P
 export async function activateNextWeek(): Promise<{ weekStart: string | null; nextWeekData: NextWeekData | null }> {
   const { data: existing } = await supabase
     .from('week_plans')
-    .select('id, next_week_start, next_week_data, shopping_list, plan_data, meals_data, attendance, week_start, wochenchef')
+    .select('id, next_week_start, next_week_data, shopping_list, plan_data, meals_data, attendance, week_start, wochenchef, proposals')
     .eq('family_id', getFamilyId())
     .limit(1)
     .single()
@@ -165,7 +165,7 @@ export async function activateNextWeek(): Promise<{ weekStart: string | null; ne
     plan_data: promotePlan ? (nextData?.plan ?? []) : [],
     meals_data: promotePlan ? (nextData?.mealsData ?? {}) : {},
     wishes: (nextData?.wishes ?? []) as unknown as NextWeekWish[],
-    proposals: [],
+    proposals: (Array.isArray(existing.proposals) ? (existing.proposals as ChangeProposal[]) : []).filter((p: ChangeProposal) => p.weekStart === nextStart),
     attendance: nextData?.attendance
       ? { v: 2, days: nextData.attendance, confirmed: nextData.attendanceConfirmed ?? [] }
       : [],
