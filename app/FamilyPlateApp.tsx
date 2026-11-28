@@ -1,11 +1,12 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
-import { loadWeekPlan, saveWeekPlan, saveAttendance, saveShoppingList, saveProposals, saveWochenchef, savePlanConfirmed, saveShopDone, saveShoppingDays, saveShoppingPersons, loadLastDishes, getMondayIso, getNextMondayIso, saveWeekStart, loadNextWeekData, saveNextWeekData, activateNextWeek, buildDefaultAttendance, getPersonCountForSlot, getMissingPlanEntries, ensureMissingRecipes, repairStubSlots } from '../lib/mealLogic'
-import { migrateMealsDataAddSlotKeys } from '../lib/mealsDataUtils'
+import { loadWeekPlan, saveWeekPlan, saveAttendance, saveShoppingList, saveProposals, saveWochenchef, savePlanConfirmed, saveShopDone, saveShoppingDays, saveShoppingPersons, loadLastDishes, getMondayIso, getNextMondayIso, saveWeekStart, loadNextWeekData, saveNextWeekData, activateNextWeek, buildDefaultAttendance, getPersonCountForSlot, getMissingPlanEntries, ensureMissingRecipes, repairStubSlots, saveMealsDataOnly } from '../lib/mealLogic'
+import { migrateMealsDataAddSlotKeys, getMeal, mealsKey, isFullRecipe } from '../lib/mealsDataUtils'
 import { loadFreezerItems, loadPantryItems, getFreezerListString, getPantryListString } from '../lib/freezerLogic'
 import { loadFamilyProfile, saveFamilyProfile, saveShoppingConfig, applyChefStats, incrementWochenchefStat, DEFAULT_MEMBERS, buildFamilyPrompt } from '../lib/familyLogic'
-import { generateShoppingList } from '../lib/shoppingLogic'
+import { generateShoppingList, rescaleShoppingListMengen } from '../lib/shoppingLogic'
 import { signOut, onAuthChange, SETUP_NEEDED } from '../lib/auth'
+import { fixAllergenPairQuantities } from '../lib/allergenUtils'
 import { saveIdentity, saveDataCache, loadDataCache, appendPendingOps, loadPendingOps, clearPendingOps, addDeletedIds, loadDeletedIds, clearDeletedIds, clearAllOfflineData, type PendingOp } from '../lib/offlineCache'
 import { mergeShoppingLists, applyPendingOps } from '../lib/shoppingMerge'
 import { supabase, getFamilyId } from '../lib/supabase'
@@ -263,11 +264,32 @@ export default function FamilyPlateApp() {
       setWeekPlan(plan)
       // Migration + Stub-Reparatur (kein fire-and-forget – wird im _stubRepairDone-Block gespeichert)
       const migratedMd = migrateMealsDataAddSlotKeys(plan, md)
-      setMealsData(migratedMd)
+
+      // Deterministischer Allergen-Mengen-Fix für CW-Rezepte (kein KI-Aufruf)
+      let allergenFixedMd = migratedMd
+      let allergenFixedSl = sl
+      for (const entry of plan) {
+        if (!entry.gericht) continue
+        const rezept = getMeal(allergenFixedMd, entry.tag, entry.slot as WochenSlot, entry.gericht)
+        if (!rezept?.personenAnzahl || !isFullRecipe(rezept)) continue
+        const { zutaten: fz, changed } = fixAllergenPairQuantities(rezept.zutaten, rezept.personenAnzahl)
+        if (!changed) continue
+        const slotK = mealsKey(entry.tag, entry.slot as WochenSlot)
+        allergenFixedMd = { ...allergenFixedMd }
+        if (allergenFixedMd[slotK]) allergenFixedMd[slotK] = { ...allergenFixedMd[slotK], zutaten: fz }
+        if (allergenFixedMd[entry.gericht]) allergenFixedMd[entry.gericht] = { ...allergenFixedMd[entry.gericht], zutaten: fz }
+        allergenFixedSl = rescaleShoppingListMengen(allergenFixedSl, entry.gericht, fz)
+      }
+      if (allergenFixedMd !== migratedMd) {
+        void saveMealsDataOnly(allergenFixedMd, 'fixAllergenPairs-cw')
+        void saveShoppingList(allergenFixedSl)
+      }
+
+      setMealsData(allergenFixedMd)
       setWishes(w)
       setAttendance(resolvedAtt)
       setAttendanceConfirmed(ac)
-      setShoppingList(sl)
+      setShoppingList(allergenFixedSl)
       setProposals(pr)
       setActiveWochenchef(wc)
       setPlanConfirmed(pc)
@@ -279,9 +301,28 @@ export default function FamilyPlateApp() {
       let effectiveNwd = nwd
       if (nwd?.plan && nwd?.mealsData) {
         const migratedNwMeals = migrateMealsDataAddSlotKeys(nwd.plan, nwd.mealsData)
-        if (migratedNwMeals !== nwd.mealsData) {
-          effectiveNwd = { ...nwd, mealsData: migratedNwMeals }
+
+        // Deterministischer Allergen-Mengen-Fix für NW-Rezepte (kein KI-Aufruf)
+        let allergenFixedNwMeals = migratedNwMeals
+        let allergenFixedNwList = nwd.shoppingList ?? []
+        let nwAllergenChanged = false
+        for (const entry of nwd.plan) {
+          if (!entry.gericht) continue
+          const rezept = getMeal(allergenFixedNwMeals, entry.tag, entry.slot as WochenSlot, entry.gericht)
+          if (!rezept?.personenAnzahl || !isFullRecipe(rezept)) continue
+          const { zutaten: fz, changed } = fixAllergenPairQuantities(rezept.zutaten, rezept.personenAnzahl)
+          if (!changed) continue
+          const slotK = mealsKey(entry.tag, entry.slot as WochenSlot)
+          allergenFixedNwMeals = { ...allergenFixedNwMeals }
+          if (allergenFixedNwMeals[slotK]) allergenFixedNwMeals[slotK] = { ...allergenFixedNwMeals[slotK], zutaten: fz }
+          if (allergenFixedNwMeals[entry.gericht]) allergenFixedNwMeals[entry.gericht] = { ...allergenFixedNwMeals[entry.gericht], zutaten: fz }
+          allergenFixedNwList = rescaleShoppingListMengen(allergenFixedNwList, entry.gericht, fz)
+          nwAllergenChanged = true
         }
+        if (nwAllergenChanged || migratedNwMeals !== nwd.mealsData) {
+          effectiveNwd = { ...nwd, mealsData: allergenFixedNwMeals, ...(nwAllergenChanged ? { shoppingList: allergenFixedNwList } : {}) }
+        }
+        if (nwAllergenChanged) void saveNextWeekData(nws ?? getNextMondayIso(), effectiveNwd!)
         setNextWeekData(effectiveNwd)
       }
       setPlanSettings(resolvedPs)

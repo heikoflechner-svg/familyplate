@@ -92,7 +92,8 @@ export interface Rezeptzutat {
   menge: string
   name: string
   typ: string
-  fuer?: string  // Name der Person, für die diese Zutat allergiegerecht angepasst wurde
+  fuer?: string     // Name der Person, für die diese Zutat allergiegerecht angepasst wurde
+  ersetzt?: string  // Name der Original-Zutat, die diese fuer-Zutat ersetzt (Paarungs-Schlüssel)
 }
 
 export interface Rezept {

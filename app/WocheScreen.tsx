@@ -12,6 +12,7 @@ import SlotWunschPanel from './SlotWunschPanel'
 import RecipeModal from './RecipeModal'
 import RezeptbuchScreen, { type RezeptSelection } from './RezeptbuchScreen'
 import { getMeal, mealsKey, migrateMealsDataAddSlotKeys } from '../lib/mealsDataUtils'
+import { getAllergenBaseName } from '../lib/allergenUtils'
 import { getWochenchefUtil, canEditWeekUtil } from '../lib/wochenUtils'
 
 const WOCHENTAGE = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag']
@@ -2548,23 +2549,44 @@ export default function WocheScreen({
     const nextMonday = nextWeekStart ?? getNextMondayIso()
     const newPlan = nextWeekData.plan.map(p => p.tag === tag && p.slot === slot
       ? { ...p, eigenesEssen: { ...eigenNorm, [personId]: text } } : p)
-    // NW-Einkaufsliste skalieren (Fallback auf leeres Array → alle Mitglieder, s. openNwSavedRecipe)
+    // NW-Einkaufsliste anpassen (Fallback auf leeres Array → alle Mitglieder)
     const mbs = members.length ? members : DEFAULT_MEMBERS
     const nwAtt = nextWeekData?.attendance ?? []
     const total = Math.max(1, getPersonCountForSlot(tag, slot, nwAtt, mbs))
     const oldExcl = Object.keys({ ...eigenNorm, ...(e.resteEsser ?? {}) }).length
     const newExcl = Object.keys({ ...eigenNorm, [personId]: text, ...(e.resteEsser ?? {}) }).length
+    const personName = personNames[personId] ?? personId
     let nwList = nextWeekData.shoppingList ?? []
     let nwListChanged = false
+
+    // D: Diagnose-Log
+    console.info('[nwEigen] apply', tag, slot, e.gericht ?? '-', {
+      total, oldExcl, newExcl, addToList, personName,
+      fuerItems: nwList.filter(i => i.tag === tag && i.slot === slot && i.fuer === personName && !i.erledigt).length,
+      sharedItems: nwList.filter(i => i.tag === tag && i.slot === slot && !i.fuer && !i.erledigt).length,
+      otherFuerItems: nwList.filter(i => i.tag === tag && i.slot === slot && i.fuer && i.fuer !== personName && !i.erledigt).length,
+    }, new Date().toISOString())
+
     if (oldExcl !== newExcl) {
+      // A.1: fuer=personName-Items entfernen (nicht skalieren – sie gehören nur dieser Person)
+      const fuerItemsToRemove = nwList.filter(i => i.tag === tag && i.slot === slot && i.fuer === personName && !i.erledigt)
+      const allergenPairedBases = new Set(fuerItemsToRemove.map(i => getAllergenBaseName(i.name).toLowerCase()))
+      nwList = nwList.filter(i => !(i.tag === tag && i.slot === slot && i.fuer === personName && !i.erledigt))
+      if (fuerItemsToRemove.length > 0) nwListChanged = true
+
+      // A.2: no-fuer-Items skalieren – außer allergen-gepaarte (sind bereits richtig portioniert)
       const ratio = Math.max(1, total - newExcl) / Math.max(1, total - oldExcl)
-      if (ratio !== 1 && nwList.some(i => i.tag === tag && i.slot === slot && !i.erledigt)) {
-        nwList = nwList.map(i => i.tag !== tag || i.slot !== slot || i.erledigt ? i : { ...i, menge: applyRatioToMenge(i.menge, ratio) })
+      if (ratio !== 1) {
+        nwList = nwList.map(i => {
+          if (i.tag !== tag || i.slot !== slot || i.erledigt || i.fuer) return i
+          if (allergenPairedBases.has(getAllergenBaseName(i.name).toLowerCase())) return i
+          return { ...i, menge: applyRatioToMenge(i.menge, ratio) }
+        })
         nwListChanged = true
       }
     }
     if (addToList && text) {
-      nwList = [...nwList, { id: crypto.randomUUID(), name: text, menge: '1', kategorie: 'Sonstiges', erledigt: false, tag, slot, fuer: personNames[personId] ?? personId }]
+      nwList = [...nwList, { id: crypto.randomUUID(), name: text, menge: '1', kategorie: 'Sonstiges', erledigt: false, tag, slot, fuer: personName }]
       nwListChanged = true
     }
     const toSave: Partial<import('../lib/state').NextWeekData> = { plan: newPlan, mealsData: nextWeekData.mealsData ?? {} }
@@ -2582,18 +2604,42 @@ export default function WocheScreen({
     const nextMonday = nextWeekStart ?? getNextMondayIso()
     const newPlan = nextWeekData.plan.map(p => p.tag === tag && p.slot === slot
       ? { ...p, eigenesEssen: Object.keys(next).length ? next : undefined } : p)
-    // NW-Einkaufsliste zurückskalieren (Fallback auf leeres Array → alle Mitglieder)
     const mbs = members.length ? members : DEFAULT_MEMBERS
     const nwAtt = nextWeekData?.attendance ?? []
     const total = Math.max(1, getPersonCountForSlot(tag, slot, nwAtt, mbs))
     const oldExcl = Object.keys({ ...eigenNorm, ...(e.resteEsser ?? {}) }).length
     const newExcl = Object.keys({ ...next, ...(e.resteEsser ?? {}) }).length
+    const personName = personNames[personId] ?? personId
     let nwList = nextWeekData.shoppingList ?? []
     let nwListChanged = false
+
     if (oldExcl !== newExcl) {
+      // A.1 Umkehr: fuer=personName-Items aus Rezept wieder hinzufügen
+      const rezept = getMeal(nextWeekData.mealsData ?? {}, tag, slot, e.gericht)
+      const allergenPairedBases = new Set<string>()
+      if (rezept) {
+        const updatedEntry = { ...e, eigenesEssen: Object.keys(next).length ? next : undefined }
+        const generatedItems = generateItemsForEntry(updatedEntry, { [e.gericht]: rezept }, false)
+        const toAdd = generatedItems.filter(i => i.fuer === personName)
+        for (const item of toAdd) {
+          allergenPairedBases.add(getAllergenBaseName(item.name).toLowerCase())
+          const alreadyInList = nwList.some(x => x.tag === tag && x.slot === slot
+            && x.name.toLowerCase() === item.name.toLowerCase() && x.fuer === personName && !x.erledigt)
+          if (!alreadyInList) {
+            nwList = [...nwList, { ...item, id: crypto.randomUUID(), tag, slot }]
+            nwListChanged = true
+          }
+        }
+      }
+
+      // A.2 Umkehr: no-fuer-Items hochskalieren – außer allergen-gepaarte
       const ratio = Math.max(1, total - newExcl) / Math.max(1, total - oldExcl)
-      if (ratio !== 1 && nwList.some(i => i.tag === tag && i.slot === slot && !i.erledigt)) {
-        nwList = nwList.map(i => i.tag !== tag || i.slot !== slot || i.erledigt ? i : { ...i, menge: applyRatioToMenge(i.menge, ratio) })
+      if (ratio !== 1) {
+        nwList = nwList.map(i => {
+          if (i.tag !== tag || i.slot !== slot || i.erledigt || i.fuer) return i
+          if (allergenPairedBases.has(getAllergenBaseName(i.name).toLowerCase())) return i
+          return { ...i, menge: applyRatioToMenge(i.menge, ratio) }
+        })
         nwListChanged = true
       }
     }

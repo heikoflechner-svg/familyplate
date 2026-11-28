@@ -757,8 +757,8 @@ export default function EinkaufScreen({
             </div>
 
             {viewMode === 'tag' && (() => {
-              const groupedTagSlots = new Set(groups.map(g => `${g.tag}|${g.slot}`))
-              const ungroupedTaggedManuals = manualItems.filter(i => i.tag && i.slot && !groupedTagSlots.has(`${i.tag}|${i.slot}`))
+              const groupedTagSlots = new Set(groups.map(g => `${g.tag}|${g.slot}|${g.nextWeek ? 'nw' : 'cw'}`))
+              const ungroupedTaggedManuals = manualItems.filter(i => i.tag && i.slot && !groupedTagSlots.has(`${i.tag}|${i.slot}|${i.nextWeek ? 'nw' : 'cw'}`))
               const DAYS_ORDER = ['Montag','Dienstag','Mittwoch','Donnerstag','Freitag','Samstag','Sonntag']
               const sortedUngrouped = [...ungroupedTaggedManuals].sort((a, b) => {
                 const ai = DAYS_ORDER.indexOf(a.tag ?? ''); const bi = DAYS_ORDER.indexOf(b.tag ?? '')
@@ -779,7 +779,7 @@ export default function EinkaufScreen({
                       {group.items.map(item => (
                         <ItemRow key={item.id} item={item} onToggle={() => combinedToggle(item.id)} onRemove={() => combinedRemove(item.id)} schonDa={baldVerbrauchenNames.has(item.name.toLowerCase())} />
                       ))}
-                      {manualItems.filter(i => i.tag === group.tag && i.slot === group.slot).map(item => (
+                      {manualItems.filter(i => i.tag === group.tag && i.slot === group.slot && (group.nextWeek ? !!i.nextWeek : !i.nextWeek)).map(item => (
                         <ItemRow key={item.id} item={item} onToggle={() => combinedToggle(item.id)} onRemove={() => combinedRemove(item.id)} schonDa={baldVerbrauchenNames.has(item.name.toLowerCase())} />
                       ))}
                     </div>
