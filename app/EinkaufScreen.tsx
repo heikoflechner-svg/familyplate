@@ -17,13 +17,19 @@ import {
   parseMengeStück,
 } from '../lib/shoppingLogic'
 import type { ConsolidatedItem } from '../lib/shoppingLogic'
-import { getRecipeForDish, isFullRecipe, getPersonCountForSlot, getMondayIso, getNextMondayIso, loadMissingRecipes, getMissingPlanEntries, ensureMissingRecipes } from '../lib/mealLogic'
+import { getRecipeForDish, isFullRecipe, getPersonCountForSlot, getMondayIso, getNextMondayIso, loadMissingRecipes, getMissingPlanEntries, ensureMissingRecipes, fetchFreshMealsData } from '../lib/mealLogic'
 import { getFreezerListString, getPantryListString } from '../lib/freezerLogic'
 import { buildFamilyPrompt, DEFAULT_MEMBERS } from '../lib/familyLogic'
 import type { WeekPlanEntry, Rezept, ShoppingItem, Chef, NextWeekData, FreezerItem, PantryItem, FamilyMember, DayAttendance, RezeptbuchEntry } from '../lib/state'
 
 const WOCHENTAGE = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag']
 const SEL_KEY = 'einkauf-day-sel'
+
+function countFullSlots(md: Record<string, Rezept>): number {
+  return Object.keys(md).filter(k =>
+    /^(Montag|Dienstag|Mittwoch|Donnerstag|Freitag|Samstag|Sonntag)-/.test(k) && isFullRecipe(md[k])
+  ).length
+}
 
 function todayGerman(): string {
   return WOCHENTAGE[(new Date().getDay() + 6) % 7]
@@ -242,7 +248,17 @@ export default function EinkaufScreen({
             {
               onProgress: (d, t) => setCwAutoGenProgress({ done: d, total: t }),
               onSave: async (full, newList) => {
-                await onMealsDataChange(full)
+                let safelyMerged = full
+                try {
+                  const dbMeals = await fetchFreshMealsData()
+                  const merged = { ...full }
+                  for (const [key, recipe] of Object.entries(dbMeals)) {
+                    if (isFullRecipe(recipe) && !isFullRecipe(merged[key])) merged[key] = recipe
+                  }
+                  safelyMerged = merged
+                } catch { /* Bei Fehler unverändertes full verwenden */ }
+                console.info('[saveMeals]', 'EinkaufScreen-effect', countFullSlots(safelyMerged), new Date().toISOString())
+                await onMealsDataChange(safelyMerged)
                 await onShoppingListChange(newList)
               },
               onFailed: () => {},

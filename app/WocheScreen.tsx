@@ -19,6 +19,12 @@ const TAG_SHORT: Record<string, string> = {
   Freitag: 'Fr', Samstag: 'Sa', Sonntag: 'So',
 }
 
+function countFullSlots(md: Record<string, Rezept>): number {
+  return Object.keys(md).filter(k =>
+    /^(Montag|Dienstag|Mittwoch|Donnerstag|Freitag|Samstag|Sonntag)-/.test(k) && isFullRecipe(md[k])
+  ).length
+}
+
 
 function getKW(isoDate: string): number {
   const d = new Date(isoDate + 'T00:00:00')
@@ -784,6 +790,8 @@ export default function WocheScreen({
   const migrationRunRef = useRef(false)
   const weekPlanRef = useRef(weekPlan)
   useEffect(() => { weekPlanRef.current = weekPlan }, [weekPlan])
+  const mealsDataRef = useRef(mealsData)
+  useEffect(() => { mealsDataRef.current = mealsData }, [mealsData])
   useEffect(() => {
     if (migrationRunRef.current) return
     if (weekPlan.length === 0) return
@@ -820,7 +828,7 @@ export default function WocheScreen({
     if (tasks.length === 0) return
 
     async function runMigration() {
-      let accMeals = { ...mealsData }
+      let accMeals = { ...mealsDataRef.current }
       let accShoppingList = [...shoppingList]
       let accNwMeals = { ...(nextWeekData?.mealsData ?? {}) }
       let accNwShoppingList = [...(nextWeekData?.shoppingList ?? [])]
@@ -829,6 +837,25 @@ export default function WocheScreen({
         try {
           const att = isNextWeek ? (nextWeekData?.attendance ?? []) : attendance
           const personCount = getPersonCountForSlot(entry.tag, entry.slot, att, mbs)
+
+          if (!isNextWeek) {
+            const slotK = mealsKey(entry.tag, entry.slot)
+            // Kostenschutz: Slot-Key ist schon v2 → überspringen
+            if ((accMeals[slotK]?.rezeptVersion ?? 0) >= 2 && accMeals[slotK]?.fuerGericht === entry.gericht) continue
+            // Kostenschutz: Name-Key hat v2 → in Slot-Key kopieren, kein KI-Aufruf
+            const existingName = accMeals[entry.gericht]
+            if ((existingName?.rezeptVersion ?? 0) >= 2) {
+              accMeals = { ...accMeals, [slotK]: { ...existingName, fuerGericht: entry.gericht } }
+              console.info('[saveMeals]', 'WocheScreen-runMigration', countFullSlots(accMeals), new Date().toISOString())
+              await onWeekPlanChange(weekPlanRef.current, accMeals)
+              if (planConfirmed) {
+                accShoppingList = rewriteShoppingItemsForDish(accShoppingList, entry, accMeals[slotK], false)
+                await onShoppingListChange(accShoppingList)
+              }
+              continue
+            }
+          }
+
           const rezept = await getRecipeForDish(
             entry.gericht, entry.emoji,
             getFreezerListString(freezerItems), getPantryListString(pantryItems),
@@ -844,7 +871,9 @@ export default function WocheScreen({
             rezeptVersion: 2,
           }
           if (!isNextWeek) {
-            accMeals = { ...accMeals, [entry.gericht]: merged }
+            const slotK = mealsKey(entry.tag, entry.slot)
+            accMeals = { ...accMeals, [entry.gericht]: merged, [slotK]: { ...merged, fuerGericht: entry.gericht } }
+            console.info('[saveMeals]', 'WocheScreen-runMigration', countFullSlots(accMeals), new Date().toISOString())
             await onWeekPlanChange(weekPlanRef.current, accMeals)
             if (planConfirmed) {
               accShoppingList = rewriteShoppingItemsForDish(accShoppingList, entry, merged, false)
@@ -852,7 +881,8 @@ export default function WocheScreen({
             }
           } else if (onNextWeekDataChange) {
             const nextMonday = nextWeekStart ?? getNextMondayIso()
-            accNwMeals = { ...accNwMeals, [entry.gericht]: merged }
+            const slotK = mealsKey(entry.tag, entry.slot)
+            accNwMeals = { ...accNwMeals, [entry.gericht]: merged, [slotK]: { ...merged, fuerGericht: entry.gericht } }
             accNwShoppingList = rewriteShoppingItemsForDish(accNwShoppingList, entry, merged, false)
             await onNextWeekDataChange({ mealsData: accNwMeals, shoppingList: accNwShoppingList }, nextMonday)
             if (shoppingList.some(i => i.gericht === entry.gericht && !!i.nextWeek && !i.erledigt)) {
@@ -3219,7 +3249,7 @@ export default function WocheScreen({
             ersetzteZutaten: rezept.ersetzteZutaten?.length ? rezept.ersetzteZutaten : (freshRecipe?.ersetzteZutaten ?? []),
           }
           // 5. Nur in DB schreiben; Buch-Rezepte immer speichern (force=true), generierte nur wenn noch keines da
-          const savedMeals = await mergeRecipeToDb(gericht, slotKey, toSave, rezept.quelle === 'rezeptbuch')
+          const savedMeals = await mergeRecipeToDb(gericht, slotKey, toSave, rezept.quelle === 'rezeptbuch', 'WocheScreen-openRecipe')
           // e: Defensiv – falls Slot nach dem Speichern noch immer ein Stub ist
           const savedSlot = savedMeals[slotKey] ?? savedMeals[gericht]
           if (!savedSlot || !isFullRecipe(savedSlot)) {

@@ -378,7 +378,9 @@ export async function saveWeekPlan(
   plan: WeekPlanEntry[],
   mealsData: Record<string, Rezept>,
   wishes: Wish[],
+  caller = '',
 ): Promise<void> {
+  console.info('[saveMeals]', caller || 'saveWeekPlan', countFullSlots(mealsData), new Date().toISOString())
   const { data: existing } = await supabase
     .from('week_plans')
     .select('id')
@@ -493,6 +495,12 @@ function filterLockKeys(meals: Record<string, Rezept>): Record<string, Rezept> {
   return Object.fromEntries(Object.entries(meals).filter(([k]) => !k.startsWith('__gen:')))
 }
 
+function countFullSlots(mealsData: Record<string, Rezept>): number {
+  return Object.keys(mealsData).filter(k =>
+    /^(Montag|Dienstag|Mittwoch|Donnerstag|Freitag|Samstag|Sonntag)-/.test(k) && isFullRecipe(mealsData[k])
+  ).length
+}
+
 export async function fetchFreshMealsData(): Promise<Record<string, Rezept>> {
   const { data } = await supabase
     .from('week_plans')
@@ -504,7 +512,8 @@ export async function fetchFreshMealsData(): Promise<Record<string, Rezept>> {
   return (data?.meals_data as Record<string, Rezept>) ?? {}
 }
 
-export async function saveMealsDataOnly(mealsData: Record<string, Rezept>): Promise<void> {
+export async function saveMealsDataOnly(mealsData: Record<string, Rezept>, caller = ''): Promise<void> {
+  console.info('[saveMeals]', caller || 'saveMealsDataOnly', countFullSlots(mealsData), new Date().toISOString())
   const { data: existing } = await supabase
     .from('week_plans')
     .select('id')
@@ -526,6 +535,7 @@ export async function mergeRecipeToDb(
   slotKey: string,
   rezept: Rezept,
   force = false,
+  caller = '',
 ): Promise<Record<string, Rezept>> {
   // Leeres Rezept nie speichern (Punkt e)
   if (rezept.zutaten.length === 0 && rezept.schritte.length === 0) {
@@ -544,7 +554,7 @@ export async function mergeRecipeToDb(
     : { ...freshClean, [gericht]: rezept, [slotKey]: { ...rezept, fuerGericht: gericht } }
   const toSave = { ...fresh, ...merged }
   delete toSave[lockKey]
-  await saveMealsDataOnly(toSave)
+  await saveMealsDataOnly(toSave, caller)
   return merged
 }
 

@@ -316,7 +316,6 @@ export default function FamilyPlateApp() {
         shoppingPersons: sp,
       })
       saveIdentity({ familyId: getFamilyId(), kuerzel: currentUser! })
-      setDataLoading(false)
       loadLastDishes().then(setLastDishes).catch(() => {})
       loadRezeptbuch().then(entries => { if (entries !== null) setRezeptbuchEntries(entries) }).catch(() => {})
       loadDishRatings().then(setDishRatings).catch(() => {})
@@ -337,7 +336,6 @@ export default function FamilyPlateApp() {
           const rCurrent = repairStubSlots(plan, md, sl, false)
           if (rCurrent.changed) {
             finalSl = rCurrent.shoppingList
-            setShoppingList(finalSl)
           }
         }
 
@@ -359,11 +357,9 @@ export default function FamilyPlateApp() {
               {
                 onProgress: () => {},
                 onSave: async (full, newList) => {
-                  // Nur React-State aktualisieren; DB-Save erfolgt einmalig unten
+                  // Nur Akkumulator aktualisieren; React-State + DB-Save erfolgen einmalig unten
                   finalMd = full
                   finalSl = newList
-                  setMealsData(full)
-                  setShoppingList(newList)
                 },
                 onFailed: (names) => {
                   setRecoveryError(`Rezepte nicht erstellt: ${names.join(', ')}`)
@@ -374,14 +370,19 @@ export default function FamilyPlateApp() {
           }
         }
 
+        // Reparierten Stand vor dem Anzeigen explizit in React-State setzen
+        setMealsData(finalMd)
+        setShoppingList(finalSl)
+
         // EIN saveWeekPlan wenn sich seit dem DB-Ladestand etwas geändert hat
         const savedOnStart = finalMd !== md || finalSl !== sl
         if (savedOnStart) {
-          await saveWeekPlan(plan, finalMd, w)
+          await saveWeekPlan(plan, finalMd, w, 'FamilyPlateApp-start')
           if (finalSl !== sl) await saveShoppingList(finalSl)
         }
         console.info(`[startRecovery] fehlend: ${missingEntries.length}, KI-Aufrufe: ${aiCallsStarted}, gespeichert: ${savedOnStart ? 'ja' : 'nein'}`)
       }
+      setDataLoading(false)
     }
     doLoad().catch(err => {
       console.error('Ladefehler:', err)
