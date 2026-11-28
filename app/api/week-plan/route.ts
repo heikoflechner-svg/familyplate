@@ -134,7 +134,7 @@ export async function POST(req: NextRequest) {
       },
       body: JSON.stringify({
         model: 'claude-sonnet-4-6',
-        max_tokens: 2000,
+        max_tokens: 4000,
         messages: [{ role: 'user', content: prompt }],
       }),
     })
@@ -146,20 +146,26 @@ export async function POST(req: NextRequest) {
       throw new Error(`HTTP_${resp.status}: Antwort kein JSON`)
     }
 
-    console.log('[week-plan] API status:', resp.status, '| stop_reason:', (data as Record<string, unknown>)?.stop_reason, '| error:', (data as Record<string, Record<string, unknown>>)?.error?.type)
+    const stopReason = (data as Record<string, unknown>)?.stop_reason as string | undefined
+    console.log('[week-plan] API status:', resp.status, '| stop_reason:', stopReason, '| error:', (data as Record<string, Record<string, unknown>>)?.error?.type)
 
     if (!resp.ok) {
       const errMsg = ((data as Record<string, Record<string, unknown>>)?.error?.message as string) ?? `HTTP ${resp.status}`
       throw new Error(`API_${resp.status}: ${errMsg}`)
     }
 
-    if ((data as Record<string, unknown>)?.stop_reason === 'max_tokens') {
-      throw new Error('max_tokens: Antwort wurde abgeschnitten – zu viele Tage/Slots')
+    const rawText = ((data as Record<string, Array<Record<string, unknown>>>)?.content?.[0]?.text) as string | undefined
+    const rawLen = rawText?.length ?? 0
+    console.log('[week-plan] rawText length:', rawLen)
+
+    if (stopReason === 'max_tokens') {
+      console.error('[week-plan] TRUNCATED | stop_reason: max_tokens | rawText length:', rawLen)
+      const err = Object.assign(new Error('API_truncated'), { code: 'truncated' })
+      throw err
     }
 
-    const rawText = ((data as Record<string, Array<Record<string, unknown>>>)?.content?.[0]?.text) as string | undefined
     if (!rawText) {
-      console.error('[week-plan] Unerwartete API-Antwort:', JSON.stringify(data).slice(0, 300))
+      console.error('[week-plan] Leere Antwort | stop_reason:', stopReason, '| rawLen:', rawLen, '| data:', JSON.stringify(data).slice(0, 300))
       throw new Error('Leere Antwort von der KI')
     }
 
@@ -184,9 +190,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(result)
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
-      console.error(`[week-plan] Versuch ${n} fehlgeschlagen:`, msg)
-      if (n === 2) {
-        return NextResponse.json({ error: 'generation_failed', message: msg }, { status: 500 })
+      const isTruncated = (e as { code?: string })?.code === 'truncated'
+      console.error(`[week-plan] Versuch ${n} fehlgeschlagen:`, msg, isTruncated ? '– kein Retry' : '')
+      if (n === 2 || isTruncated) {
+        return NextResponse.json({ error: isTruncated ? 'truncated' : 'generation_failed', message: msg }, { status: 500 })
       }
       console.log('[week-plan] Wiederhole Versuch ...')
     }

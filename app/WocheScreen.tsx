@@ -934,6 +934,7 @@ export default function WocheScreen({
   const [nwSaving, setNwSaving] = useState(false)
   const [nwPlanProgress, setNwPlanProgress] = useState(0)
   const [nwPlanError, setNwPlanError] = useState(false)
+  const [nwPlanErrorCode, setNwPlanErrorCode] = useState<string | null>(null)
   const nwPlanStartRef = useRef(0)
   const nwPlanTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const nwDraftRestoredRef = useRef(false)
@@ -967,6 +968,7 @@ export default function WocheScreen({
     if (nwPlanLoading) {
       setNwPlanProgress(0)
       setNwPlanError(false)
+      setNwPlanErrorCode(null)
       nwPlanStartRef.current = Date.now()
       const steps = [
         { at: 0,     pct: 0  },
@@ -1052,7 +1054,10 @@ export default function WocheScreen({
       setNwPlanProgress(100)
       setNwPendingPlan(result)
       setNwPendingMeals(newMeals)
-    } catch {
+    } catch (e) {
+      const rawMsg = e instanceof Error ? e.message : ''
+      const code = rawMsg.startsWith('API_') ? rawMsg.slice(4) : null
+      setNwPlanErrorCode(code)
       setNwPlanError(true)
     }
     setNwPlanLoading(false)
@@ -3700,8 +3705,10 @@ export default function WocheScreen({
       closeMealPanel()
       setPlanState('results')
     } catch (err) {
-      const msg = err instanceof Error && err.message ? err.message : 'Bitte erneut versuchen.'
-      setError(`Rémy konnte nicht planen. ${msg}`)
+      const rawMsg = err instanceof Error && err.message ? err.message : ''
+      const code = rawMsg.startsWith('API_') ? rawMsg.slice(4) : null
+      const humanMsg = code ? codeToHuman(code) : (rawMsg || 'Bitte erneut versuchen.')
+      setError(`Rémy konnte nicht planen: ${humanMsg}`)
       setView('home')
     }
   }
@@ -5629,7 +5636,7 @@ export default function WocheScreen({
                     {nwPlanError && !nwPlanLoading && !nwPendingPlan && (
                       <div style={{ margin: '8px 12px', padding: '10px 12px', background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 8 }}>
                         <div style={{ fontSize: 12, color: '#991B1B', fontWeight: 600, marginBottom: 4 }}>⚠️ Planung fehlgeschlagen</div>
-                        <div style={{ fontSize: 11, color: '#991B1B', marginBottom: 8 }}>Rémy hatte Probleme. Bitte nochmal versuchen.</div>
+                        <div style={{ fontSize: 11, color: '#991B1B', marginBottom: 8 }}>{nwPlanErrorCode ? codeToHuman(nwPlanErrorCode) : 'Rémy hatte Probleme. Bitte nochmal versuchen.'}</div>
                         <button onClick={() => { setNwPlanError(false); generateNwPlan() }}
                           style={{ padding: '6px 12px', border: 'none', borderRadius: 6, background: '#1D9E75', color: 'white', fontSize: 12, cursor: 'pointer' }}>
                           🔄 Nochmal versuchen
