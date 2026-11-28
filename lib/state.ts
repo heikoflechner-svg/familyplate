@@ -149,6 +149,7 @@ export interface ShoppingItem {
   nextWeek?: boolean
   fromLastWeek?: boolean
   fuer?: string
+  eigenesEssen?: boolean
   updatedAt?: string
 }
 

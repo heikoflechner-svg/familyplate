@@ -146,13 +146,11 @@ type GAPCfg = {
   removeConfirmNode?: React.ReactNode
   bookConfirm?: { bookEntry: RezeptbuchEntry; onConfirmWithBook: () => void; onConfirmWithRemy: () => void } | null
   rezeptbuchEntries?: RezeptbuchEntry[]
-  eigenMembers?: { id: string; name: string }[]
+  eigenMembers?: { id: string; name: string; allergien?: string[] }[]
   eigenNorm?: Record<string, string>
   eigenSelectedPerson?: string | null
   setEigenSelectedPerson?: (p: string | null) => void
-  eigenAddToList?: boolean
-  setEigenAddToList?: (v: boolean) => void
-  onApplyEigen?: (personId: string, text: string, addToList: boolean) => void
+  onApplyEigen?: (personId: string, text: string) => void
   onClearEigen?: (personId: string) => void
 }
 function gerichtAendernPanel(c: GAPCfg) {
@@ -306,15 +304,16 @@ function gerichtAendernPanel(c: GAPCfg) {
                   style={{ flex: 1, padding: '6px 10px', border: '1px solid #ddd', borderRadius: 8, fontSize: 11 }}
                 />
                 <button
-                  onClick={() => c.onApplyEigen?.(c.eigenSelectedPerson!, c.textInput.trim(), c.eigenAddToList ?? false)}
+                  onClick={() => c.onApplyEigen?.(c.eigenSelectedPerson!, c.textInput.trim())}
                   style={{ padding: '6px 12px', border: '1px solid #D97706', borderRadius: 8, background: '#FFFBEB', color: '#92400E', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>🙋 OK</button>
               </div>
-              {c.textInput.trim() && c.setEigenAddToList && (
-                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10, color: '#555', cursor: 'pointer' }}>
-                  <input type="checkbox" checked={c.eigenAddToList ?? false} onChange={ev => c.setEigenAddToList?.(ev.target.checked)} />
-                  Auf die Einkaufsliste setzen
-                </label>
-              )}
+              {(() => {
+                const selM = c.eigenMembers?.find(m => m.id === c.eigenSelectedPerson)
+                const allergien = selM?.allergien ?? []
+                return allergien.length > 0 ? (
+                  <div style={{ fontSize: 10, color: '#D97706', marginTop: 2 }}>⚠️ {selM?.name}: {allergien.join(', ')}</div>
+                ) : null
+              })()}
             </div>
           )}
         </div>
@@ -572,6 +571,17 @@ export default function WocheScreen({
       result[k] = typeof v === 'string' ? v : ''
     }
     return result
+  }
+
+  function getErsetzteFromZutaten(
+    zutaten: import('../lib/state').Rezeptzutat[] | undefined,
+    eigenNorm: Record<string, string>,
+  ): string[] {
+    if (!zutaten) return []
+    const eigenPersonNames = new Set(Object.keys(eigenNorm).map(id => personNames[id] ?? id))
+    return zutaten
+      .filter(z => z.fuer && !eigenPersonNames.has(z.fuer))
+      .map(z => `${z.menge} ${z.name} (für ${z.fuer})`.trim())
   }
   const memberIds = activeMembers.map(m => m.id)
   const suggestedNextChef: Chef = ([...activeMembers].sort((a, b) => {
@@ -930,7 +940,6 @@ export default function WocheScreen({
   const [nwMealSubMode, setNwMealSubMode] = useState<SubMode | null>(null)
   const [nwMealErgSaved, setNwMealErgSaved] = useState(false)
   const [nwMealEigenPerson, setNwMealEigenPerson] = useState<string | null>(null)
-  const [nwMealEigenAddToList, setNwMealEigenAddToList] = useState(false)
   const [nwManualDish, setNwManualDish] = useState('')
   const [nwSaving, setNwSaving] = useState(false)
   const [nwPlanProgress, setNwPlanProgress] = useState(0)
@@ -1461,7 +1470,6 @@ export default function WocheScreen({
   const [mealSubMode, setMealSubMode] = useState<SubMode | null>(null)
   const [mealErgSaved, setMealErgSaved] = useState(false)
   const [mealEigenPerson, setMealEigenPerson] = useState<string | null>(null)
-  const [mealEigenAddToList, setMealEigenAddToList] = useState(false)
   const [manualDishInput, setManualDishInput] = useState('')
   const [manualDishTyp, setManualDishTyp] = useState<'leicht' | 'normal' | null>(null)
   const [attendanceEditKey, setAttendanceEditKey] = useState<string | null>(null)
@@ -1476,7 +1484,6 @@ export default function WocheScreen({
   const [schnellRestePersonen, setSchnellRestePersonen] = useState<string[]>([])
   const [schnellResteZielKey, setSchnellResteZielKey] = useState<string | null>(null)
   const [schnellEigenPerson, setSchnellEigenPerson] = useState<string | null>(null)
-  const [schnellEigenAddToList, setSchnellEigenAddToList] = useState(false)
   const [schnellEigenText, setSchnellEigenText] = useState('')
   const [gerichtVorschlagKey, setGerichtVorschlagKey] = useState<string | null>(null)
   const [gerichtVorschlagText, setGerichtVorschlagText] = useState('')
@@ -1521,8 +1528,29 @@ export default function WocheScreen({
       : { tag, mittagAnwesend: allChefs, abendAnwesend: allChefs, gaeste: 0 }
     const field = slot === 'Mittag' ? 'mittagAnwesend' : 'abendAnwesend'
     const current = base[field]
-    const next = current.includes(chef) ? current.filter(c => c !== chef) : [...current, chef]
-    await onAttendanceChange([...attendance.filter(a => a.tag !== tag), { ...base, [field]: next }])
+    const removing = current.includes(chef)
+    const next = removing ? current.filter(c => c !== chef) : [...current, chef]
+    const newAttendance = [...attendance.filter(a => a.tag !== tag), { ...base, [field]: next }]
+    await onAttendanceChange(newAttendance)
+    if (planConfirmed && !shopDone) {
+      const e = weekPlan.find(e => e.tag === tag && e.slot === slot)
+      if (e) {
+        const mbs = members.length ? members : DEFAULT_MEMBERS
+        const oldTotal = Math.max(1, getPersonCountForSlot(tag, slot, attendance, mbs))
+        const newTotal = Math.max(1, getPersonCountForSlot(tag, slot, newAttendance, mbs))
+        const excl = Object.keys({ ...normalizeEigenesEssen(e.eigenesEssen), ...(e.resteEsser ?? {}) }).length
+        const oldEff = Math.max(1, oldTotal - excl)
+        const newEff = Math.max(1, newTotal - excl)
+        if (oldEff !== newEff) {
+          const personName = personNames[chef] ?? chef
+          const rezept = getMeal(mealsData, tag, slot, e.gericht)
+          const { list: adjusted, changed } = adjustPersonSlotChange(
+            { list: shoppingList, tag, slot, personName, oldEff, newEff, removing, rezept, gericht: e.gericht }
+          )
+          if (changed) await onShoppingListChange(adjusted)
+        }
+      }
+    }
   }
 
   function getNwSlotAnwesend(tag: string, slot: WochenSlot): Chef[] {
@@ -1545,8 +1573,30 @@ export default function WocheScreen({
       : { tag, mittagAnwesend: allChefs, abendAnwesend: allChefs, gaeste: 0 }
     const field = slot === 'Mittag' ? 'mittagAnwesend' : 'abendAnwesend'
     const current = base[field]
-    const next = current.includes(chef) ? current.filter(c => c !== chef) : [...current, chef]
-    await onNextWeekDataChange({ attendance: [...days.filter(a => a.tag !== tag), { ...base, [field]: next }] }, nextMonday)
+    const removing = current.includes(chef)
+    const next = removing ? current.filter(c => c !== chef) : [...current, chef]
+    const newAttendance = [...days.filter(a => a.tag !== tag), { ...base, [field]: next }]
+    let toSave: Parameters<NonNullable<typeof onNextWeekDataChange>>[0] = { attendance: newAttendance }
+    if (nextWeekData?.planConfirmed) {
+      const e = nextWeekData?.plan?.find(e => e.tag === tag && e.slot === slot)
+      if (e) {
+        const mbs = members.length ? members : DEFAULT_MEMBERS
+        const oldTotal = Math.max(1, getPersonCountForSlot(tag, slot, days, mbs))
+        const newTotal = Math.max(1, getPersonCountForSlot(tag, slot, newAttendance, mbs))
+        const excl = Object.keys({ ...normalizeEigenesEssen(e.eigenesEssen), ...(e.resteEsser ?? {}) }).length
+        const oldEff = Math.max(1, oldTotal - excl)
+        const newEff = Math.max(1, newTotal - excl)
+        if (oldEff !== newEff) {
+          const personName = personNames[chef] ?? chef
+          const rezept = getMeal(nextWeekData.mealsData ?? {}, tag, slot, e.gericht)
+          const { list: adjusted, changed } = adjustPersonSlotChange(
+            { list: nextWeekData.shoppingList ?? [], tag, slot, personName, oldEff, newEff, removing, rezept, gericht: e.gericht }
+          )
+          if (changed) toSave = { ...toSave, shoppingList: adjusted }
+        }
+      }
+    }
+    await onNextWeekDataChange(toSave, nextMonday)
   }
 
   function closeMealPanel() {
@@ -1564,10 +1614,8 @@ export default function WocheScreen({
     setSchnellRestePersonen([])
     setSchnellResteZielKey(null)
     setSchnellEigenPerson(null)
-    setSchnellEigenAddToList(false)
     setSchnellEigenText('')
     setMealEigenPerson(null)
-    setMealEigenAddToList(false)
   }
 
   function toggleEditMeal(key: string) {
@@ -1788,21 +1836,8 @@ export default function WocheScreen({
               const eigenesEssenNorm = normalizeEigenesEssen(entry.eigenesEssen)
               const allExcluded = new Set([...Object.keys(eigenesEssenNorm), ...Object.keys(entry.resteEsser ?? {})])
               const niemandIsstMit = slotAnwesend.length > 0 && slotAnwesend.every(p => allExcluded.has(p))
-              const saveEigen = (personId: string, text: string, addToList: boolean) => {
-                void updateEntryWithShoppingRescale(tag, slot, { eigenesEssen: { ...eigenesEssenNorm, [personId]: text } })
-                if (addToList && text) {
-                  const newItem: import('../lib/state').ShoppingItem = {
-                    id: Math.random().toString(36).slice(2, 9),
-                    name: text,
-                    menge: '1',
-                    kategorie: 'Sonstiges',
-                    erledigt: false,
-                    tag, slot,
-                    fuer: personNames[personId] ?? personId,
-                  }
-                  void onShoppingListChange([...shoppingList, newItem])
-                }
-                setSchnellEigenPerson(null); setSchnellEigenText(''); setSchnellEigenAddToList(false)
+              const saveEigen = (personId: string, text: string) => {
+                void applyActiveEigen(tag, slot, personId, text)
               }
               return (
                 <div>
@@ -1826,7 +1861,7 @@ export default function WocheScreen({
                               {allergien.length > 0 && <span style={{ color: '#D97706' }}> · beachten: {allergien.join(', ')}</span>}
                             </div>
                             <button
-                              onClick={() => { const next = { ...eigenesEssenNorm }; delete next[p]; void updateEntryWithShoppingRescale(tag, slot, { eigenesEssen: Object.keys(next).length ? next : undefined }); if (t) { const pn = personNames[p] ?? p; const nl = shoppingList.filter(i => !(i.tag === tag && i.slot === slot && !i.gericht && i.fuer === pn && i.name === t && !i.erledigt)); if (nl.length !== shoppingList.length) void onShoppingListChange(nl) } }}
+                              onClick={() => { void clearActiveEigen(tag, slot, p) }}
                               style={{ flexShrink: 0, padding: '2px 6px', border: '1px solid #FECACA', borderRadius: 6, background: '#FEF2F2', color: '#DC2626', fontSize: 11, fontWeight: 700, cursor: 'pointer' as const, lineHeight: 1.2 }}
                             >✕</button>
                           </div>
@@ -1842,7 +1877,7 @@ export default function WocheScreen({
                           return (
                             <button
                               key={m.id}
-                              onClick={() => { setSchnellEigenPerson(schnellEigenPerson === m.id ? null : m.id); setSchnellEigenText(''); setSchnellEigenAddToList(false) }}
+                              onClick={() => { setSchnellEigenPerson(schnellEigenPerson === m.id ? null : m.id); setSchnellEigenText('') }}
                               style={{ padding: '5px 9px', border: `1px solid ${schnellEigenPerson === m.id ? '#D97706' : hasOwn ? '#1D9E75' : '#e5e7eb'}`, borderRadius: 8, background: schnellEigenPerson === m.id ? '#FEF3C7' : hasOwn ? '#E1F5EE' : 'white', color: schnellEigenPerson === m.id ? '#92400E' : hasOwn ? '#0F6E56' : '#444', fontSize: 11, cursor: 'pointer' as const, fontWeight: schnellEigenPerson === m.id ? 700 : 400 }}
                             >{m.name || m.id}</button>
                           )
@@ -1864,16 +1899,10 @@ export default function WocheScreen({
                                 style={{ flex: 1, padding: '6px 10px', border: '1px solid #ddd', borderRadius: 8, fontSize: 11 }}
                               />
                               <button
-                                onClick={() => saveEigen(schnellEigenPerson, schnellEigenText.trim(), schnellEigenAddToList)}
+                                onClick={() => saveEigen(schnellEigenPerson, schnellEigenText.trim())}
                                 style={{ padding: '6px 12px', border: '1px solid #D97706', borderRadius: 8, background: '#FFFBEB', color: '#92400E', fontSize: 11, fontWeight: 600, cursor: 'pointer' as const }}
                               >🙋 OK</button>
                             </div>
-                            {schnellEigenText.trim() && (
-                              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10, color: '#555', cursor: 'pointer' as const }}>
-                                <input type="checkbox" checked={schnellEigenAddToList} onChange={ev => setSchnellEigenAddToList(ev.target.checked)} />
-                                Auf die Einkaufsliste setzen
-                              </label>
-                            )}
                           </div>
                         )
                       })()}
@@ -1896,16 +1925,10 @@ export default function WocheScreen({
                                 style={{ flex: 1, padding: '6px 10px', border: '1px solid #ddd', borderRadius: 8, fontSize: 11 }}
                               />
                               <button
-                                onClick={() => { saveEigen(currentUser!, schnellEigenText.trim(), schnellEigenAddToList); setSchnellaktionKey(null); setSchnellSub(null) }}
+                                onClick={() => { saveEigen(currentUser!, schnellEigenText.trim()); setSchnellaktionKey(null); setSchnellSub(null) }}
                                 style={{ padding: '6px 12px', border: '1px solid #D97706', borderRadius: 8, background: '#FFFBEB', color: '#92400E', fontSize: 11, fontWeight: 600, cursor: 'pointer' as const }}
                               >🙋 Speichern</button>
                             </div>
-                            {schnellEigenText.trim() && (
-                              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10, color: '#555', cursor: 'pointer' as const }}>
-                                <input type="checkbox" checked={schnellEigenAddToList} onChange={ev => setSchnellEigenAddToList(ev.target.checked)} />
-                                Auf die Einkaufsliste setzen
-                              </label>
-                            )}
                           </div>
                         )
                       })()}
@@ -2541,7 +2564,70 @@ export default function WocheScreen({
       ? { ...p, eigenesEssen: Object.keys(next).length ? next : undefined } : p) : null)
   }
 
-  function applyNwEigen(tag: string, slot: WochenSlot, personId: string, text: string, addToList: boolean) {
+  function adjustPersonSlotChange(params: {
+    list: import('../lib/state').ShoppingItem[]
+    tag: string; slot: WochenSlot; personName: string
+    oldEff: number; newEff: number; removing: boolean
+    rezept?: import('../lib/state').Rezept | null; gericht?: string
+  }): { list: import('../lib/state').ShoppingItem[]; changed: boolean } {
+    const { list, tag, slot, personName, oldEff, newEff, removing, rezept, gericht } = params
+    if (oldEff === newEff) return { list, changed: false }
+    const fuerNamesFromRecipe = rezept
+      ? new Set(rezept.zutaten.filter(z => z.fuer === personName).map(z => z.name.toLowerCase()))
+      : new Set<string>()
+    let result = list; let changed = false
+    if (removing) {
+      const fuerItemsToRemove = result.filter(i =>
+        i.tag === tag && i.slot === slot && !i.erledigt &&
+        (i.fuer === personName || (fuerNamesFromRecipe.size > 0 && fuerNamesFromRecipe.has(i.name.toLowerCase())))
+      )
+      if (fuerItemsToRemove.length > 0) {
+        const removeIds = new Set(fuerItemsToRemove.map(i => i.id))
+        result = result.filter(i => !removeIds.has(i.id)); changed = true
+      }
+      const allergenPairedBases = new Set([
+        ...fuerItemsToRemove.map(i => getAllergenBaseName(i.name).toLowerCase()),
+        ...Array.from(fuerNamesFromRecipe).map(n => getAllergenBaseName(n).toLowerCase()),
+      ])
+      const ratio = newEff / oldEff
+      if (ratio !== 1) {
+        result = result.map(i => {
+          if (i.tag !== tag || i.slot !== slot || i.erledigt || i.fuer) return i
+          if (allergenPairedBases.has(getAllergenBaseName(i.name).toLowerCase())) return i
+          return { ...i, menge: applyRatioToMenge(i.menge, ratio) }
+        }); changed = true
+      }
+    } else {
+      const allergenPairedBases = new Set<string>()
+      if (rezept) {
+        for (const z of rezept.zutaten.filter(z => z.fuer === personName)) {
+          allergenPairedBases.add(getAllergenBaseName(z.name).toLowerCase())
+          const alreadyInList = result.some(x =>
+            x.tag === tag && x.slot === slot && !x.erledigt &&
+            x.name.toLowerCase() === z.name.toLowerCase() &&
+            (x.fuer === personName || fuerNamesFromRecipe.has(x.name.toLowerCase()))
+          )
+          if (!alreadyInList) {
+            result = [...result, { id: crypto.randomUUID(), name: z.name, menge: z.menge,
+              kategorie: z.typ || 'Sonstiges', erledigt: false, tag, slot, fuer: personName,
+              ...(gericht ? { gericht } : {}) }]
+            changed = true
+          }
+        }
+      }
+      const ratio = newEff / oldEff
+      if (ratio !== 1) {
+        result = result.map(i => {
+          if (i.tag !== tag || i.slot !== slot || i.erledigt || i.fuer) return i
+          if (allergenPairedBases.has(getAllergenBaseName(i.name).toLowerCase())) return i
+          return { ...i, menge: applyRatioToMenge(i.menge, ratio) }
+        }); changed = true
+      }
+    }
+    return { list: result, changed }
+  }
+
+  function applyNwEigen(tag: string, slot: WochenSlot, personId: string, text: string) {
     if (!onNextWeekDataChange || !nextWeekData?.plan) return
     const e = nextWeekData.plan.find(e => e.tag === tag && e.slot === slot)
     if (!e) return
@@ -2549,50 +2635,43 @@ export default function WocheScreen({
     const nextMonday = nextWeekStart ?? getNextMondayIso()
     const newPlan = nextWeekData.plan.map(p => p.tag === tag && p.slot === slot
       ? { ...p, eigenesEssen: { ...eigenNorm, [personId]: text } } : p)
-    // NW-Einkaufsliste anpassen (Fallback auf leeres Array → alle Mitglieder)
     const mbs = members.length ? members : DEFAULT_MEMBERS
     const nwAtt = nextWeekData?.attendance ?? []
     const total = Math.max(1, getPersonCountForSlot(tag, slot, nwAtt, mbs))
     const oldExcl = Object.keys({ ...eigenNorm, ...(e.resteEsser ?? {}) }).length
     const newExcl = Object.keys({ ...eigenNorm, [personId]: text, ...(e.resteEsser ?? {}) }).length
+    const oldEff = Math.max(1, total - oldExcl); const newEff = Math.max(1, total - newExcl)
     const personName = personNames[personId] ?? personId
-    let nwList = nextWeekData.shoppingList ?? []
-    let nwListChanged = false
+    const rezept = getMeal(nextWeekData.mealsData ?? {}, tag, slot, e.gericht)
 
-    // D: Diagnose-Log
     console.info('[nwEigen] apply', tag, slot, e.gericht ?? '-', {
-      total, oldExcl, newExcl, addToList, personName,
-      fuerItems: nwList.filter(i => i.tag === tag && i.slot === slot && i.fuer === personName && !i.erledigt).length,
-      sharedItems: nwList.filter(i => i.tag === tag && i.slot === slot && !i.fuer && !i.erledigt).length,
-      otherFuerItems: nwList.filter(i => i.tag === tag && i.slot === slot && i.fuer && i.fuer !== personName && !i.erledigt).length,
+      total, oldExcl, newExcl, personName,
+      listLength: (nextWeekData.shoppingList ?? []).length,
+      fuerItems: (nextWeekData.shoppingList ?? []).filter(i => i.tag === tag && i.slot === slot && i.fuer === personName && !i.erledigt).length,
+      fuerByRecipe: rezept ? rezept.zutaten.filter(z => z.fuer === personName).length : 0,
     }, new Date().toISOString())
 
-    if (oldExcl !== newExcl) {
-      // A.1: fuer=personName-Items entfernen (nicht skalieren – sie gehören nur dieser Person)
-      const fuerItemsToRemove = nwList.filter(i => i.tag === tag && i.slot === slot && i.fuer === personName && !i.erledigt)
-      const allergenPairedBases = new Set(fuerItemsToRemove.map(i => getAllergenBaseName(i.name).toLowerCase()))
-      nwList = nwList.filter(i => !(i.tag === tag && i.slot === slot && i.fuer === personName && !i.erledigt))
-      if (fuerItemsToRemove.length > 0) nwListChanged = true
-
-      // A.2: no-fuer-Items skalieren – außer allergen-gepaarte (sind bereits richtig portioniert)
-      const ratio = Math.max(1, total - newExcl) / Math.max(1, total - oldExcl)
-      if (ratio !== 1) {
-        nwList = nwList.map(i => {
-          if (i.tag !== tag || i.slot !== slot || i.erledigt || i.fuer) return i
-          if (allergenPairedBases.has(getAllergenBaseName(i.name).toLowerCase())) return i
-          return { ...i, menge: applyRatioToMenge(i.menge, ratio) }
-        })
-        nwListChanged = true
-      }
-    }
-    if (addToList && text) {
-      nwList = [...nwList, { id: crypto.randomUUID(), name: text, menge: '1', kategorie: 'Sonstiges', erledigt: false, tag, slot, fuer: personName }]
+    let nwList = nextWeekData.shoppingList ?? []
+    let nwListChanged = false
+    const { list: adjusted, changed: adjChanged } = adjustPersonSlotChange(
+      { list: nwList, tag, slot, personName, oldEff, newEff, removing: true, rezept, gericht: e.gericht }
+    )
+    if (adjChanged) { nwList = adjusted; nwListChanged = true }
+    if (text) {
+      nwList = [...nwList, { id: crypto.randomUUID(), name: text, menge: '1',
+        kategorie: 'Sonstiges', erledigt: false, tag, slot, fuer: personName, eigenesEssen: true }]
       nwListChanged = true
     }
+    console.info('[nwEigen] after adjust:', {
+      newListLength: nwList.length,
+      fuerItemsAfter: nwList.filter(i => i.tag === tag && i.slot === slot && i.fuer === personName && !i.erledigt).length,
+      nwListChanged,
+    })
     const toSave: Partial<import('../lib/state').NextWeekData> = { plan: newPlan, mealsData: nextWeekData.mealsData ?? {} }
     if (nwListChanged) toSave.shoppingList = nwList
+    console.info('[nwEigen] saving:', { hasShoppingList: !!toSave.shoppingList, len: toSave.shoppingList?.length })
     void onNextWeekDataChange(toSave, nextMonday)
-    setNwMealEigenPerson(null); setNwGerichtEditKey(null); setNwMealSubMode(null); setNwManualDish(''); setNwMealEigenAddToList(false)
+    setNwMealEigenPerson(null); setNwGerichtEditKey(null); setNwMealSubMode(null); setNwManualDish('')
   }
 
   function clearNwEigen(tag: string, slot: WochenSlot, personId: string) {
@@ -2609,57 +2688,47 @@ export default function WocheScreen({
     const total = Math.max(1, getPersonCountForSlot(tag, slot, nwAtt, mbs))
     const oldExcl = Object.keys({ ...eigenNorm, ...(e.resteEsser ?? {}) }).length
     const newExcl = Object.keys({ ...next, ...(e.resteEsser ?? {}) }).length
+    const oldEff = Math.max(1, total - oldExcl); const newEff = Math.max(1, total - newExcl)
     const personName = personNames[personId] ?? personId
+    const rezept = getMeal(nextWeekData.mealsData ?? {}, tag, slot, e.gericht)
     let nwList = nextWeekData.shoppingList ?? []
     let nwListChanged = false
-
-    if (oldExcl !== newExcl) {
-      // A.1 Umkehr: fuer=personName-Items aus Rezept wieder hinzufügen
-      const rezept = getMeal(nextWeekData.mealsData ?? {}, tag, slot, e.gericht)
-      const allergenPairedBases = new Set<string>()
-      if (rezept) {
-        const updatedEntry = { ...e, eigenesEssen: Object.keys(next).length ? next : undefined }
-        const generatedItems = generateItemsForEntry(updatedEntry, { [e.gericht]: rezept }, false)
-        const toAdd = generatedItems.filter(i => i.fuer === personName)
-        for (const item of toAdd) {
-          allergenPairedBases.add(getAllergenBaseName(item.name).toLowerCase())
-          const alreadyInList = nwList.some(x => x.tag === tag && x.slot === slot
-            && x.name.toLowerCase() === item.name.toLowerCase() && x.fuer === personName && !x.erledigt)
-          if (!alreadyInList) {
-            nwList = [...nwList, { ...item, id: crypto.randomUUID(), tag, slot }]
-            nwListChanged = true
-          }
-        }
-      }
-
-      // A.2 Umkehr: no-fuer-Items hochskalieren – außer allergen-gepaarte
-      const ratio = Math.max(1, total - newExcl) / Math.max(1, total - oldExcl)
-      if (ratio !== 1) {
-        nwList = nwList.map(i => {
-          if (i.tag !== tag || i.slot !== slot || i.erledigt || i.fuer) return i
-          if (allergenPairedBases.has(getAllergenBaseName(i.name).toLowerCase())) return i
-          return { ...i, menge: applyRatioToMenge(i.menge, ratio) }
-        })
-        nwListChanged = true
-      }
-    }
+    const before = nwList.length
+    nwList = nwList.filter(i => !(i.eigenesEssen === true && i.fuer === personName && i.tag === tag && i.slot === slot && !i.erledigt))
+    if (nwList.length !== before) nwListChanged = true
+    const { list: adjusted, changed: adjChanged } = adjustPersonSlotChange(
+      { list: nwList, tag, slot, personName, oldEff, newEff, removing: false, rezept, gericht: e.gericht }
+    )
+    if (adjChanged) { nwList = adjusted; nwListChanged = true }
     const toSave: Partial<import('../lib/state').NextWeekData> = { plan: newPlan, mealsData: nextWeekData.mealsData ?? {} }
     if (nwListChanged) toSave.shoppingList = nwList
     void onNextWeekDataChange(toSave, nextMonday)
   }
 
-  async function applyActiveEigen(tag: string, slot: WochenSlot, personId: string, text: string, addToList: boolean) {
+  async function applyActiveEigen(tag: string, slot: WochenSlot, personId: string, text: string) {
     const e = weekPlan.find(e => e.tag === tag && e.slot === slot)
     if (!e) return
     const eigenNorm = normalizeEigenesEssen(e.eigenesEssen)
-    await updateEntryWithShoppingRescale(tag, slot, { eigenesEssen: { ...eigenNorm, [personId]: text } })
-    if (addToList && text) {
-      const pn = personNames[personId] ?? personId
-      const newItem: import('../lib/state').ShoppingItem = {
-        id: crypto.randomUUID(), name: text, menge: '1', kategorie: 'Sonstiges', erledigt: false,
-        tag, slot, fuer: pn,
+    const newEigen = { ...eigenNorm, [personId]: text }
+    await updateWeekEntry(tag, slot, { eigenesEssen: newEigen })
+    if (!shopDone) {
+      const mbs = members.length ? members : DEFAULT_MEMBERS
+      const total = Math.max(1, getPersonCountForSlot(tag, slot, attendance, mbs))
+      const oldExcl = Object.keys({ ...eigenNorm, ...(e.resteEsser ?? {}) }).length
+      const newExcl = Object.keys({ ...newEigen, ...(e.resteEsser ?? {}) }).length
+      const oldEff = Math.max(1, total - oldExcl); const newEff = Math.max(1, total - newExcl)
+      const personName = personNames[personId] ?? personId
+      const rezept = getMeal(mealsData, tag, slot, e.gericht)
+      let sl = shoppingList
+      const { list: adjusted, changed } = adjustPersonSlotChange(
+        { list: sl, tag, slot, personName, oldEff, newEff, removing: true, rezept, gericht: e.gericht }
+      )
+      if (changed) sl = adjusted
+      if (text) {
+        sl = [...sl, { id: crypto.randomUUID(), name: text, menge: '1',
+          kategorie: 'Sonstiges', erledigt: false, tag, slot, fuer: personName, eigenesEssen: true }]
       }
-      void onShoppingListChange([...shoppingList, newItem])
+      if (sl !== shoppingList) await onShoppingListChange(sl)
     }
     setMealEigenPerson(null); closeMealPanel()
   }
@@ -2668,13 +2737,23 @@ export default function WocheScreen({
     const e = weekPlan.find(e => e.tag === tag && e.slot === slot)
     if (!e) return
     const eigenNorm = normalizeEigenesEssen(e.eigenesEssen)
-    const text = eigenNorm[personId]
     const next = { ...eigenNorm }; delete next[personId]
-    await updateEntryWithShoppingRescale(tag, slot, { eigenesEssen: Object.keys(next).length ? next : undefined })
-    if (text) {
-      const pn = personNames[personId] ?? personId
-      const nl = shoppingList.filter(i => !(i.tag === tag && i.slot === slot && !i.gericht && i.fuer === pn && i.name === text && !i.erledigt))
-      if (nl.length !== shoppingList.length) void onShoppingListChange(nl)
+    await updateWeekEntry(tag, slot, { eigenesEssen: Object.keys(next).length ? next : undefined })
+    if (!shopDone) {
+      const mbs = members.length ? members : DEFAULT_MEMBERS
+      const total = Math.max(1, getPersonCountForSlot(tag, slot, attendance, mbs))
+      const oldExcl = Object.keys({ ...eigenNorm, ...(e.resteEsser ?? {}) }).length
+      const newExcl = Object.keys({ ...next, ...(e.resteEsser ?? {}) }).length
+      const oldEff = Math.max(1, total - oldExcl); const newEff = Math.max(1, total - newExcl)
+      const personName = personNames[personId] ?? personId
+      const rezept = getMeal(mealsData, tag, slot, e.gericht)
+      let sl = shoppingList
+      sl = sl.filter(i => !(i.eigenesEssen === true && i.fuer === personName && i.tag === tag && i.slot === slot && !i.erledigt))
+      const { list: adjusted, changed } = adjustPersonSlotChange(
+        { list: sl, tag, slot, personName, oldEff, newEff, removing: false, rezept, gericht: e.gericht }
+      )
+      if (changed) sl = adjusted
+      if (sl !== shoppingList) await onShoppingListChange(sl)
     }
   }
 
@@ -4510,7 +4589,7 @@ export default function WocheScreen({
                             </div>
                             {(() => {
                               const rezept = pendingPlanMeals[e.gericht]
-                              const ersetzt = rezept?.ersetzteZutaten ?? []
+                              const ersetzt = getErsetzteFromZutaten(rezept?.zutaten, normalizeEigenesEssen(e.eigenesEssen))
                               const warnings = getRecipeAllergenWarnings(rezept)
                               const eKey = `pending-${e.tag}-${e.slot}`
                               const isExp = expandedAllergenKeys.has(eKey)
@@ -4574,7 +4653,7 @@ export default function WocheScreen({
                               onApplyManual: (name, typ?) => applyManualDish(tag, slot, name, typ),
                               bookConfirm: pendingBookConfirm,
                               rezeptbuchEntries,
-                              eigenMembers: slotAnwesend.map(id => ({ id, name: personNames[id] ?? id })),
+                              eigenMembers: slotAnwesend.map(id => { const m = activeMembers.find(m => m.id === id); return { id, name: personNames[id] ?? id, allergien: m?.allergien ?? [] } }),
                               eigenNorm: normalizeEigenesEssen(e.eigenesEssen),
                               eigenSelectedPerson: mealEigenPerson,
                               setEigenSelectedPerson: setMealEigenPerson,
@@ -5041,13 +5120,11 @@ export default function WocheScreen({
                                     onApplyManual: (name, typ?) => applyActiveManualDish(tag, slot, name, typ),
                                     bookConfirm: pendingBookConfirm,
                                     rezeptbuchEntries,
-                                    eigenMembers: slotAnwesend.map(id => ({ id, name: personNames[id] ?? id })),
+                                    eigenMembers: slotAnwesend.map(id => { const m = activeMembers.find(m => m.id === id); return { id, name: personNames[id] ?? id, allergien: m?.allergien ?? [] } }),
                                     eigenNorm: normalizeEigenesEssen(e.eigenesEssen),
                                     eigenSelectedPerson: mealEigenPerson,
                                     setEigenSelectedPerson: setMealEigenPerson,
-                                    eigenAddToList: mealEigenAddToList,
-                                    setEigenAddToList: setMealEigenAddToList,
-                                    onApplyEigen: (personId, text, addToList) => { void applyActiveEigen(tag, slot, personId, text, addToList) },
+                                    onApplyEigen: (personId, text) => { void applyActiveEigen(tag, slot, personId, text) },
                                     onClearEigen: (personId) => { void clearActiveEigen(tag, slot, personId) },
                                     onApplyStock: (name, emoji) => applyActiveStockItem(tag, slot, name, emoji),
                                     onApplyErgaenzung: (text) => {
@@ -5287,7 +5364,7 @@ export default function WocheScreen({
                             </div>
                             {(() => {
                               const rezept = getMeal(mealsData, e.tag, e.slot, e.gericht)
-                              const ersetzt = rezept?.ersetzteZutaten ?? []
+                              const ersetzt = getErsetzteFromZutaten(rezept?.zutaten, normalizeEigenesEssen(e.eigenesEssen))
                               const warnings = getRecipeAllergenWarningsForEntry(rezept, e)
                               const eKey = `confirmed-${e.tag}-${e.slot}`
                               const isExp = expandedAllergenKeys.has(eKey)
@@ -5329,7 +5406,7 @@ export default function WocheScreen({
                                     {allergien.length > 0 && <span style={{ color: '#D97706' }}> · beachten: {allergien.join(', ')}</span>}
                                   </span>
                                   {canRemove && (
-                                    <button onClick={() => { const norm = normalizeEigenesEssen(e.eigenesEssen); const next = { ...norm }; delete next[p]; void updateEntryWithShoppingRescale(e.tag, e.slot, { eigenesEssen: Object.keys(next).length ? next : undefined }); const eigenText = norm[p]; if (eigenText) { const pn = personNames[p] ?? p; const nl = shoppingList.filter(i => !(i.tag === e.tag && i.slot === e.slot && !i.gericht && i.fuer === pn && i.name === eigenText && !i.erledigt)); if (nl.length !== shoppingList.length) void onShoppingListChange(nl) } }}
+                                    <button onClick={() => { void clearActiveEigen(e.tag, e.slot, p) }}
                                       style={{ flexShrink: 0, padding: '0px 5px', border: '1px solid #FECACA', borderRadius: 5, background: '#FEF2F2', color: '#DC2626', fontSize: 10, fontWeight: 700, cursor: 'pointer' as const, lineHeight: '16px' }}
                                     >✕</button>
                                   )}
@@ -5765,14 +5842,14 @@ export default function WocheScreen({
                                             <div style={{ fontSize: 12, fontWeight: 600, color: '#111', display: 'flex', alignItems: 'center', gap: 4 }}>
                                               {e!.gericht}<span style={{ fontSize: 10, color: '#bbb' }}>›</span>
                                               {e!.mahlzeitTyp === 'leicht' && <span style={{ fontSize: 9, background: '#EEF2FF', color: '#4338CA', borderRadius: 4, padding: '1px 5px', fontWeight: 600 }}>leicht</span>}
-                                              {getRecipeAllergenWarnings(nwPendingMeals[e!.gericht]).length > 0 && (
+                                              {getRecipeAllergenWarningsForEntry(nwPendingMeals[e!.gericht], e!).length > 0 && (
                                                 <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 14, height: 14, borderRadius: '50%', background: '#EF4444', color: 'white', fontSize: 9, fontWeight: 700, flexShrink: 0 }}>!</span>
                                               )}
                                             </div>
                                             {(() => {
                                               const rezept = nwPendingMeals[e!.gericht]
-                                              const ersetzt = rezept?.ersetzteZutaten ?? []
-                                              const warnings = getRecipeAllergenWarnings(rezept)
+                                              const ersetzt = getErsetzteFromZutaten(rezept?.zutaten, normalizeEigenesEssen(e!.eigenesEssen))
+                                              const warnings = getRecipeAllergenWarningsForEntry(rezept, e!)
                                               const eKey = `nwpending-${e!.tag}-${e!.slot}`
                                               const isExp = expandedAllergenKeys.has(eKey)
                                               return (
@@ -5838,7 +5915,7 @@ export default function WocheScreen({
                                           onApplyManual: (name, typ?) => applyNwPendingManualDish(e!.tag, e!.slot, name),
                                           bookConfirm: pendingBookConfirm,
                                           rezeptbuchEntries,
-                                          eigenMembers: activeMembers.map(m => ({ id: m.id, name: m.name })),
+                                          eigenMembers: activeMembers.map(m => ({ id: m.id, name: m.name, allergien: m.allergien ?? [] })),
                                           eigenNorm: normalizeEigenesEssen(e!.eigenesEssen),
                                           eigenSelectedPerson: nwMealEigenPerson,
                                           setEigenSelectedPerson: setNwMealEigenPerson,
@@ -5948,13 +6025,11 @@ export default function WocheScreen({
                                             onApplyManual: (name, typ?) => applyNwManualDish(tag, slot, name, typ),
                                             bookConfirm: pendingBookConfirm,
                                             rezeptbuchEntries,
-                                            eigenMembers: activeMembers.map(m => ({ id: m.id, name: m.name })),
+                                            eigenMembers: activeMembers.map(m => ({ id: m.id, name: m.name, allergien: m.allergien ?? [] })),
                                             eigenNorm: normalizeEigenesEssen(e.eigenesEssen),
                                             eigenSelectedPerson: nwMealEigenPerson,
                                             setEigenSelectedPerson: setNwMealEigenPerson,
-                                            eigenAddToList: nwMealEigenAddToList,
-                                            setEigenAddToList: setNwMealEigenAddToList,
-                                            onApplyEigen: (personId, text, addToList) => applyNwEigen(tag, slot, personId, text, addToList),
+                                            onApplyEigen: (personId, text) => applyNwEigen(tag, slot, personId, text),
                                             onClearEigen: (personId) => clearNwEigen(tag, slot, personId),
                                             onApplyStock: (name, emoji) => applyNwStockItem(tag, slot, name, emoji),
                                             onApplyErgaenzung: (text) => { void applyNwErgaenzung(tag, slot, text); setNwMealErgSaved(true); setTimeout(() => setNwMealErgSaved(false), 2500) },
@@ -6076,16 +6151,32 @@ export default function WocheScreen({
                                     <div style={{ fontSize: 13, fontWeight: 700, color: '#111', display: 'flex', alignItems: 'center', gap: 4 }}>
                                       {e.gericht}<span style={{ fontSize: 10, color: '#bbb' }}>›</span>
                                       {e.mahlzeitTyp === 'leicht' && <span style={{ fontSize: 9, background: '#EEF2FF', color: '#4338CA', borderRadius: 4, padding: '1px 5px', fontWeight: 600 }}>leicht</span>}
-                                      {getRecipeAllergenWarnings(nextWeekData?.mealsData?.[e.gericht]).length > 0 && (
+                                      {getRecipeAllergenWarningsForEntry(getMeal(nextWeekData?.mealsData ?? {}, e.tag, e.slot, e.gericht), e).length > 0 && (
                                         <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 14, height: 14, borderRadius: '50%', background: '#EF4444', color: 'white', fontSize: 9, fontWeight: 700, flexShrink: 0 }}>!</span>
                                       )}
                                     </div>
-                                    {(nextWeekData?.mealsData?.[e.gericht]?.ersetzteZutaten?.length ?? 0) > 0 && (
-                                      <div style={{ fontSize: 10, color: '#DC2626', marginTop: 1 }}>⚠️ {nextWeekData!.mealsData![e.gericht]!.ersetzteZutaten!.join(' · ')}</div>
-                                    )}
-                                    {getRecipeAllergenWarnings(nextWeekData?.mealsData?.[e.gericht]).length > 0 && (
-                                      <div style={{ fontSize: 10, color: '#991B1B', marginTop: 1 }}>⚠️ Prüfen: {getRecipeAllergenWarnings(nextWeekData?.mealsData?.[e.gericht]).join(' · ')}</div>
-                                    )}
+                                    {(() => {
+                                      const rezept = getMeal(nextWeekData?.mealsData ?? {}, e.tag, e.slot, e.gericht)
+                                      const ersetzt = getErsetzteFromZutaten(rezept?.zutaten, normalizeEigenesEssen(e.eigenesEssen))
+                                      const warnings = getRecipeAllergenWarningsForEntry(rezept, e)
+                                      const eKey = `nwconfirmed-${e.tag}-${e.slot}`
+                                      const isExp = expandedAllergenKeys.has(eKey)
+                                      return (
+                                        <>
+                                          {warnings.length > 0 && (
+                                            <div style={{ fontSize: 10, color: '#991B1B', marginTop: 1 }}>⚠️ ungelöst: {warnings.join(' · ')}</div>
+                                          )}
+                                          {ersetzt.length > 0 && (
+                                            <div style={{ marginTop: 1 }}>
+                                              <span role="button" onClick={ev => { ev.stopPropagation(); setExpandedAllergenKeys(prev => { const n = new Set(prev); if (n.has(eKey)) n.delete(eKey); else n.add(eKey); return n }) }} style={{ fontSize: 10, color: '#D97706', cursor: 'pointer' }}>
+                                                🔸 angepasst für {extractPersonNames(ersetzt)} {isExp ? '▾' : '▸'}
+                                              </span>
+                                              {isExp && <div style={{ fontSize: 10, color: '#888', marginTop: 1 }}>{formatErsetzteZutatenKurz(ersetzt)}</div>}
+                                            </div>
+                                          )}
+                                        </>
+                                      )
+                                    })()}
                                     {(() => {
                                       const prefix = `${e.tag} ${e.slot === 'Mittag' ? '☀️' : '🌙'}: `
                                       const ergs = (nextWeekData?.wishes ?? []).filter(w => w.text.startsWith(prefix))
@@ -6287,13 +6378,11 @@ export default function WocheScreen({
                     onApplyManual: (name, typ?) => applyActiveManualDish(tag, slot, name, typ),
                     bookConfirm: pendingBookConfirm,
                     rezeptbuchEntries,
-                    eigenMembers: slotAnwesend.map(id => ({ id, name: personNames[id] ?? id })),
+                    eigenMembers: slotAnwesend.map(id => { const m = activeMembers.find(m => m.id === id); return { id, name: personNames[id] ?? id, allergien: m?.allergien ?? [] } }),
                     eigenNorm: normalizeEigenesEssen(entry.eigenesEssen),
                     eigenSelectedPerson: mealEigenPerson,
                     setEigenSelectedPerson: setMealEigenPerson,
-                    eigenAddToList: mealEigenAddToList,
-                    setEigenAddToList: setMealEigenAddToList,
-                    onApplyEigen: (personId, text, addToList) => { void applyActiveEigen(tag, slot, personId, text, addToList) },
+                    onApplyEigen: (personId, text) => { void applyActiveEigen(tag, slot, personId, text) },
                     onClearEigen: (personId) => { void clearActiveEigen(tag, slot, personId) },
                     onApplyStock: (name, emoji) => applyActiveStockItem(tag, slot, name, emoji),
                     onApplyErgaenzung: (text) => {
@@ -6386,12 +6475,28 @@ export default function WocheScreen({
               )}
               {(() => { const w = getErnährungsWarnung(entry, weekPlan); return w ? <span style={{ fontSize: 9, background: '#FEF3C7', color: '#D97706', borderRadius: 4, padding: '1px 5px', fontWeight: 600, flexShrink: 0 }}>{w}</span> : null })()}
             </div>
-            {(getMeal(mealsData, entry.tag, entry.slot, entry.gericht)?.ersetzteZutaten?.length ?? 0) > 0 && (
-              <div style={{ fontSize: 10, color: '#DC2626', marginTop: 1 }}>⚠️ {getMeal(mealsData, entry.tag, entry.slot, entry.gericht)!.ersetzteZutaten!.join(' · ')}</div>
-            )}
-            {getRecipeAllergenWarningsForEntry(getMeal(mealsData, entry.tag, entry.slot, entry.gericht), entry).length > 0 && (
-              <div style={{ fontSize: 10, color: '#991B1B', marginTop: 1 }}>⚠️ Prüfen: {getRecipeAllergenWarningsForEntry(getMeal(mealsData, entry.tag, entry.slot, entry.gericht), entry).join(' · ')}</div>
-            )}
+            {(() => {
+              const rezept = getMeal(mealsData, entry.tag, entry.slot, entry.gericht)
+              const ersetzt = getErsetzteFromZutaten(rezept?.zutaten, normalizeEigenesEssen(entry.eigenesEssen))
+              const warnings = getRecipeAllergenWarningsForEntry(rezept, entry)
+              const eKey = `other-${entry.tag}-${entry.slot}`
+              const isExp = expandedAllergenKeys.has(eKey)
+              return (
+                <>
+                  {warnings.length > 0 && (
+                    <div style={{ fontSize: 10, color: '#991B1B', marginTop: 1 }}>⚠️ ungelöst: {warnings.join(' · ')}</div>
+                  )}
+                  {ersetzt.length > 0 && (
+                    <div style={{ marginTop: 1 }}>
+                      <span role="button" onClick={ev => { ev.stopPropagation(); setExpandedAllergenKeys(prev => { const n = new Set(prev); if (n.has(eKey)) n.delete(eKey); else n.add(eKey); return n }) }} style={{ fontSize: 10, color: '#D97706', cursor: 'pointer' }}>
+                        🔸 angepasst für {extractPersonNames(ersetzt)} {isExp ? '▾' : '▸'}
+                      </span>
+                      {isExp && <div style={{ fontSize: 10, color: '#888', marginTop: 1 }}>{formatErsetzteZutatenKurz(ersetzt)}</div>}
+                    </div>
+                  )}
+                </>
+              )
+            })()}
             {planSettings?.mahlzeitenBestaetigt && planSettings.mahlzeitenKonfig?.[tag] && (() => {
               const k = planSettings.mahlzeitenKonfig![tag]
               const erwartet = slot === 'Mittag' ? (k.mittag === 'kein' ? undefined : k.mittag) : k.abend
@@ -6420,7 +6525,7 @@ export default function WocheScreen({
                     {allergien.length > 0 && <span style={{ color: '#D97706' }}> · beachten: {allergien.join(', ')}</span>}
                   </span>
                   {canRemove && (
-                    <button onClick={() => { const norm = normalizeEigenesEssen(entry.eigenesEssen); const next = { ...norm }; delete next[p]; void updateEntryWithShoppingRescale(entry.tag, entry.slot, { eigenesEssen: Object.keys(next).length ? next : undefined }); const eigenText = norm[p]; if (eigenText) { const pn = personNames[p] ?? p; const nl = shoppingList.filter(i => !(i.tag === entry.tag && i.slot === entry.slot && !i.gericht && i.fuer === pn && i.name === eigenText && !i.erledigt)); if (nl.length !== shoppingList.length) void onShoppingListChange(nl) } }}
+                    <button onClick={() => { void clearActiveEigen(entry.tag, entry.slot, p) }}
                       style={{ flexShrink: 0, padding: '0px 5px', border: '1px solid #FECACA', borderRadius: 5, background: '#FEF2F2', color: '#DC2626', fontSize: 10, fontWeight: 700, cursor: 'pointer' as const, lineHeight: '16px' }}
                     >✕</button>
                   )}
