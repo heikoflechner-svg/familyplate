@@ -2540,7 +2540,7 @@ export default function WocheScreen({
       ? { ...p, eigenesEssen: Object.keys(next).length ? next : undefined } : p) : null)
   }
 
-  function applyNwEigen(tag: string, slot: WochenSlot, personId: string, text: string) {
+  function applyNwEigen(tag: string, slot: WochenSlot, personId: string, text: string, addToList: boolean) {
     if (!onNextWeekDataChange || !nextWeekData?.plan) return
     const e = nextWeekData.plan.find(e => e.tag === tag && e.slot === slot)
     if (!e) return
@@ -2548,8 +2548,29 @@ export default function WocheScreen({
     const nextMonday = nextWeekStart ?? getNextMondayIso()
     const newPlan = nextWeekData.plan.map(p => p.tag === tag && p.slot === slot
       ? { ...p, eigenesEssen: { ...eigenNorm, [personId]: text } } : p)
-    void onNextWeekDataChange({ plan: newPlan, mealsData: nextWeekData.mealsData ?? {} }, nextMonday)
-    setNwMealEigenPerson(null); setNwGerichtEditKey(null); setNwMealSubMode(null); setNwManualDish('')
+    // NW-Einkaufsliste skalieren
+    const mbs = members.length ? members : DEFAULT_MEMBERS
+    const nwAtt = nextWeekData.attendance ?? attendance
+    const total = Math.max(1, getPersonCountForSlot(tag, slot, nwAtt, mbs))
+    const oldExcl = Object.keys({ ...eigenNorm, ...(e.resteEsser ?? {}) }).length
+    const newExcl = Object.keys({ ...eigenNorm, [personId]: text, ...(e.resteEsser ?? {}) }).length
+    let nwList = nextWeekData.shoppingList ?? []
+    let nwListChanged = false
+    if (oldExcl !== newExcl) {
+      const ratio = Math.max(1, total - newExcl) / Math.max(1, total - oldExcl)
+      if (ratio !== 1 && nwList.some(i => i.tag === tag && i.slot === slot && !i.erledigt)) {
+        nwList = nwList.map(i => i.tag !== tag || i.slot !== slot || i.erledigt ? i : { ...i, menge: applyRatioToMenge(i.menge, ratio) })
+        nwListChanged = true
+      }
+    }
+    if (addToList && text) {
+      nwList = [...nwList, { id: crypto.randomUUID(), name: text, menge: '1', kategorie: 'Sonstiges', erledigt: false, tag, slot, fuer: personNames[personId] ?? personId }]
+      nwListChanged = true
+    }
+    const toSave: Partial<import('../lib/state').NextWeekData> = { plan: newPlan, mealsData: nextWeekData.mealsData ?? {} }
+    if (nwListChanged) toSave.shoppingList = nwList
+    void onNextWeekDataChange(toSave, nextMonday)
+    setNwMealEigenPerson(null); setNwGerichtEditKey(null); setNwMealSubMode(null); setNwManualDish(''); setNwMealEigenAddToList(false)
   }
 
   function clearNwEigen(tag: string, slot: WochenSlot, personId: string) {
@@ -2561,7 +2582,24 @@ export default function WocheScreen({
     const nextMonday = nextWeekStart ?? getNextMondayIso()
     const newPlan = nextWeekData.plan.map(p => p.tag === tag && p.slot === slot
       ? { ...p, eigenesEssen: Object.keys(next).length ? next : undefined } : p)
-    void onNextWeekDataChange({ plan: newPlan, mealsData: nextWeekData.mealsData ?? {} }, nextMonday)
+    // NW-Einkaufsliste zurückskalieren
+    const mbs = members.length ? members : DEFAULT_MEMBERS
+    const nwAtt = nextWeekData.attendance ?? attendance
+    const total = Math.max(1, getPersonCountForSlot(tag, slot, nwAtt, mbs))
+    const oldExcl = Object.keys({ ...eigenNorm, ...(e.resteEsser ?? {}) }).length
+    const newExcl = Object.keys({ ...next, ...(e.resteEsser ?? {}) }).length
+    let nwList = nextWeekData.shoppingList ?? []
+    let nwListChanged = false
+    if (oldExcl !== newExcl) {
+      const ratio = Math.max(1, total - newExcl) / Math.max(1, total - oldExcl)
+      if (ratio !== 1 && nwList.some(i => i.tag === tag && i.slot === slot && !i.erledigt)) {
+        nwList = nwList.map(i => i.tag !== tag || i.slot !== slot || i.erledigt ? i : { ...i, menge: applyRatioToMenge(i.menge, ratio) })
+        nwListChanged = true
+      }
+    }
+    const toSave: Partial<import('../lib/state').NextWeekData> = { plan: newPlan, mealsData: nextWeekData.mealsData ?? {} }
+    if (nwListChanged) toSave.shoppingList = nwList
+    void onNextWeekDataChange(toSave, nextMonday)
   }
 
   async function applyActiveEigen(tag: string, slot: WochenSlot, personId: string, text: string, addToList: boolean) {
@@ -5868,7 +5906,9 @@ export default function WocheScreen({
                                             eigenNorm: normalizeEigenesEssen(e.eigenesEssen),
                                             eigenSelectedPerson: nwMealEigenPerson,
                                             setEigenSelectedPerson: setNwMealEigenPerson,
-                                            onApplyEigen: (personId, text) => applyNwEigen(tag, slot, personId, text),
+                                            eigenAddToList: nwMealEigenAddToList,
+                                            setEigenAddToList: setNwMealEigenAddToList,
+                                            onApplyEigen: (personId, text, addToList) => applyNwEigen(tag, slot, personId, text, addToList),
                                             onClearEigen: (personId) => clearNwEigen(tag, slot, personId),
                                             onApplyStock: (name, emoji) => applyNwStockItem(tag, slot, name, emoji),
                                             onApplyErgaenzung: (text) => { void applyNwErgaenzung(tag, slot, text); setNwMealErgSaved(true); setTimeout(() => setNwMealErgSaved(false), 2500) },
@@ -6007,6 +6047,18 @@ export default function WocheScreen({
                                       const txt = ergs.map(w => w.text.slice(prefix.length)).join(', ')
                                       return <div style={{ fontSize: 10, color: '#6366F1', marginTop: 1 }}>✏️ angepasst: {txt.length > 35 ? txt.slice(0, 35) + '…' : txt}</div>
                                     })()}
+                                    {Object.entries(normalizeEigenesEssen(e.eigenesEssen)).map(([p, t]) => {
+                                      const pm = activeMembers.find(m => m.id === p)
+                                      return (
+                                        <div key={p} style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 1 }}>
+                                          <span style={{ flex: 1, fontSize: 10, color: '#92400E' }}>🙋 {pm?.name ?? p}{t ? `: ${t}` : ''}</span>
+                                          {(isNwChef || canEditSettings) && (
+                                            <button onClick={(ev) => { ev.stopPropagation(); clearNwEigen(e.tag, e.slot, p) }}
+                                              style={{ flexShrink: 0, padding: '0px 5px', border: '1px solid #FECACA', borderRadius: 5, background: '#FEF2F2', color: '#DC2626', fontSize: 10, fontWeight: 700, cursor: 'pointer', lineHeight: '16px' }}>✕</button>
+                                          )}
+                                        </div>
+                                      )
+                                    })}
                                     <div style={{ fontSize: 11, color: '#aaa' }}>{e.minuten} min</div>
                                   </div>
                                 </div>
